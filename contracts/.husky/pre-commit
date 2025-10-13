@@ -1,0 +1,19 @@
+#!/bin/sh
+set -e
+
+# Ensure we run from repo root, then cd into contracts
+ROOT_DIR=$(git rev-parse --show-toplevel)
+cd "$ROOT_DIR/contracts" || exit 1
+
+echo "Formatting and linting staged Solidity files..."
+
+# Collect staged Solidity files
+STAGED_SOL=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\\.sol$' || true)
+
+if [ -n "$STAGED_SOL" ]; then
+  echo "$STAGED_SOL" | xargs npx prettier --write
+  echo "$STAGED_SOL" | xargs git add
+  echo "$STAGED_SOL" | xargs npx solhint || true
+else
+  echo "No Solidity files staged."
+fi

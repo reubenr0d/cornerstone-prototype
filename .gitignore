@@ -1,0 +1,11 @@
+# Contracts build artifacts (Hardhat)
+contracts/artifacts/
+contracts/cache/
+
+# Node modules (scoped to contracts project)
+contracts/node_modules/
+
+# IDE
+.DS_Store
+.idea/
+.vscode/
