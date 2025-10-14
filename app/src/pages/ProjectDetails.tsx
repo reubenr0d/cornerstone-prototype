@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { RoleSelector } from '@/components/RoleSelector';
 import { RoleGate, Role } from '@/components/RoleGate';
@@ -12,6 +12,10 @@ import { Label } from '@/components/ui/label';
 import { toast } from '@/components/ui/sonner';
 import { ExternalLink, Plus, Edit, Upload, DollarSign, AlertTriangle, MessageSquare, Banknote, DoorClosed, Wallet, FileText } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@/components/ui/drawer';
+import { Address, erc20At, fromUSDC, getAccount, getProvider, getSigner, projectAt, toUSDC } from '@/lib/eth';
+import { contractsConfig } from '@/config/contracts';
+import { ipfsUpload } from '@/lib/ipfs';
+import { ethers } from 'ethers';
 
 const ProjectDetails = () => {
   const { id } = useParams();
@@ -21,28 +25,162 @@ const ProjectDetails = () => {
   // Developer actions state (UI prototype only)
   const [reserveAmount, setReserveAmount] = useState('');
   const [uploadedDocs, setUploadedDocs] = useState<File[]>([]);
+  const [proceedsAmount, setProceedsAmount] = useState('');
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [supportAmount, setSupportAmount] = useState('');
+  const [approvedSupport, setApprovedSupport] = useState(false);
+  const [approvedReserve, setApprovedReserve] = useState(false);
+  const [approvedProceeds, setApprovedProceeds] = useState(false);
 
-  // Mock project data
+  const projectAddress = useMemo<Address | null>(() => {
+    const p = id as string | undefined;
+    return (p && p.startsWith('0x') ? (p as Address) : null);
+  }, [id]);
+  const [account, setAccount] = useState<Address | null>(null);
+  const [connected, setConnected] = useState(false);
+
+  // On-chain state
+  const [chain, setChain] = useState<{
+    token?: Address;
+    usdc?: Address;
+    owner?: Address;
+    totalRaised?: bigint;
+    maxRaise?: bigint;
+    reserveBalance?: bigint;
+    totalDevWithdrawn?: bigint;
+    poolBalance?: bigint;
+    currentPhase?: number;
+    lastClosedPhase?: number;
+    phase5PercentComplete?: number;
+    claimableInterest?: bigint;
+    claimableRevenue?: bigint;
+    principalBuffer?: bigint;
+    userBalance?: bigint;
+    perPhaseCaps?: bigint[];
+    perPhaseWithdrawn?: bigint[];
+  }>({});
+
+  async function connectWallet() {
+    try {
+      const signer = await getSigner();
+      const addr = (await signer.getAddress()) as Address;
+      setAccount(addr);
+      setConnected(true);
+      toast.success('Wallet connected');
+    } catch (e: any) {
+      toast.error(e?.shortMessage || e?.message || 'Connect failed');
+    }
+  }
+
+  function phaseName(idx: number) {
+    const names = [
+      'Fundraising and Acquisition',
+      'Design and Architectural',
+      'Permitting',
+      'Abatement/Demolition',
+      'Construction',
+      'Revenue and Sales',
+    ] as const;
+    return names[idx] ?? 'Unknown';
+  }
+
+  async function refresh() {
+    try {
+      if (!projectAddress) return;
+      const provider = await getProvider();
+      const proj = projectAt(projectAddress, provider);
+      const [token, owner, totalRaised, maxRaise, reserveBalance, totalDevWithdrawn, poolBalance, currentPhase, lastClosedPhase, phase5PercentComplete, principalBuffer] = await Promise.all([
+        proj.token(),
+        proj.owner(),
+        proj.totalRaised(),
+        proj.maxRaise(),
+        proj.reserveBalance(),
+        proj.totalDevWithdrawn(),
+        proj.poolBalance(),
+        proj.currentPhase(),
+        proj.lastClosedPhase(),
+        proj.phase5PercentComplete(),
+        proj.principalBuffer(),
+      ]);
+      // usdc is public immutable -> getter exists
+      const usdc: Address = await proj.usdc();
+      let claimableInterest = 0n;
+      let claimableRevenue = 0n;
+      let userBalance = 0n;
+      if (account) {
+        claimableInterest = await proj.claimableInterest(account);
+        claimableRevenue = await proj.claimableRevenue(account);
+        const tokenC = new ethers.Contract(token as Address, [
+          'function balanceOf(address) view returns (uint256)'
+        ], provider);
+        userBalance = await tokenC.balanceOf(account);
+      }
+      const caps: bigint[] = [];
+      const withdrawn: bigint[] = [];
+      for (let p = 1; p <= 6; p++) {
+        const cap = await proj.getPhaseCap(p);
+        caps.push(cap);
+        const w = await proj.getPhaseWithdrawn(p);
+        withdrawn.push(w);
+      }
+      setChain({
+        token: token as Address,
+        usdc,
+        owner: owner as Address,
+        totalRaised,
+        maxRaise,
+        reserveBalance,
+        totalDevWithdrawn,
+        poolBalance,
+        currentPhase: Number(currentPhase),
+        lastClosedPhase: Number(lastClosedPhase),
+        phase5PercentComplete: Number(phase5PercentComplete),
+        claimableInterest,
+        claimableRevenue,
+        principalBuffer,
+        userBalance,
+        perPhaseCaps: caps,
+        perPhaseWithdrawn: withdrawn,
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  useEffect(() => {
+    getAccount().then((a) => {
+      if (a) {
+        setAccount(a);
+        setConnected(true);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectAddress, account]);
+
   const project = {
-    name: 'Cornerstone',
+    name: 'Cornerstone Project',
     status: 'Active',
-    contractAddress: '0x1234...abcd',
-    tokenAddress: '0xabcd...1234',
-    owner: '0x1234...abcd',
-    raised: 2_750_000,
-    target: 5_000_000,
-    escrow: 250_000,
-    withdrawn: 1_200_000,
-    withdrawable: 300_000,
-    currentPhase: 'Construction',
-    milestones: 4,
-    supporters: 1240,
+    contractAddress: projectAddress ?? '0x',
+    tokenAddress: chain.token ?? '0x',
+    owner: chain.owner ?? '0x',
+    raised: Number(chain.totalRaised ? fromUSDC(chain.totalRaised) : '0'),
+    target: Number(chain.maxRaise ? fromUSDC(chain.maxRaise) : '0'),
+    escrow: Number(chain.reserveBalance ? fromUSDC(chain.reserveBalance) : '0'),
+    withdrawn: Number(chain.totalDevWithdrawn ? fromUSDC(chain.totalDevWithdrawn) : '0'),
+    withdrawable: 0,
+    currentPhase: phaseName((chain.currentPhase ?? 0) - 1),
+    milestones: 0,
+    supporters: 0,
     description:
-      'Ground-up residential construction delivering 12 modern units with sustainable materials and energy-efficient systems, located near downtown transit hubs.',
+      'On-chain construction funding with per-phase unlocks, reserve-funded interest, and pro‑rata revenue distribution.',
   };
 
-  const raisedPercentage = (project.raised / project.target) * 100;
-  const withdrawnPercentage = (project.withdrawn / project.target) * 100;
+  const raisedPercentage = project.target > 0 ? (project.raised / project.target) * 100 : 0;
+  const withdrawnPercentage = project.target > 0 ? (project.withdrawn / project.target) * 100 : 0;
   const format = (n: number) => n.toLocaleString('en-US');
 
   // Phases data (6 phases)
@@ -55,10 +193,10 @@ const ProjectDetails = () => {
     'Revenue and Sales',
   ] as const;
 
-  const capBps = [0, 1500, 1500, 2000, 3000, 2000]; // per-phase withdraw caps as % of target (bps)
-  const aprs = [0, 8, 10, 12, 10, 0]; // illustrative APR per phase
-  const currentPhaseIndex = phaseNames.indexOf(project.currentPhase as (typeof phaseNames)[number]);
-  const perPhaseWithdrawn = [0, 300_000, 250_000, 250_000, 400_000, 0]; // sums to 1,200,000
+  const capBps = chain.perPhaseCaps?.map((c)=> Math.round((Number(fromUSDC(c)) / project.target) * 10000)) || [0,0,0,0,0,0];
+  const aprs = [0, 0, 0, 0, 0, 0]; // APRs not displayed here; can fetch individually if needed
+  const currentPhaseIndex = Math.max(0, (chain.currentPhase ?? 1) - 1);
+  const perPhaseWithdrawn = (chain.perPhaseWithdrawn || []).map((w)=> Number(fromUSDC(w)));
   const phaseCloseDates: (string | null)[] = [
     '2025-01-15', // Fundraising and Acquisition
     '2025-03-15', // Design and Architectural
@@ -139,6 +277,33 @@ const ProjectDetails = () => {
 
   const [docViewer, setDocViewer] = useState<Doc | null>(null);
 
+  // Compute withdrawable under caps
+  const withdrawableNow: number = useMemo(() => {
+    try {
+      if (!chain.maxRaise || chain.perPhaseCaps?.length !== 6) return 0;
+      const getCap = (p: number) => chain.perPhaseCaps![p - 1];
+      let unlocked = 0n;
+      const lc = chain.lastClosedPhase ?? 0;
+      for (let p = 1; p <= 4; p++) {
+        if (p <= lc) unlocked += getCap(p);
+      }
+      const cap5 = getCap(5);
+      if ((chain.lastClosedPhase ?? 0) >= 5) {
+        unlocked += cap5;
+      } else if ((chain.currentPhase ?? 0) === 5) {
+        unlocked += (cap5 * BigInt(chain.phase5PercentComplete ?? 0)) / 100n;
+      }
+      if ((chain.lastClosedPhase ?? 0) >= 6) unlocked += getCap(6);
+      const already = chain.totalDevWithdrawn ?? 0n;
+      const pool = chain.poolBalance ?? 0n;
+      const avail = unlocked > already ? unlocked - already : 0n;
+      const can = avail < pool ? avail : pool;
+      return Number(fromUSDC(can));
+    } catch {
+      return 0;
+    }
+  }, [chain]);
+
   const tabs = [
     { id: 'milestones', label: 'Phases' },
     { id: 'verification', label: 'Documents' },
@@ -178,6 +343,9 @@ const ProjectDetails = () => {
 
               {/* Role-aware action bar */}
               <div className="flex flex-wrap gap-2">
+                <Button variant={connected? 'secondary':'default'} size="sm" onClick={connectWallet}>
+                  {connected ? 'Wallet Connected' : 'Connect Wallet'}
+                </Button>
                 <RoleGate currentRole={currentRole} allowedRoles={['developer']}>
                   <Button variant="outline" size="sm">
                     <MessageSquare className="w-4 h-4 mr-1" />
@@ -486,12 +654,43 @@ const ProjectDetails = () => {
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
                     <label className="text-sm font-medium" htmlFor="support-amount">Amount (USDC)</label>
-                    <Input id="support-amount" type="number" inputMode="decimal" placeholder="0.00" />
+                    <Input id="support-amount" type="number" inputMode="decimal" placeholder="0.00" value={supportAmount} onChange={(e)=>{ setSupportAmount(e.target.value); setApprovedSupport(false); }} />
                   </div>
-                  <Button className="w-full" size="lg">
-                    <DollarSign className="w-4 h-4 mr-2" />
-                    Support Project
-                  </Button>
+                  {!approvedSupport ? (
+                    <Button className="w-full" size="lg" onClick={async ()=>{
+                      try {
+                        if (!projectAddress || !chain.usdc) { toast.error('Addresses not loaded'); return; }
+                        if (!supportAmount || Number(supportAmount) <= 0) { toast.error('Enter amount'); return; }
+                        const signer = await getSigner();
+                        const owner = await signer.getAddress();
+                        const amt = toUSDC(supportAmount);
+                        const t = erc20At(chain.usdc, signer);
+                        const tx = await t.approve(projectAddress, amt);
+                        await tx.wait();
+                        setApprovedSupport(true);
+                        toast.success('Approved');
+                      } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Approve failed'); }
+                    }}>
+                      <Wallet className="w-4 h-4 mr-2" /> Approve
+                    </Button>
+                  ) : (
+                    <Button className="w-full" size="lg" onClick={async ()=>{
+                      try {
+                        if (!projectAddress) return;
+                        const signer = await getSigner();
+                        const proj = projectAt(projectAddress, signer);
+                        const amt = toUSDC(supportAmount);
+                        const tx = await proj.deposit(amt);
+                        await tx.wait();
+                        toast.success('Deposited');
+                        setApprovedSupport(false);
+                        setSupportAmount('');
+                        refresh();
+                      } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Deposit failed'); }
+                    }}>
+                      <DollarSign className="w-4 h-4 mr-2" /> Deposit
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             </RoleGate>
@@ -504,18 +703,62 @@ const ProjectDetails = () => {
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Investment Value</span>
-                    <span className="font-semibold">25,000 USDC</span>
+                    <span className="text-muted-foreground">Your Balance</span>
+                    <span className="font-semibold">{chain.userBalance ? Number(fromUSDC(chain.userBalance)).toLocaleString('en-US') : 0} USDC</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Total Interest Accrued</span>
-                    <span className="font-semibold">1,375 USDC</span>
+                    <span className="text-muted-foreground">Claimable Interest</span>
+                    <span className="font-semibold">{chain.claimableInterest ? Number(fromUSDC(chain.claimableInterest)).toLocaleString('en-US') : 0} USDC</span>
                   </div>
+                  <Button variant="outline" className="w-full mt-1" onClick={async ()=>{
+                    try {
+                      if (!projectAddress || !chain.claimableInterest || chain.claimableInterest === 0n) { toast.error('Nothing to claim'); return; }
+                      const signer = await getSigner();
+                      const proj = projectAt(projectAddress, signer);
+                      const tx = await proj.claimInterest(chain.claimableInterest);
+                      await tx.wait();
+                      toast.success('Interest claimed');
+                      refresh();
+                    } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Claim failed'); }
+                  }}>Withdraw Interest</Button>
+
+                  {/* Principal Redemption */}
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Pending Interest</span>
-                    <span className="font-semibold">250 USDC</span>
+                    <span className="text-muted-foreground">Principal Buffer</span>
+                    <span className="font-semibold">{chain.principalBuffer ? Number(fromUSDC(chain.principalBuffer)).toLocaleString('en-US') : 0} USDC</span>
                   </div>
-                  <Button variant="outline" className="w-full mt-1">Withdraw Interest</Button>
+                  {chain.principalBuffer && chain.userBalance && chain.principalBuffer > 0n && (
+                    <Button variant="outline" className="w-full mt-1" onClick={async ()=>{
+                      try {
+                        if (!projectAddress) return;
+                        const shares = chain.userBalance! < chain.principalBuffer! ? chain.userBalance! : chain.principalBuffer!;
+                        if (shares === 0n) { toast.error('No redeemable principal yet'); return; }
+                        const signer = await getSigner();
+                        const proj = projectAt(projectAddress, signer);
+                        const tx = await proj.withdrawPrincipal(shares);
+                        await tx.wait();
+                        toast.success('Principal redeemed');
+                        refresh();
+                      } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Redeem failed'); }
+                    }}>Redeem Principal</Button>
+                  )}
+                  {/* Revenue Claim */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Claimable Revenue</span>
+                    <span className="font-semibold">{chain.claimableRevenue ? Number(fromUSDC(chain.claimableRevenue)).toLocaleString('en-US') : 0} USDC</span>
+                  </div>
+                  <Button variant="outline" className="w-full mt-1" onClick={async ()=>{
+                    try {
+                      if (!projectAddress || !account) return;
+                      if (!chain.claimableRevenue || chain.claimableRevenue === 0n) { toast.error('No revenue to claim'); return; }
+                      const signer = await getSigner();
+                      const proj = projectAt(projectAddress, signer);
+                      const tx = await proj.claimRevenue(account);
+                      await tx.wait();
+                      toast.success('Revenue claimed');
+                      refresh();
+                    } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Claim failed'); }
+                  }}>Claim Revenue</Button>
                 </CardContent>
               </Card>
             </RoleGate>
@@ -545,21 +788,39 @@ const ProjectDetails = () => {
                           onChange={(e) => setReserveAmount(e.target.value)}
                         />
                       </div>
-                      <Button
-                        size="sm"
-                        className="justify-start"
-                        onClick={() => {
-                          const amt = reserveAmount.trim();
-                          if (!amt || Number(amt) <= 0) {
-                            toast.error('Enter a valid reserve amount');
-                            return;
-                          }
-                          toast.success(`Reserve funded with ${amt} USDC (simulated)`);
-                          setReserveAmount('');
-                        }}
-                      >
-                        <Wallet className="w-4 h-4 mr-2" /> Fund Reserve
-                      </Button>
+                      {!approvedReserve ? (
+                        <Button size="sm" className="justify-start" onClick={async ()=>{
+                          try {
+                            if (!projectAddress || !chain.usdc) { toast.error('Addresses not loaded'); return; }
+                            const amt = reserveAmount.trim();
+                            if (!amt || Number(amt) <= 0) { toast.error('Enter amount'); return; }
+                            const signer = await getSigner();
+                            const t = erc20At(chain.usdc, signer);
+                            const tx = await t.approve(projectAddress, toUSDC(amt));
+                            await tx.wait();
+                            setApprovedReserve(true);
+                            toast.success('Approved');
+                          } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Approve failed'); }
+                        }}>
+                          <Wallet className="w-4 h-4 mr-2" /> Approve
+                        </Button>
+                      ) : (
+                        <Button size="sm" className="justify-start" onClick={async ()=>{
+                          try {
+                            if (!projectAddress) return;
+                            const signer = await getSigner();
+                            const proj = projectAt(projectAddress, signer);
+                            const tx = await proj.fundReserve(toUSDC(reserveAmount));
+                            await tx.wait();
+                            toast.success('Reserve funded');
+                            setApprovedReserve(false);
+                            setReserveAmount('');
+                            refresh();
+                          } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Fund failed'); }
+                        }}>
+                          <Banknote className="w-4 h-4 mr-2" /> Fund Reserve
+                        </Button>
+                      )}
                     </div>
                   </div>
 
@@ -588,19 +849,43 @@ const ProjectDetails = () => {
                         />
                         <p className="text-xs text-muted-foreground">Attach evidence to close the current phase.</p>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        className="justify-start"
-                        onClick={() => {
-                          if (!uploadedDocs.length) {
-                            toast.error('Please upload at least one document');
+                      <Button size="sm" variant="secondary" className="justify-start" onClick={async ()=>{
+                        try {
+                          if (!projectAddress) return;
+                          if (!uploadedDocs.length) { toast.error('Please upload at least one document'); return; }
+                          const signer = await getSigner();
+                          const proj = projectAt(projectAddress, signer);
+                          const phaseId: number = (chain.currentPhase ?? 0);
+                          if (phaseId === 0) {
+                            // Close fundraise (no docs required)
+                            const tx = await proj.closePhase(0, [], [], []);
+                            await tx.wait();
+                            toast.success('Fundraise closed');
+                            setUploadedDocs([]);
+                            refresh();
                             return;
                           }
-                          toast.success(`Closed phase ${project.currentPhase} (simulated)`);
+                          // Upload to IPFS
+                          const uploaded = await ipfsUpload(uploadedDocs);
+                          const nameByPath = Object.fromEntries(uploaded.map(u=>[u.path,u]));
+                          const docTypes: string[] = [];
+                          const docHashes: string[] = [];
+                          const metadataURIs: string[] = [];
+                          for (const f of uploadedDocs) {
+                            const buf = new Uint8Array(await f.arrayBuffer());
+                            const hash = ethers.keccak256(buf);
+                            docTypes.push(f.type || (f.name.split('.').pop() || 'file'));
+                            docHashes.push(hash);
+                            const up = nameByPath[f.name];
+                            metadataURIs.push(up?.uri || '');
+                          }
+                          const tx = await proj.closePhase(phaseId, docTypes, docHashes, metadataURIs);
+                          await tx.wait();
+                          toast.success(`Closed phase ${phaseId}`);
                           setUploadedDocs([]);
-                        }}
-                      >
+                          refresh();
+                        } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Close failed'); }
+                      }}>
                         <DoorClosed className="w-4 h-4 mr-2" /> Close Phase
                       </Button>
                     </div>
@@ -615,23 +900,76 @@ const ProjectDetails = () => {
                     <div className="grid gap-2">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">Withdrawable Now</span>
-                        <span className="font-medium">{format(project.withdrawable)} USDC</span>
+                        <span className="font-medium">{withdrawableNow.toLocaleString('en-US')} USDC</span>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="justify-start"
-                        onClick={() => {
-                          const amt = project.withdrawable;
-                          if (!amt || amt <= 0) {
-                            toast.error('No funds available to withdraw');
-                            return;
-                          }
-                          toast.success(`Withdrew ${amt} USDC to developer (simulated)`);
-                        }}
-                      >
+                      <div className="grid gap-1">
+                        <Label htmlFor="withdrawAmount">Amount (USDC)</Label>
+                        <Input id="withdrawAmount" inputMode="decimal" placeholder="e.g. 10000" value={withdrawAmount} onChange={(e)=>setWithdrawAmount(e.target.value)} />
+                      </div>
+                      <Button size="sm" variant="outline" className="justify-start" onClick={async ()=>{
+                        try {
+                          if (!projectAddress) return;
+                          const amt = Number(withdrawAmount || '0');
+                          if (!amt || amt <= 0) { toast.error('Enter amount'); return; }
+                          if (amt > withdrawableNow) { toast.error('Exceeds withdrawable'); return; }
+                          const signer = await getSigner();
+                          const proj = projectAt(projectAddress, signer);
+                          const tx = await proj.withdrawPhaseFunds(toUSDC(amt.toString()));
+                          await tx.wait();
+                          toast.success('Withdrawn');
+                          setWithdrawAmount('');
+                          refresh();
+                        } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Withdraw failed'); }
+                      }}>
                         <DollarSign className="w-4 h-4 mr-2" /> Withdraw Funds
                       </Button>
+                    </div>
+                  </div>
+
+                  {/* Sales Proceeds */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Submit Sales Proceeds</span>
+                    </div>
+                    <div className="grid gap-2">
+                      <div className="grid gap-1">
+                        <Label htmlFor="proceedsAmount">Amount (USDC)</Label>
+                        <Input id="proceedsAmount" inputMode="decimal" placeholder="e.g. 25000" value={proceedsAmount} onChange={(e)=>{ setProceedsAmount(e.target.value); setApprovedProceeds(false); }} />
+                      </div>
+                      {!approvedProceeds ? (
+                        <Button size="sm" className="justify-start" onClick={async ()=>{
+                          try {
+                            if (!projectAddress || !chain.usdc) { toast.error('Addresses not loaded'); return; }
+                            const amt = proceedsAmount.trim();
+                            if (!amt || Number(amt) <= 0) { toast.error('Enter amount'); return; }
+                            const signer = await getSigner();
+                            const t = erc20At(chain.usdc, signer);
+                            const tx = await t.approve(projectAddress, toUSDC(amt));
+                            await tx.wait();
+                            setApprovedProceeds(true);
+                            toast.success('Approved');
+                          } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Approve failed'); }
+                        }}>
+                          <Wallet className="w-4 h-4 mr-2" /> Approve
+                        </Button>
+                      ) : (
+                        <Button size="sm" className="justify-start" onClick={async ()=>{
+                          try {
+                            if (!projectAddress) return;
+                            const signer = await getSigner();
+                            const proj = projectAt(projectAddress, signer);
+                            const tx = await proj.submitSalesProceeds(toUSDC(proceedsAmount));
+                            await tx.wait();
+                            toast.success('Proceeds submitted');
+                            setApprovedProceeds(false);
+                            setProceedsAmount('');
+                            refresh();
+                          } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Submit failed'); }
+                        }}>
+                          <DollarSign className="w-4 h-4 mr-2" /> Submit
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardContent>

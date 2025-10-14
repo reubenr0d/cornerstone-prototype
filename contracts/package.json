@@ -13,7 +13,10 @@
     "lint:sol": "solhint 'src/**/*.sol'",
     "format": "prettier --write 'src/**/*.sol'",
     "format:check": "prettier --check 'src/**/*.sol'",
-    "lint": "npm run lint:sol && npm run format:check"
+    "lint": "npm run lint:sol && npm run format:check",
+    "node": "hardhat node",
+    "deploy:local": "hardhat run script/deploy_local.js --network localhost",
+    "deploy:local:1337": "npm run deploy:local"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
