@@ -116,14 +116,16 @@ export async function fetchProjectCoreState(
     proj.principalBuffer(),
     proj.usdc(),
   ]);
-  const caps: bigint[] = [];
-  const withdrawn: bigint[] = [];
-  for (let p = 1; p <= 6; p++) {
+  // Return UI-friendly arrays for 6 phases numbered 0..5.
+  // Phase 0 (fundraising) has no cap/APR/withdrawn; fill with 0 at index 0.
+  const caps: bigint[] = [0n];
+  const withdrawn: bigint[] = [0n];
+  for (let p = 1; p <= 5; p++) {
     caps.push(await proj.getPhaseCap(p));
     withdrawn.push(await proj.getPhaseWithdrawn(p));
   }
-  const aprBps: number[] = [];
-  for (let i = 0; i < 6; i++) {
+  const aprBps: number[] = [0];
+  for (let i = 0; i < 5; i++) {
     const bps = await proj.phaseAPRsBps(i);
     aprBps.push(Number(bps));
   }

@@ -172,7 +172,7 @@ const ProjectDetails = () => {
     escrow: Number(chain.reserveBalance ? fromUSDC(chain.reserveBalance) : '0'),
     withdrawn: Number(chain.totalDevWithdrawn ? fromUSDC(chain.totalDevWithdrawn) : '0'),
     withdrawable: 0,
-    currentPhase: phaseName((chain.currentPhase ?? 0) - 1),
+    currentPhase: phaseName(chain.currentPhase ?? 0),
     milestones: 0,
     supporters: chain.supporters ?? 0,
     description:
@@ -208,7 +208,7 @@ const ProjectDetails = () => {
   const cumulativeCapAmountsFilled = Array.from({ length: 6 }, (_, i) => cumulativeCapAmounts[i] ?? 0);
   // Convert APRs from bps to percent for display
   const aprs = (chain.perPhaseAprBps || [0,0,0,0,0,0]).map((bps)=> bps / 100);
-  const currentPhaseIndex = Math.max(0, (chain.currentPhase ?? 1) - 1);
+  const currentPhaseIndex = Math.max(0, chain.currentPhase ?? 0);
   const perPhaseWithdrawn = (chain.perPhaseWithdrawn || []).map((w)=> Number(fromUSDC(w)));
   const phaseCloseDates: (string | null)[] = [
     '2025-01-15', // Fundraising and Acquisition
@@ -292,11 +292,11 @@ const ProjectDetails = () => {
 
   const [docViewer, setDocViewer] = useState<Doc | null>(null);
 
-  // Compute withdrawable under caps
+  // Compute withdrawable under caps (6 phases 0..5; phase 0 has no cap)
   const withdrawableNow: number = useMemo(() => {
     try {
-      if (!chain.maxRaise || chain.perPhaseCaps?.length !== 6) return 0;
-      const getCap = (p: number) => chain.perPhaseCaps![p - 1];
+      if (!chain.maxRaise || !chain.perPhaseCaps || chain.perPhaseCaps.length !== 6) return 0;
+      const getCap = (p: number) => chain.perPhaseCaps![p]; // p = 0..5
       let unlocked = 0n;
       const lc = chain.lastClosedPhase ?? 0;
       for (let p = 1; p <= 4; p++) {
@@ -308,7 +308,6 @@ const ProjectDetails = () => {
       } else if ((chain.currentPhase ?? 0) === 5) {
         unlocked += (cap5 * BigInt(chain.phase5PercentComplete ?? 0)) / 100n;
       }
-      if ((chain.lastClosedPhase ?? 0) >= 6) unlocked += getCap(6);
       const already = chain.totalDevWithdrawn ?? 0n;
       const pool = chain.poolBalance ?? 0n;
       const avail = unlocked > already ? unlocked - already : 0n;
@@ -858,15 +857,6 @@ const ProjectDetails = () => {
                           const signer = await getSigner();
                           const proj = projectAt(projectAddress, signer);
                           const phaseId: number = (chain.currentPhase ?? 0);
-                          if (phaseId === 0) {
-                            // Close fundraise (no docs required)
-                            const tx = await proj.closePhase(0, [], [], []);
-                            await tx.wait();
-                            toast.success('Fundraise closed');
-                            setUploadedDocs([]);
-                            refresh();
-                            return;
-                          }
                           // Upload to IPFS
                           const uploaded = await ipfsUpload(uploadedDocs);
                           const nameByPath = Object.fromEntries(uploaded.map(u=>[u.path,u]));

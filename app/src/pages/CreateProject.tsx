@@ -144,10 +144,12 @@ const CreateProject = () => {
       } catch {}
       const now = Math.floor(Date.now() / 1000);
       const deadline = now + (parseInt(fundingDurationDays || '0', 10) * 86400);
-      const phaseAPRs = milestones.map(m => Math.round(parseFloat(m.apr || '0') * 100)); // % → bps
-      const phaseCaps = milestones.map(m => Math.round(parseFloat(m.payout || '0') * 100)); // % → bps
-      if (phaseAPRs.length !== 6 || phaseCaps.length !== 6) {
-        toast.error('Exactly 6 phases required');
+      // Contracts expect 5 development phases (phases 1..5). UI shows 6 including fundraising (stage 0) — drop the first.
+      const devMilestones = milestones.slice(1, 6);
+      const phaseAPRs = devMilestones.map(m => Math.round(parseFloat(m.apr || '0') * 100)); // % → bps
+      const phaseCaps = devMilestones.map(m => Math.round(parseFloat(m.payout || '0') * 100)); // % → bps
+      if (phaseAPRs.length !== 5 || phaseCaps.length !== 5) {
+        toast.error('Exactly 6 UI phases required; on-chain uses 5 development phases');
         return;
       }
       const sumCaps = phaseCaps.reduce((a, b) => a + b, 0);
@@ -155,7 +157,7 @@ const CreateProject = () => {
         toast.error('Phase caps exceed 100% total');
         return;
       }
-      const phaseDurations = new Array(6).fill(0); // informational
+      const phaseDurations = new Array(5).fill(0); // informational (phases 1..5)
       // Debug params
       // eslint-disable-next-line no-console
       console.log('[CreateProject] params', {
@@ -371,13 +373,13 @@ const CreateProject = () => {
             {currentStep === 2 && (
               <div className="space-y-6">
                 <div className="p-3 rounded-md bg-muted text-sm text-muted-foreground">
-                  There are 6 fixed phases. Due dates are soft deadlines and not enforced on-chain.
+                  There are 6 fixed phases (0..5). Phase 0 is Fundraising and has no APR or withdrawal cap; phases 1–5 define APRs and caps.
                 </div>
                 {milestones.map((milestone, index) => (
                   <Card key={milestone.id} className="border-2">
                     <CardHeader>
                       <div className="flex items-center justify-between">
-                        <CardTitle className="text-lg">Phase {index + 1}: {milestone.title}</CardTitle>
+                        <CardTitle className="text-lg">Phase {index}: {milestone.title}</CardTitle>
                         {/* Fixed phases: remove add/remove controls */}
                       </div>
                     </CardHeader>
@@ -395,11 +397,19 @@ const CreateProject = () => {
                             step={0.1}
                             placeholder="e.g., 15"
                             value={milestone.payout}
+                            disabled={index === 0}
                             onChange={(e)=>{
                               const v = e.target.value;
-                              setMilestones(prev=> prev.map((m,i)=> i===index? { ...m, payout: v }: m));
+                              setMilestones(prev=> prev.map((m,i)=> {
+                                if (i !== index) return m;
+                                // Phase 0 has no cap; force 0 and disable editing
+                                return index === 0 ? { ...m, payout: '0' } : { ...m, payout: v };
+                              }));
                             }}
                           />
+                          {index === 0 && (
+                            <p className="text-xs text-muted-foreground mt-1">Phase 0 has no withdrawal cap.</p>
+                          )}
                         </div>
                         <div>
                           <Label htmlFor={`milestone-apr-${index}`}>APR (%)</Label>
@@ -412,11 +422,19 @@ const CreateProject = () => {
                             step={0.1}
                             placeholder="e.g., 8"
                             value={milestone.apr}
+                            disabled={index === 0}
                             onChange={(e)=>{
                               const v = e.target.value;
-                              setMilestones(prev=> prev.map((m,i)=> i===index? { ...m, apr: v }: m));
+                              setMilestones(prev=> prev.map((m,i)=> {
+                                if (i !== index) return m;
+                                // Phase 0 accrues no interest; force APR to 0 and disable editing
+                                return index === 0 ? { ...m, apr: '0' } : { ...m, apr: v };
+                              }));
                             }}
                           />
+                          {index === 0 && (
+                            <p className="text-xs text-muted-foreground mt-1">Phase 0 accrues no interest (APR = 0).</p>
+                          )}
                         </div>
                         <div>
                           <Label htmlFor={`milestone-date-${index}`}>Due Date</Label>

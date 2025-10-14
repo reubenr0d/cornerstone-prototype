@@ -60,7 +60,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     // Constants
     uint256 private constant BPS_DENOM = 10_000;
     uint256 private constant YEAR = 365 days;
-    uint8 public constant NUM_PHASES = 5; // 1..5 are development phases; 0 is fundraising pseudo-phase
+    uint8 public constant NUM_PHASES = 5; // 0..5 total phases; 0 is fundraising pseudo-phase, 1..5 are development phases
 
     // External assets
     IERC20 public immutable usdc;
@@ -77,7 +77,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     uint256[5] public phaseCapsBps; // withdraw caps per phase in bps of maxRaise
 
     // State
-    uint8 public currentPhase; // 0 = fundraising open; 1..6 = active phase
+    uint8 public currentPhase; // 0 = fundraising open; 1..5 = active development phases
     uint8 public lastClosedPhase; // highest fully closed phase; 0 initially
     bool public fundraiseClosed;
     bool public fundraiseSuccessful;
@@ -179,7 +179,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     }
 
     function getPhaseCap(uint8 phaseId) public view returns (uint256) {
-        require(phaseId >= 1 && phaseId <= NUM_PHASES, "phase 1..6");
+        require(phaseId >= 1 && phaseId <= NUM_PHASES, "phase 1..5");
         return (maxRaise * phaseCapsBps[phaseId - 1]) / BPS_DENOM;
     }
 
@@ -222,7 +222,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         string[] calldata metadataURIs
     ) external onlyDev whenNotPaused updateAccrual {
         require(phaseId <= NUM_PHASES, "invalid phase");
-        // Only allow closing the current active phase (0..6)
+        // Only allow closing the current active phase (0..5)
         require(phaseId == currentPhase, "not current phase");
 
         // Docs are required for all phases, including phase 0
@@ -241,7 +241,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
             return;
         }
 
-        // For phases 1..6, mark closed and advance to next phase (phase 6 remains current but marked closed)
+        // For phases 1..5, mark closed and advance to next phase (phase 5 remains current once closed)
         lastClosedPhase = phaseId;
         if (currentPhase < NUM_PHASES) {
             currentPhase += 1;
