@@ -165,11 +165,11 @@ const CreateProject = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="minRaise">Minimum Raise</Label>
-                    <Input id="minRaise" type="number" placeholder="0" />
+                    <Input id="minRaise" type="number" placeholder="1000000" />
                   </div>
                   <div>
                     <Label htmlFor="maxRaise">Maximum Raise</Label>
-                    <Input id="maxRaise" type="number" placeholder="0" />
+                    <Input id="maxRaise" type="number" placeholder="5000000" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">

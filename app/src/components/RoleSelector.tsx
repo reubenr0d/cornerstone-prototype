@@ -7,7 +7,6 @@ interface RoleSelectorProps {
 }
 
 const roles: { value: Role; label: string; icon: string }[] = [
-  { value: 'guest', label: 'Guest', icon: '👤' },
   { value: 'developer', label: 'Developer', icon: '👨‍💻' },
   { value: 'holder', label: 'Holder', icon: '💎' },
 ];
