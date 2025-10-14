@@ -251,44 +251,63 @@ const ProjectDetails = () => {
     };
   });
 
-  type Doc = { id: string; name: string; type: 'image' | 'pdf'; url: string };
-  const phaseDocuments: Doc[][] = [
-    // 1. Fundraising and Acquisition (No Interest)
-    [
-      { id: 'f1-doc1', name: 'Title Search', type: 'pdf', url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf' },
-      { id: 'f1-doc2', name: 'Title Insurance Policy', type: 'pdf', url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf' },
-      { id: 'f1-doc3', name: 'Freehold Transfer', type: 'pdf', url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf' },
-    ],
-    // 2. Design and Architectural
-    [
-      { id: 'f2-doc1', name: 'Architectural Plans (PDF)', type: 'pdf', url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf' },
-      { id: 'f2-doc2', name: "Architect's Attestation", type: 'pdf', url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf' },
-    ],
-    // 3. Permitting
-    [
-      { id: 'f3-doc1', name: 'New Home Registration (HPO)', type: 'pdf', url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf' },
-      { id: 'f3-doc2', name: 'Warranty Enrolment Confirmation', type: 'pdf', url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf' },
-      { id: 'f3-doc3', name: 'Demolition Permit', type: 'pdf', url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf' },
-      { id: 'f3-doc4', name: 'Abatement Permit', type: 'pdf', url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf' },
-    ],
-    // 4. Abatement/Demolition
-    [
-      { id: 'f4-doc1', name: 'Demolition Permit Closeout', type: 'pdf', url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf' },
-      { id: 'f4-doc2', name: 'Abatement Permit Closeout', type: 'pdf', url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf' },
-      { id: 'f4-doc3', name: 'Building Permit', type: 'pdf', url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf' },
-    ],
-    // 5. Construction
-    [
-      { id: 'f5-doc1', name: 'Appraisal Report – Mid-Phase', type: 'pdf', url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf' },
-      { id: 'f5-doc2', name: 'Occupancy Permit', type: 'pdf', url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf' },
-    ],
-    // 6. Revenue and Sales
-    [
-      { id: 'f6-doc1', name: 'Unit 101 Sale Receipt', type: 'image', url: 'https://images.unsplash.com/photo-1601597111158-2fceff292cdc?w=1200&q=80' },
-      { id: 'f6-doc2', name: 'Unit 102 Sale Receipt', type: 'image', url: 'https://images.unsplash.com/photo-1601597111158-2fceff292cdc?w=1200&q=80' },
-      { id: 'f6-doc3', name: 'Proceeds Transfer Proof', type: 'pdf', url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf' },
-    ],
-  ];
+  type Doc = { id: string; name: string; type: 'image' | 'pdf'; url: string; hash: string };
+  const [phaseDocuments, setPhaseDocuments] = useState<Doc[][]>([[], [], [], [], [], []]);
+
+  // Fetch phase documents from contract events
+  useEffect(() => {
+    async function fetchPhaseDocs() {
+      try {
+        if (!projectAddress) return;
+        const provider = await getProvider();
+        const proj = projectAt(projectAddress, provider);
+        
+        // Query PhaseClosed events
+        const filter = proj.filters.PhaseClosed();
+        const events = await proj.queryFilter(filter);
+        
+        const docsByPhase: Doc[][] = [[], [], [], [], [], []];
+        
+        for (const event of events) {
+          const phaseId = Number(event.args?.phaseId || 0);
+          if (phaseId < 1 || phaseId > 6) continue;
+          
+          const docTypes = event.args?.docTypes || [];
+          const docHashes = event.args?.docHashes || [];
+          const metadataURIs = event.args?.metadataURIs || [];
+          
+          const phaseDocs: Doc[] = [];
+          for (let i = 0; i < docTypes.length; i++) {
+            const docType = docTypes[i] || 'unknown';
+            const hash = docHashes[i] || '0x';
+            const uri = metadataURIs[i] || '';
+            
+            // Determine if it's an image or PDF based on type/URI
+            const isImage = docType.includes('image') || uri.includes('image') || 
+                           ['jpg', 'jpeg', 'png', 'gif', 'webp'].some(ext => uri.toLowerCase().includes(ext));
+            
+            phaseDocs.push({
+              id: `phase${phaseId}-doc${i}-${hash.slice(0, 10)}`,
+              name: `${docType} (${hash.slice(0, 10)}...)`,
+              type: isImage ? 'image' : 'pdf',
+              url: uri.startsWith('ipfs://') 
+                ? `https://ipfs.io/ipfs/${uri.replace('ipfs://', '')}` 
+                : uri || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+              hash: hash,
+            });
+          }
+          
+          docsByPhase[phaseId - 1] = phaseDocs;
+        }
+        
+        setPhaseDocuments(docsByPhase);
+      } catch (e) {
+        console.error('Failed to fetch phase documents:', e);
+      }
+    }
+    
+    fetchPhaseDocs();
+  }, [projectAddress]);
 
   const [docViewer, setDocViewer] = useState<Doc | null>(null);
 
