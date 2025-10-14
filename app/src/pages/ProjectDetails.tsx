@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from '@/components/ui/sonner';
 import { ExternalLink, Plus, Edit, Upload, DollarSign, AlertTriangle, MessageSquare, Banknote, DoorClosed, Wallet, FileText } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@/components/ui/drawer';
-import { Address, erc20At, fromUSDC, getAccount, getProvider, getSigner, projectAt, toUSDC } from '@/lib/eth';
+import { Address, erc20At, fromUSDC, getAccount, getProvider, getSigner, projectAt, toUSDC, fetchProjectCoreState, fetchProjectUserState, fetchSupportersCount } from '@/lib/eth';
 import { contractsConfig } from '@/config/contracts';
 import { ipfsUpload } from '@/lib/ipfs';
 import { ethers } from 'ethers';
@@ -58,6 +58,8 @@ const ProjectDetails = () => {
     userBalance?: bigint;
     perPhaseCaps?: bigint[];
     perPhaseWithdrawn?: bigint[];
+    perPhaseAprBps?: number[];
+    supporters?: number;
   }>({});
 
   async function connectWallet() {
@@ -81,6 +83,8 @@ const ProjectDetails = () => {
       'Construction',
       'Revenue and Sales',
     ] as const;
+    // Contract uses phase 0 for open fundraising; map it to first label
+    if (idx < 0) idx = 0;
     return names[idx] ?? 'Unknown';
   }
 
@@ -88,59 +92,32 @@ const ProjectDetails = () => {
     try {
       if (!projectAddress) return;
       const provider = await getProvider();
-      const proj = projectAt(projectAddress, provider);
-      const [token, owner, totalRaised, maxRaise, reserveBalance, totalDevWithdrawn, poolBalance, currentPhase, lastClosedPhase, phase5PercentComplete, principalBuffer] = await Promise.all([
-        proj.token(),
-        proj.owner(),
-        proj.totalRaised(),
-        proj.maxRaise(),
-        proj.reserveBalance(),
-        proj.totalDevWithdrawn(),
-        proj.poolBalance(),
-        proj.currentPhase(),
-        proj.lastClosedPhase(),
-        proj.phase5PercentComplete(),
-        proj.principalBuffer(),
-      ]);
-      // usdc is public immutable -> getter exists
-      const usdc: Address = await proj.usdc();
-      let claimableInterest = 0n;
-      let claimableRevenue = 0n;
-      let userBalance = 0n;
+      const core = await fetchProjectCoreState(projectAddress, provider);
+      const supporters = await fetchSupportersCount(projectAddress, provider);
+      let user = { claimableInterest: 0n, claimableRevenue: 0n, userBalance: 0n };
       if (account) {
-        claimableInterest = await proj.claimableInterest(account);
-        claimableRevenue = await proj.claimableRevenue(account);
-        const tokenC = new ethers.Contract(token as Address, [
-          'function balanceOf(address) view returns (uint256)'
-        ], provider);
-        userBalance = await tokenC.balanceOf(account);
-      }
-      const caps: bigint[] = [];
-      const withdrawn: bigint[] = [];
-      for (let p = 1; p <= 6; p++) {
-        const cap = await proj.getPhaseCap(p);
-        caps.push(cap);
-        const w = await proj.getPhaseWithdrawn(p);
-        withdrawn.push(w);
+        user = await fetchProjectUserState(projectAddress, provider, account);
       }
       setChain({
-        token: token as Address,
-        usdc,
-        owner: owner as Address,
-        totalRaised,
-        maxRaise,
-        reserveBalance,
-        totalDevWithdrawn,
-        poolBalance,
-        currentPhase: Number(currentPhase),
-        lastClosedPhase: Number(lastClosedPhase),
-        phase5PercentComplete: Number(phase5PercentComplete),
-        claimableInterest,
-        claimableRevenue,
-        principalBuffer,
-        userBalance,
-        perPhaseCaps: caps,
-        perPhaseWithdrawn: withdrawn,
+        token: core.token,
+        usdc: core.usdc,
+        owner: core.owner,
+        totalRaised: core.totalRaised,
+        maxRaise: core.maxRaise,
+        reserveBalance: core.reserveBalance,
+        totalDevWithdrawn: core.totalDevWithdrawn,
+        poolBalance: core.poolBalance,
+        currentPhase: core.currentPhase,
+        lastClosedPhase: core.lastClosedPhase,
+        phase5PercentComplete: core.phase5PercentComplete,
+        claimableInterest: user.claimableInterest,
+        claimableRevenue: user.claimableRevenue,
+        principalBuffer: core.principalBuffer,
+        userBalance: user.userBalance,
+        perPhaseCaps: core.perPhaseCaps,
+        perPhaseWithdrawn: core.perPhaseWithdrawn,
+        perPhaseAprBps: core.perPhaseAprBps,
+        supporters,
       });
     } catch (e) {
       console.error(e);
@@ -161,6 +138,29 @@ const ProjectDetails = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectAddress, account]);
 
+  // Listen for on-chain events to auto-refresh phase changes
+  useEffect(() => {
+    let unsub: (() => void) | undefined;
+    (async () => {
+      try {
+        if (!projectAddress) return;
+        const provider = await getProvider();
+        const proj = projectAt(projectAddress, provider);
+        const handler = () => refresh();
+        proj.on('FundraiseClosed', handler);
+        proj.on('PhaseClosed', handler);
+        unsub = () => {
+          try { proj.removeListener('FundraiseClosed', handler); } catch {}
+          try { proj.removeListener('PhaseClosed', handler); } catch {}
+        };
+      } catch {
+        // ignore listener errors
+      }
+    })();
+    return () => { try { unsub?.(); } catch {} };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectAddress]);
+
   const project = {
     name: 'Cornerstone Project',
     status: 'Active',
@@ -174,7 +174,7 @@ const ProjectDetails = () => {
     withdrawable: 0,
     currentPhase: phaseName((chain.currentPhase ?? 0) - 1),
     milestones: 0,
-    supporters: 0,
+    supporters: chain.supporters ?? 0,
     description:
       'On-chain construction funding with per-phase unlocks, reserve-funded interest, and pro‑rata revenue distribution.',
   };
@@ -193,8 +193,21 @@ const ProjectDetails = () => {
     'Revenue and Sales',
   ] as const;
 
-  const capBps = chain.perPhaseCaps?.map((c)=> Math.round((Number(fromUSDC(c)) / project.target) * 10000)) || [0,0,0,0,0,0];
-  const aprs = [0, 0, 0, 0, 0, 0]; // APRs not displayed here; can fetch individually if needed
+  // Compute cumulative withdraw limits (caps) per phase
+  const perPhaseCapAmounts = (chain.perPhaseCaps || []).map((c)=> Number(fromUSDC(c)));
+  const cumulativeCapAmounts: number[] = [];
+  for (let i = 0; i < (perPhaseCapAmounts.length || 0); i++) {
+    const prev = i > 0 ? cumulativeCapAmounts[i-1] : 0;
+    cumulativeCapAmounts[i] = prev + (perPhaseCapAmounts[i] || 0);
+  }
+  const capBpsRaw = (project.target > 0
+    ? cumulativeCapAmounts.map((amt)=> Math.round((amt / project.target) * 10000))
+    : []
+  );
+  const capBps = Array.from({ length: 6 }, (_, i) => capBpsRaw[i] ?? 0);
+  const cumulativeCapAmountsFilled = Array.from({ length: 6 }, (_, i) => cumulativeCapAmounts[i] ?? 0);
+  // Convert APRs from bps to percent for display
+  const aprs = (chain.perPhaseAprBps || [0,0,0,0,0,0]).map((bps)=> bps / 100);
   const currentPhaseIndex = Math.max(0, (chain.currentPhase ?? 1) - 1);
   const perPhaseWithdrawn = (chain.perPhaseWithdrawn || []).map((w)=> Number(fromUSDC(w)));
   const phaseCloseDates: (string | null)[] = [
@@ -207,11 +220,12 @@ const ProjectDetails = () => {
   ];
 
   const phasesDetails = phaseNames.map((name, i) => {
-    const capAmount = (project.target * capBps[i]) / 10_000;
+    const capAmount = cumulativeCapAmountsFilled[i] || 0;
     const withdrawn = perPhaseWithdrawn[i] || 0;
     const raisedAt = i === 0 ? project.raised : 0; // fundraising phase shows raised amount
     const status = i < currentPhaseIndex ? 'Past' : i === currentPhaseIndex ? 'Current' : 'Upcoming';
     const withdrawnPctOfCap = capAmount > 0 ? Math.min(100, (withdrawn / capAmount) * 100) : 0;
+    const showWithdrawn = (i + 1) <= (chain.lastClosedPhase ?? 0);
     let closingDisplay = 'TBD';
     if (i === currentPhaseIndex) {
       closingDisplay = 'In Progress';
@@ -233,6 +247,7 @@ const ProjectDetails = () => {
       withdrawnPctOfCap,
       status,
       closingDisplay,
+      showWithdrawn,
     };
   });
 
@@ -553,7 +568,7 @@ const ProjectDetails = () => {
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-3 text-sm">
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                         <div>
                           <p className="text-muted-foreground">Raised at Phase</p>
                           <p className="font-semibold">{format(p.raisedAt)} USDC</p>
@@ -563,28 +578,15 @@ const ProjectDetails = () => {
                           <p className="font-semibold">{p.apr}%</p>
                         </div>
                         <div>
-                          <p className="text-muted-foreground">Withdraw Limit</p>
+                          <p className="text-muted-foreground">Cumulative Withdraw Limit</p>
                           <p className="font-semibold">{(p.capBps / 100).toFixed(1)}% ({format(Math.round(p.capAmount))} USDC)</p>
                         </div>
-                        <div>
-                          <p className="text-muted-foreground">Withdrawn</p>
-                          <p className="font-semibold">{format(p.withdrawn)} USDC</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Closing Date</p>
-                          <p className="font-semibold">{p.closingDisplay}</p>
-                        </div>
-                      </div>
-                      <div>
-                        <div className="relative h-2 w-full rounded bg-muted overflow-hidden">
-                          <div
-                            className="absolute inset-y-0 left-0 bg-emerald-500"
-                            style={{ width: `${p.withdrawnPctOfCap}%` }}
-                          />
-                        </div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {p.capAmount > 0 ? `${p.withdrawnPctOfCap.toFixed(0)}% of limit withdrawn` : 'No withdrawals allowed in this phase'}
-                        </div>
+                        {p.showWithdrawn && (
+                          <div>
+                            <p className="text-muted-foreground">Withdrawn</p>
+                            <p className="font-semibold">{format(Math.round(p.withdrawn))} USDC</p>
+                          </div>
+                        )}
                       </div>
                     </CardContent>
                   </Card>

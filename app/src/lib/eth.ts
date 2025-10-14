@@ -71,3 +71,112 @@ export async function getAccount(): Promise<Address | null> {
   const addr = accounts?.[0] as string | undefined;
   return (addr ? (addr as Address) : null);
 }
+
+// ---- DRY helpers for project state ----
+export type ProjectCoreState = {
+  token: Address;
+  usdc: Address;
+  owner: Address;
+  totalRaised: bigint;
+  maxRaise: bigint;
+  reserveBalance: bigint;
+  totalDevWithdrawn: bigint;
+  poolBalance: bigint;
+  currentPhase: number;
+  lastClosedPhase: number;
+  phase5PercentComplete: number;
+  principalBuffer: bigint;
+  perPhaseCaps: bigint[];
+  perPhaseWithdrawn: bigint[];
+  perPhaseAprBps: number[];
+};
+
+export type ProjectUserState = {
+  claimableInterest: bigint;
+  claimableRevenue: bigint;
+  userBalance: bigint;
+};
+
+export async function fetchProjectCoreState(
+  projectAddress: Address,
+  provider: ethers.Provider | ethers.Signer,
+): Promise<ProjectCoreState> {
+  const proj = projectAt(projectAddress, provider);
+  const [token, owner, totalRaised, maxRaise, reserveBalance, totalDevWithdrawn, poolBalance, currentPhase, lastClosedPhase, phase5PercentComplete, principalBuffer, usdc] = await Promise.all([
+    proj.token(),
+    proj.owner(),
+    proj.totalRaised(),
+    proj.maxRaise(),
+    proj.reserveBalance(),
+    proj.totalDevWithdrawn(),
+    proj.poolBalance(),
+    proj.currentPhase(),
+    proj.lastClosedPhase(),
+    proj.phase5PercentComplete(),
+    proj.principalBuffer(),
+    proj.usdc(),
+  ]);
+  const caps: bigint[] = [];
+  const withdrawn: bigint[] = [];
+  for (let p = 1; p <= 6; p++) {
+    caps.push(await proj.getPhaseCap(p));
+    withdrawn.push(await proj.getPhaseWithdrawn(p));
+  }
+  const aprBps: number[] = [];
+  for (let i = 0; i < 6; i++) {
+    const bps = await proj.phaseAPRsBps(i);
+    aprBps.push(Number(bps));
+  }
+  return {
+    token: token as Address,
+    usdc: usdc as Address,
+    owner: owner as Address,
+    totalRaised,
+    maxRaise,
+    reserveBalance,
+    totalDevWithdrawn,
+    poolBalance,
+    currentPhase: Number(currentPhase),
+    lastClosedPhase: Number(lastClosedPhase),
+    phase5PercentComplete: Number(phase5PercentComplete),
+    principalBuffer,
+    perPhaseCaps: caps,
+    perPhaseWithdrawn: withdrawn,
+    perPhaseAprBps: aprBps,
+  };
+}
+
+export async function fetchProjectUserState(
+  projectAddress: Address,
+  provider: ethers.Provider,
+  account: Address,
+): Promise<ProjectUserState> {
+  const proj = projectAt(projectAddress, provider);
+  const tokenAddr: Address = await proj.token();
+  const tokenC = erc20At(tokenAddr, provider);
+  const [claimableInterest, claimableRevenue, userBalance] = await Promise.all([
+    proj.claimableInterest(account),
+    proj.claimableRevenue(account),
+    tokenC.balanceOf(account),
+  ]);
+  return { claimableInterest, claimableRevenue, userBalance };
+}
+
+export async function fetchSupportersCount(
+  projectAddress: Address,
+  provider: ethers.Provider,
+): Promise<number> {
+  try {
+    const proj = projectAt(projectAddress, provider);
+    const latest = await provider.getBlockNumber();
+    const logs = await proj.queryFilter((proj as any).filters.Deposit(), 0, latest);
+    const uniq = new Set<string>();
+    for (const log of logs) {
+      const user = (log as any).args?.[0] ?? (log as any).args?.user;
+      if (user) uniq.add(String(user));
+    }
+    return uniq.size;
+  } catch {
+    return 0;
+  }
+}
