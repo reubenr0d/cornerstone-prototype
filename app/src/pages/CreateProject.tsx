@@ -5,43 +5,71 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, ArrowLeft, ArrowRight, Check } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
 
 interface Milestone {
   id: string;
   title: string;
+  summary: string;
   payout: string;
   dueDate: string;
-  deliverables: string;
 }
 
 const CreateProject = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [milestones, setMilestones] = useState<Milestone[]>([
-    { id: '1', title: '', payout: '', dueDate: '', deliverables: '' }
+    {
+      id: '1',
+      title: 'Fundraising and Acquisition (No Interest)',
+      summary:
+        'Closes when plot reflects new owner and title docs provided. No interest during this stage; early entrants get a future interest bonus.',
+      payout: '',
+      dueDate: '',
+    },
+    {
+      id: '2',
+      title: 'Design and Architectural',
+      summary:
+        'Closes when design PDFs are submitted.',
+      payout: '',
+      dueDate: '',
+    },
+    {
+      id: '3',
+      title: 'Permitting',
+      summary:
+        'Closes when permits are submitted (HPO registration, warranty, demo/abatement).',
+      payout: '',
+      dueDate: '',
+    },
+    {
+      id: '4',
+      title: 'Abatement/Demolition',
+      summary:
+        'Closes when abatement, demolition permits and the building permit is submitted.',
+      payout: '',
+      dueDate: '',
+    },
+    {
+      id: '5',
+      title: 'Construction',
+      summary:
+        'Appraisal reports unlock mid-phase payouts; final closure with occupancy permit.',
+      payout: '',
+      dueDate: '',
+    },
+    
   ]);
 
   const steps = [
     { id: 0, title: 'Basics', description: 'Project information' },
     { id: 1, title: 'Funding', description: 'Financial details' },
-    { id: 2, title: 'Milestones', description: 'Project roadmap' },
-    { id: 3, title: 'Governance', description: 'Approval settings' },
-    { id: 4, title: 'Links', description: 'Social & resources' },
-    { id: 5, title: 'Preview', description: 'Review & publish' },
+    { id: 2, title: 'Phases', description: 'Project roadmap' },
+    { id: 3, title: 'Links', description: 'Social & resources' },
+    { id: 4, title: 'Preview', description: 'Review & publish' },
   ];
 
-  const addMilestone = () => {
-    setMilestones([
-      ...milestones,
-      { id: Date.now().toString(), title: '', payout: '', dueDate: '', deliverables: '' }
-    ]);
-  };
-
-  const removeMilestone = (id: string) => {
-    if (milestones.length > 1) {
-      setMilestones(milestones.filter(m => m.id !== id));
-    }
-  };
+  // Phases are fixed at 5 for this project; add/remove disabled.
 
   return (
     <div className="min-h-screen bg-background">
@@ -118,22 +146,6 @@ const CreateProject = () => {
                     rows={3}
                   />
                 </div>
-                <div>
-                  <Label htmlFor="category">Category</Label>
-                  <Select>
-                    <SelectTrigger id="category">
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="defi">DeFi</SelectItem>
-                      <SelectItem value="nft">NFT</SelectItem>
-                      <SelectItem value="dao">DAO</SelectItem>
-                      <SelectItem value="infrastructure">Infrastructure</SelectItem>
-                      <SelectItem value="social">Social</SelectItem>
-                      <SelectItem value="gaming">Gaming</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="logo">Logo URL</Label>
@@ -152,96 +164,53 @@ const CreateProject = () => {
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="token">Payment Token</Label>
-                    <Select>
-                      <SelectTrigger id="token">
-                        <SelectValue placeholder="Select token" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="eth">ETH</SelectItem>
-                        <SelectItem value="usdc">USDC</SelectItem>
-                        <SelectItem value="usdt">USDT</SelectItem>
-                        <SelectItem value="dai">DAI</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Label htmlFor="minRaise">Minimum Raise</Label>
+                    <Input id="minRaise" type="number" placeholder="0" />
                   </div>
                   <div>
-                    <Label htmlFor="target">Funding Target</Label>
-                    <Input id="target" type="number" placeholder="25" />
+                    <Label htmlFor="maxRaise">Maximum Raise</Label>
+                    <Input id="maxRaise" type="number" placeholder="0" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="chain">Chain</Label>
-                    <Select>
-                      <SelectTrigger id="chain">
-                        <SelectValue placeholder="Select chain" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="base">Base</SelectItem>
-                        <SelectItem value="ethereum">Ethereum</SelectItem>
-                        <SelectItem value="optimism">Optimism</SelectItem>
-                        <SelectItem value="arbitrum">Arbitrum</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Label htmlFor="fundingDuration">Funding Duration (days)</Label>
+                    <Input id="fundingDuration" type="number" placeholder="30" />
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Only the duration for the initial funding stage is required.
+                    </p>
                   </div>
-                  <div>
-                    <Label htmlFor="escrow">Escrow Mode</Label>
-                    <Select>
-                      <SelectTrigger id="escrow">
-                        <SelectValue placeholder="Select mode" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="new">Deploy New Escrow</SelectItem>
-                        <SelectItem value="existing">Use Existing Contract</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="tokenSymbol">Token Symbol (Optional)</Label>
-                  <Input id="tokenSymbol" placeholder="e.g., PROJ" />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Create a token for governance and rewards
-                  </p>
                 </div>
               </div>
             )}
 
-            {/* Step 2: Milestones */}
+            {/* Step 2: Phases */}
             {currentStep === 2 && (
               <div className="space-y-6">
+                <div className="p-3 rounded-md bg-muted text-sm text-muted-foreground">
+                  There are 5 fixed phases. Due dates are soft deadlines and not enforced on-chain.
+                </div>
                 {milestones.map((milestone, index) => (
                   <Card key={milestone.id} className="border-2">
                     <CardHeader>
                       <div className="flex items-center justify-between">
-                        <CardTitle className="text-lg">Milestone {index + 1}</CardTitle>
-                        {milestones.length > 1 && (
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => removeMilestone(milestone.id)}
-                          >
-                            Remove
-                          </Button>
-                        )}
+                        <CardTitle className="text-lg">Phase {index + 1}: {milestone.title}</CardTitle>
+                        {/* Fixed phases: remove add/remove controls */}
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      <div>
-                        <Label htmlFor={`milestone-title-${index}`}>Title</Label>
-                        <Input 
-                          id={`milestone-title-${index}`}
-                          placeholder="Milestone name"
-                        />
-                      </div>
+                      <p className="text-sm text-muted-foreground">{milestone.summary}</p>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <Label htmlFor={`milestone-payout-${index}`}>Payout Amount</Label>
+                          <Label htmlFor={`milestone-payout-${index}`}>Payout (% of Max Raise)</Label>
                           <Input 
                             id={`milestone-payout-${index}`}
                             type="number"
-                            placeholder="5"
+                            inputMode="decimal"
+                            min={0}
+                            max={100}
+                            step={0.1}
+                            placeholder="e.g., 15"
                           />
                         </div>
                         <div>
@@ -252,65 +221,14 @@ const CreateProject = () => {
                           />
                         </div>
                       </div>
-                      <div>
-                        <Label htmlFor={`milestone-deliverables-${index}`}>Deliverables</Label>
-                        <Textarea 
-                          id={`milestone-deliverables-${index}`}
-                          placeholder="Describe what will be delivered..."
-                          rows={3}
-                        />
-                      </div>
                     </CardContent>
                   </Card>
                 ))}
-                
-                <Button 
-                  variant="outline" 
-                  className="w-full"
-                  onClick={addMilestone}
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Another Milestone
-                </Button>
               </div>
             )}
 
-            {/* Step 3: Governance */}
+            {/* Step 3: Links */}
             {currentStep === 3 && (
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="approvals">Approvals Required</Label>
-                  <Select>
-                    <SelectTrigger id="approvals">
-                      <SelectValue placeholder="Select approval threshold" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="simple">Simple Majority (&gt;50%)</SelectItem>
-                      <SelectItem value="supermajority">Supermajority (&gt;66%)</SelectItem>
-                      <SelectItem value="unanimous">Unanimous (100%)</SelectItem>
-                      <SelectItem value="custom">Custom Threshold</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="reviewWindow">Review Window (Days)</Label>
-                  <Input id="reviewWindow" type="number" placeholder="7" />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Time holders have to review deliverables
-                  </p>
-                </div>
-                <div>
-                  <Label htmlFor="quorum">Quorum Percentage</Label>
-                  <Input id="quorum" type="number" placeholder="20" />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Minimum participation required for votes
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Step 4: Links */}
-            {currentStep === 4 && (
               <div className="space-y-4">
                 <div>
                   <Label htmlFor="website">Website</Label>
@@ -331,33 +249,28 @@ const CreateProject = () => {
               </div>
             )}
 
-            {/* Step 5: Preview */}
-            {currentStep === 5 && (
+            {/* Step 4: Preview */}
+            {currentStep === 4 && (
               <div className="space-y-6">
                 <div className="p-6 bg-muted rounded-lg">
                   <h3 className="font-semibold text-lg mb-4">Project Summary</h3>
                   <div className="space-y-3 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Total Milestones:</span>
+                      <span className="text-muted-foreground">Total Phases:</span>
                       <span className="font-semibold">{milestones.length}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Funding Model:</span>
-                      <span className="font-semibold">Milestone-based Escrow</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Governance:</span>
-                      <span className="font-semibold">Token-weighted Voting</span>
+                      <span className="font-semibold">Phase-based Funding</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="p-4 bg-warning/10 border border-warning/20 rounded-lg">
-                  <h4 className="font-semibold text-warning mb-2">Before Publishing</h4>
-                  <ul className="text-sm space-y-1 text-warning-foreground/80">
-                    <li>• Ensure all milestone details are accurate</li>
-                    <li>• Double-check payment token and chain selection</li>
-                    <li>• Review governance parameters carefully</li>
+                <div className="p-4 bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-900 rounded-lg">
+                  <h4 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-2">Before Publishing</h4>
+                  <ul className="text-sm space-y-1 text-yellow-800 dark:text-yellow-200">
+                    <li>• Ensure all phase details are accurate</li>
+                    <li>• Make sure funding min/max and duration are correct</li>
                     <li>• Make sure social links are correct</li>
                   </ul>
                 </div>
