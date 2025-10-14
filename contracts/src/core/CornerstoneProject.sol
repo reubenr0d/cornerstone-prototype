@@ -60,7 +60,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     // Constants
     uint256 private constant BPS_DENOM = 10_000;
     uint256 private constant YEAR = 365 days;
-    uint8 public constant NUM_PHASES = 6; // 1..6 are development phases; 0 is fundraising pseudo-phase
+    uint8 public constant NUM_PHASES = 5; // 1..5 are development phases; 0 is fundraising pseudo-phase
 
     // External assets
     IERC20 public immutable usdc;
@@ -72,9 +72,9 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     uint256 public immutable fundraiseDeadline;
 
     // Phase config
-    uint256[6] public phaseAPRsBps; // per phase (1..6) APR in bps
-    uint256[6] public phaseDurations; // informational only
-    uint256[6] public phaseCapsBps; // withdraw caps per phase in bps of maxRaise
+    uint256[5] public phaseAPRsBps; // per phase (1..5) APR in bps
+    uint256[5] public phaseDurations; // informational only
+    uint256[5] public phaseCapsBps; // withdraw caps per phase in bps of maxRaise
 
     // State
     uint8 public currentPhase; // 0 = fundraising open; 1..6 = active phase
@@ -144,9 +144,9 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         uint256 minRaise_,
         uint256 maxRaise_,
         uint256 fundraiseDeadline_,
-        uint256[6] memory phaseAPRs_,
-        uint256[6] memory phaseDurations_,
-        uint256[6] memory phaseCapsBps_
+        uint256[5] memory phaseAPRs_,
+        uint256[5] memory phaseDurations_,
+        uint256[5] memory phaseCapsBps_
     ) Ownable(developer) {
         require(usdc_ != address(0), "usdc required");
         usdc = IERC20(usdc_);
@@ -189,8 +189,8 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
 
     // ---- Deposits ----
     function deposit(uint256 amountUSDC) external nonReentrant whenNotPaused updateAccrual {
-        // Deposits allowed in phases 0..5 (not in 6) and not if fundraise failed
-        require(currentPhase != 6, "deposits closed in phase 6");
+        // Deposits allowed in phases 0..4 (not in 5) and not if fundraise failed
+        require(currentPhase != NUM_PHASES, "deposits closed in phase 5");
         require(!(fundraiseClosed && !fundraiseSuccessful), "fundraise failed");
         if (currentPhase == 0) {
             require(block.timestamp <= fundraiseDeadline && !fundraiseClosed, "fundraise ended");
@@ -201,6 +201,11 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         poolBalance += amountUSDC;
         accrualBase += amountUSDC;
 
+        // If threshold is reached at any time, mark fundraise as successful
+        if (!fundraiseSuccessful && totalRaised >= minRaise) {
+            fundraiseSuccessful = true;
+        }
+
         usdc.safeTransferFrom(msg.sender, address(this), amountUSDC);
         _token.mint(msg.sender, amountUSDC);
 
@@ -209,7 +214,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         emit Deposit(msg.sender, amountUSDC, amountUSDC);
     }
 
-    // ---- Fundraise closure / phases ----
+    // ---- Phases & fundraise lifecycle ----
     function closePhase(
         uint8 phaseId,
         string[] calldata docTypes,
@@ -220,31 +225,33 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         // Only allow closing the current active phase (0..6)
         require(phaseId == currentPhase, "not current phase");
 
+        // Docs are required for all phases, including phase 0
+        require(docTypes.length > 0, "docs required");
+        require(docTypes.length == docHashes.length && docTypes.length == metadataURIs.length, "docs length mismatch");
+        emit PhaseClosed(phaseId, docTypes, docHashes);
+
         if (phaseId == 0) {
-            // Fundraise closure: no docs required
-            require(!fundraiseClosed, "already closed");
-            fundraiseClosed = true;
-            fundraiseSuccessful = totalRaised >= minRaise;
-            emit FundraiseClosed(fundraiseSuccessful);
-            if (fundraiseSuccessful) {
-                currentPhase = 1; // Phase 1 begins
-                lastClosedPhase = 0;
+            // Start Phase 1 with required docs. Fundraising remains open beyond phase 0.
+            // Mark success flag opportunistically if threshold already met.
+            if (!fundraiseSuccessful && totalRaised >= minRaise) {
+                fundraiseSuccessful = true;
             }
+            currentPhase = 1; // Phase 1 begins
+            lastClosedPhase = 0;
             return;
         }
 
-        // For phases 1..6, require docs arrays non-empty and consistent
-        require(
-            docTypes.length > 0 && docTypes.length == docHashes.length && docTypes.length == metadataURIs.length,
-            "docs required"
-        );
-
-        emit PhaseClosed(phaseId, docTypes, docHashes);
-
-        // Mark closed and advance to next phase (phase 6 remains current but marked closed)
+        // For phases 1..6, mark closed and advance to next phase (phase 6 remains current but marked closed)
         lastClosedPhase = phaseId;
         if (currentPhase < NUM_PHASES) {
             currentPhase += 1;
+        }
+
+        // Close fundraising when final stage (5) starts, i.e., after closing phase 4
+        if (phaseId == 4 && !fundraiseClosed) {
+            fundraiseClosed = true;
+            // success status reflects whether minRaise was ever reached
+            emit FundraiseClosed(fundraiseSuccessful);
         }
     }
 
@@ -281,10 +288,6 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
             unlocked += cap5;
         } else if (currentPhase == 5) {
             unlocked += (cap5 * phase5PercentComplete) / 100;
-        }
-        // Phase 6: only after closure
-        if (lc >= 6) {
-            unlocked += getPhaseCap(6);
         }
         return unlocked;
     }

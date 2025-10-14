@@ -10,12 +10,12 @@ async function deployUSDC() {
 }
 
 function defaultPhaseParams() {
-  // APRs in bps per phase (1..6)
-  const phaseAPRs = [1000, 900, 800, 700, 600, 500];
+  // APRs in bps per phase (1..5)
+  const phaseAPRs = [1000, 900, 800, 700, 600];
   // durations informational only
-  const phaseDurations = [30, 30, 30, 30, 30, 30];
+  const phaseDurations = [30, 30, 30, 30, 30];
   // withdraw caps per phase in bps; sum <= 10000
-  const phaseCapsBps = [1500, 1500, 1500, 1500, 2500, 1500]; // sums to 10000
+  const phaseCapsBps = [1500, 1500, 1500, 2500, 2500]; // sums to 9500 (<= 10000)
   return { phaseAPRs, phaseDurations, phaseCapsBps };
 }
 
@@ -88,4 +88,3 @@ module.exports = {
   deployRegistryFixture,
   defaultPhaseParams,
 };
-

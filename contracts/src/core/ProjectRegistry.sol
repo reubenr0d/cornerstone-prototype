@@ -8,9 +8,9 @@ interface IProjectRegistry {
         uint256 minRaise,
         uint256 maxRaise,
         uint256 fundraiseDeadline,
-        uint256[6] calldata phaseAPRs,
-        uint256[6] calldata phaseDurations,
-        uint256[6] calldata phaseWithdrawCaps
+        uint256[5] calldata phaseAPRs,
+        uint256[5] calldata phaseDurations,
+        uint256[5] calldata phaseWithdrawCaps
     ) external returns (address projectAddress, address tokenAddress);
 
     function createProjectWithTokenMeta(
@@ -19,9 +19,9 @@ interface IProjectRegistry {
         uint256 minRaise,
         uint256 maxRaise,
         uint256 fundraiseDeadline,
-        uint256[6] calldata phaseAPRs,
-        uint256[6] calldata phaseDurations,
-        uint256[6] calldata phaseWithdrawCaps
+        uint256[5] calldata phaseAPRs,
+        uint256[5] calldata phaseDurations,
+        uint256[5] calldata phaseWithdrawCaps
     ) external returns (address projectAddress, address tokenAddress);
 }
 
@@ -40,9 +40,9 @@ contract ProjectRegistry is IProjectRegistry {
         uint256 minRaise,
         uint256 maxRaise,
         uint256 fundraiseDeadline,
-        uint256[6] calldata phaseAPRs,
-        uint256[6] calldata phaseDurations,
-        uint256[6] calldata phaseWithdrawCaps
+        uint256[5] calldata phaseAPRs,
+        uint256[5] calldata phaseDurations,
+        uint256[5] calldata phaseWithdrawCaps
     ) external returns (address projectAddress, address tokenAddress) {
         require(minRaise > 0 && maxRaise >= minRaise, "bad raise bounds");
         require(fundraiseDeadline > block.timestamp, "deadline in past");
@@ -76,9 +76,9 @@ contract ProjectRegistry is IProjectRegistry {
         uint256 minRaise,
         uint256 maxRaise,
         uint256 fundraiseDeadline,
-        uint256[6] calldata phaseAPRs,
-        uint256[6] calldata phaseDurations,
-        uint256[6] calldata phaseWithdrawCaps
+        uint256[5] calldata phaseAPRs,
+        uint256[5] calldata phaseDurations,
+        uint256[5] calldata phaseWithdrawCaps
     ) external returns (address projectAddress, address tokenAddress) {
         require(bytes(tokenName).length > 0 && bytes(tokenSymbol).length > 0, "name/symbol req");
         require(minRaise > 0 && maxRaise >= minRaise, "bad raise bounds");

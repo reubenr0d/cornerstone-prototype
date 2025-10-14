@@ -10,7 +10,7 @@ describe("CornerstoneProject - Misc Views", function () {
     // Set up: deposit and close success
     await mintAndApprove(user1, params.minRaise);
     await project.connect(user1).deposit(params.minRaise);
-    await project.connect(dev).closePhase(0, [], [], []);
+    await project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
 
     // Close phase 1 and withdraw half of its cap
     await project.connect(dev).closePhase(1, ["doc"], [ethers.ZeroHash], ["ipfs://x"]);

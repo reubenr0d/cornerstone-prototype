@@ -7,7 +7,7 @@ describe("CornerstoneProject - Sales & Revenue", function () {
     const { dev, user1, project, token, usdc, mintAndApprove, params } = await deployProjectFixture();
     await mintAndApprove(user1, params.minRaise);
     await project.connect(user1).deposit(params.minRaise);
-    await project.connect(dev).closePhase(0, [], [], []);
+    await project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
 
     const outstanding = (await project.totalRaised()) - (await project.principalRedeemed());
     // Submit outstanding + 123,456 as proceeds in one go
@@ -27,7 +27,7 @@ describe("CornerstoneProject - Sales & Revenue", function () {
     const { dev, user1, project, token, usdc, mintAndApprove, params } = await deployProjectFixture();
     await mintAndApprove(user1, params.minRaise);
     await project.connect(user1).deposit(params.minRaise);
-    await project.connect(dev).closePhase(0, [], [], []);
+    await project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
 
     // Fill buffer to outstanding and add revenue of 50,000
     const outstanding = (await project.totalRaised()) - (await project.principalRedeemed());

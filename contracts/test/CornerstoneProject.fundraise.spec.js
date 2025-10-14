@@ -12,7 +12,7 @@ describe("CornerstoneProject - Fundraise", function () {
 
     const CornerstoneProject = await ethers.getContractFactory("CornerstoneProject", dev);
     const now = await time.latest();
-    const badCaps = [3000, 3000, 3000, 2000, 100, 100]; // sum > 10000
+    const badCaps = [3000, 3000, 3000, 2000, 1000]; // sum > 10000
     await expect(
       CornerstoneProject.deploy(
         dev.address,
@@ -22,8 +22,8 @@ describe("CornerstoneProject - Fundraise", function () {
         1000,
         2000,
         now + 1000,
-        [0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
         badCaps
       )
     ).to.be.revertedWith("caps sum > 100%");
@@ -37,9 +37,9 @@ describe("CornerstoneProject - Fundraise", function () {
         1000,
         2000,
         now + 1000,
-        [0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0]
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0]
       )
     ).to.be.revertedWith("usdc required");
   });
@@ -53,34 +53,34 @@ describe("CornerstoneProject - Fundraise", function () {
     expect(await usdc.balanceOf(await project.getAddress())).to.equal(250_000n);
   });
 
-  it("closePhase(0) sets fundraise success and advances to phase 1", async function () {
+  it("closePhase(0) advances to phase 1 without closing fundraise; success once min met", async function () {
     const { dev, user1, project, token, mintAndApprove, params } = await deployProjectFixture();
     await mintAndApprove(user1, params.minRaise);
     await project.connect(user1).deposit(params.minRaise);
-    await expect(project.connect(dev).closePhase(0, [], [], []))
-      .to.emit(project, "FundraiseClosed")
-      .withArgs(true);
+    await project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
     expect(await project.currentPhase()).to.equal(1n);
     expect(await token.totalSupply()).to.equal(params.minRaise);
+    // Fundraise should still be open
+    expect(await project.fundraiseClosed()).to.equal(false);
   });
 
-  it("deposits blocked in phase 6", async function () {
+  it("deposits blocked in phase 5", async function () {
     const { dev, user1, project, mintAndApprove, params } = await deployProjectFixture();
     await mintAndApprove(user1, params.minRaise);
     await project.connect(user1).deposit(params.minRaise);
-    await project.connect(dev).closePhase(0, [], [], []); // success -> phase 1
-    // Close phases 1..5
-    for (let p = 1; p <= 5; p++) {
+    await project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]); // -> phase 1
+    // Close phases 1..4
+    for (let p = 1; p <= 4; p++) {
       await project.connect(dev).closePhase(p, ["doc"], [ethers.ZeroHash], ["ipfs://x"]);
     }
-    // now currentPhase should be 6
-    expect(await project.currentPhase()).to.equal(6n);
+    // now currentPhase should be 5
+    expect(await project.currentPhase()).to.equal(5n);
     await expect(project.connect(user1).deposit(1)).to.be.revertedWith(
-      "deposits closed in phase 6"
+      "deposits closed in phase 5"
     );
   });
 
-  it("failed fundraise refunds user via refundIfMinNotMet", async function () {
+  it("failed fundraise refunds user via refundIfMinNotMet after phase 4 closes", async function () {
     const { dev, user1, usdc, project, token, mintAndApprove, params } = await deployProjectFixture({
       minRaise: 1_000_000n,
       maxRaise: 2_000_000n,
@@ -89,10 +89,14 @@ describe("CornerstoneProject - Fundraise", function () {
     await project.connect(user1).deposit(100_000);
     expect(await token.balanceOf(user1.address)).to.equal(100_000n);
 
-    // Close fundraising unsuccessfully
-    await expect(project.connect(dev).closePhase(0, [], [], []))
-      .to.emit(project, "FundraiseClosed")
-      .withArgs(false);
+    // Start the project (phase 1) and progress to phase 5, which closes fundraise
+    await project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
+    for (let p = 1; p <= 4; p++) {
+      await project.connect(dev).closePhase(p, ["doc"], [ethers.ZeroHash], ["ipfs://x"]);
+    }
+    // Now fundraise should be closed and unsuccessful
+    expect(await project.fundraiseClosed()).to.equal(true);
+    expect(await project.fundraiseSuccessful()).to.equal(false);
 
     const balBefore = await usdc.balanceOf(user1.address);
     await project.refundIfMinNotMet(user1.address);
