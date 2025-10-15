@@ -16,8 +16,52 @@ export async function getProvider(): Promise<ethers.BrowserProvider> {
   return new ethers.BrowserProvider(eth);
 }
 
+async function ensureWalletNetwork(provider: ethers.BrowserProvider) {
+  try {
+    const [walletChainHex, rpcNetwork] = await Promise.all([
+      provider.send('eth_chainId', []),
+      getRpcProvider().getNetwork(),
+    ]);
+    const targetChainHex = `0x${rpcNetwork.chainId.toString(16)}`;
+    if (typeof walletChainHex === 'string' && walletChainHex.toLowerCase() === targetChainHex.toLowerCase()) {
+      return;
+    }
+    const rpcUrl = (import.meta as any).env?.VITE_RPC_URL || 'http://127.0.0.1:8545';
+    const chainName = rpcNetwork.name && rpcNetwork.name !== 'unknown'
+      ? rpcNetwork.name
+      : `Chain ${rpcNetwork.chainId.toString()}`;
+    try {
+      await provider.send('wallet_switchEthereumChain', [{ chainId: targetChainHex }]);
+      return;
+    } catch (switchErr: any) {
+      if (switchErr?.code !== 4902) {
+        throw switchErr;
+      }
+      try {
+        await provider.send('wallet_addEthereumChain', [{
+          chainId: targetChainHex,
+          chainName,
+          rpcUrls: [rpcUrl],
+          nativeCurrency: {
+            name: 'Ether',
+            symbol: 'ETH',
+            decimals: 18,
+          },
+        }]);
+        await provider.send('wallet_switchEthereumChain', [{ chainId: targetChainHex }]);
+      } catch (addErr) {
+        throw addErr;
+      }
+    }
+  } catch (err: any) {
+    const msg = err?.message || 'Failed to switch wallet network';
+    throw new Error(msg);
+  }
+}
+
 export async function getSigner(): Promise<ethers.Signer> {
   const provider = await getProvider();
+  await ensureWalletNetwork(provider);
   // request accounts if needed
   await provider.send('eth_requestAccounts', []);
   return await provider.getSigner();
