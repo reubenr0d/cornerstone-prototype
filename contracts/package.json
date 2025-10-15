@@ -16,7 +16,11 @@
     "lint": "npm run lint:sol && npm run format:check",
     "node": "hardhat node",
     "deploy:local": "hardhat run script/deploy_local.js --network localhost",
-    "deploy:local:1337": "npm run deploy:local"
+    "deploy:local:1337": "npm run deploy:local",
+    "explorer:up": "docker compose -f blockscout/docker-compose.yml up -d",
+    "explorer:down": "docker compose -f blockscout/docker-compose.yml down -v",
+    "explorer:logs": "docker compose -f blockscout/docker-compose.yml logs -f blockscout",
+    "explorer:open": "sh -c 'open http://localhost:8080 || xdg-open http://localhost:8080 || echo \"Explorer: http://localhost:8080\"'"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
