@@ -270,7 +270,7 @@ const ProjectDetails = () => {
         
         for (const event of events) {
           const phaseId = Number(event.args?.phaseId || 0);
-          if (phaseId < 1 || phaseId > 6) continue;
+          if (phaseId < 0 || phaseId > 5) continue;
           
           const docTypes = event.args?.docTypes || [];
           const docHashes = event.args?.docHashes || [];
@@ -297,7 +297,7 @@ const ProjectDetails = () => {
             });
           }
           
-          docsByPhase[phaseId - 1] = phaseDocs;
+          docsByPhase[phaseId] = phaseDocs;
         }
         
         setPhaseDocuments(docsByPhase);
