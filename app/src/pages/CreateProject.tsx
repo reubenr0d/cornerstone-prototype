@@ -27,7 +27,7 @@ const CreateProject = () => {
       title: 'Fundraising and Acquisition (No Interest)',
       summary:
         'Closes when plot reflects new owner and title docs provided. No interest during this stage; early entrants get a future interest bonus.',
-      payout: '0',
+      payout: '50',
       apr: '0',
       dueDate: '',
     },
@@ -36,8 +36,8 @@ const CreateProject = () => {
       title: 'Design and Architectural',
       summary:
         'Closes when design PDFs are submitted.',
-      payout: '15',
-      apr: '8',
+      payout: '5',
+      apr: '15',
       dueDate: '',
     },
     {
@@ -45,8 +45,8 @@ const CreateProject = () => {
       title: 'Permitting',
       summary:
         'Closes when permits are submitted (HPO registration, warranty, demo/abatement).',
-      payout: '15',
-      apr: '10',
+      payout: '5',
+      apr: '12',
       dueDate: '',
     },
     {
@@ -54,8 +54,8 @@ const CreateProject = () => {
       title: 'Abatement/Demolition',
       summary:
         'Closes when abatement, demolition permits and the building permit is submitted.',
-      payout: '20',
-      apr: '12',
+      payout: '10',
+      apr: '9',
       dueDate: '',
     },
     {
@@ -64,15 +64,15 @@ const CreateProject = () => {
       summary:
         'Appraisal reports unlock mid-phase payouts; final closure with occupancy permit.',
       payout: '30',
-      apr: '10',
+      apr: '5',
       dueDate: '',
     },
     {
       id: '6',
       title: 'Revenue and Sales',
       summary: 'Final phase; sales proceeds distribute principal first, then revenue pro‑rata.',
-      payout: '20',
-      apr: '0',
+      payout: '0',
+      apr: '3',
       dueDate: '',
     },
     
@@ -373,13 +373,13 @@ const CreateProject = () => {
             {currentStep === 2 && (
               <div className="space-y-6">
                 <div className="p-3 rounded-md bg-muted text-sm text-muted-foreground">
-                  There are 6 fixed phases (0..5). Phase 0 is Fundraising and has no APR or withdrawal cap; phases 1–5 define APRs and caps.
+                  There are 6 fixed phases (1–6). Final phase payout is fixed; others are editable.
                 </div>
                 {milestones.map((milestone, index) => (
                   <Card key={milestone.id} className="border-2">
                     <CardHeader>
                       <div className="flex items-center justify-between">
-                        <CardTitle className="text-lg">Phase {index}: {milestone.title}</CardTitle>
+                        <CardTitle className="text-lg">Phase {index + 1}: {milestone.title}</CardTitle>
                         {/* Fixed phases: remove add/remove controls */}
                       </div>
                     </CardHeader>
@@ -397,18 +397,14 @@ const CreateProject = () => {
                             step={0.1}
                             placeholder="e.g., 15"
                             value={milestone.payout}
-                            disabled={index === 0}
+                            disabled={index === milestones.length - 1}
                             onChange={(e)=>{
                               const v = e.target.value;
-                              setMilestones(prev=> prev.map((m,i)=> {
-                                if (i !== index) return m;
-                                // Phase 0 has no cap; force 0 and disable editing
-                                return index === 0 ? { ...m, payout: '0' } : { ...m, payout: v };
-                              }));
+                              setMilestones(prev=> prev.map((m,i)=> (i === index ? { ...m, payout: v } : m)));
                             }}
                           />
-                          {index === 0 && (
-                            <p className="text-xs text-muted-foreground mt-1">Phase 0 has no withdrawal cap.</p>
+                          {index === milestones.length - 1 && (
+                            <p className="text-xs text-muted-foreground mt-1">Final phase payout is fixed.</p>
                           )}
                         </div>
                         <div>
@@ -422,19 +418,13 @@ const CreateProject = () => {
                             step={0.1}
                             placeholder="e.g., 8"
                             value={milestone.apr}
-                            disabled={index === 0}
+                            disabled={false}
                             onChange={(e)=>{
                               const v = e.target.value;
-                              setMilestones(prev=> prev.map((m,i)=> {
-                                if (i !== index) return m;
-                                // Phase 0 accrues no interest; force APR to 0 and disable editing
-                                return index === 0 ? { ...m, apr: '0' } : { ...m, apr: v };
-                              }));
+                              setMilestones(prev=> prev.map((m,i)=> (i === index ? { ...m, apr: v } : m)));
                             }}
                           />
-                          {index === 0 && (
-                            <p className="text-xs text-muted-foreground mt-1">Phase 0 accrues no interest (APR = 0).</p>
-                          )}
+                          {/* APRs are editable for all phases */}
                         </div>
                         <div>
                           <Label htmlFor={`milestone-date-${index}`}>Due Date</Label>
@@ -504,9 +494,6 @@ const CreateProject = () => {
                 </div>
 
                 <div className="flex gap-3">
-                  <Button variant="outline" className="flex-1">
-                    Save as Draft
-                  </Button>
                   <Button className="flex-1" onClick={handlePublish}>
                     Deploy & Publish
                   </Button>
@@ -542,9 +529,6 @@ const CreateProject = () => {
           </Button>
           
           <div className="flex gap-2">
-            <Button variant="outline">
-              Save Draft
-            </Button>
             <Button
               onClick={() => setCurrentStep(Math.min(steps.length - 1, currentStep + 1))}
               disabled={currentStep === steps.length - 1}
