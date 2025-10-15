@@ -12,3 +12,4 @@ contracts/.env
 .vscode/
 
 app/node_modules/
+app/dist/
