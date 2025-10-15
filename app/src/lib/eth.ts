@@ -123,6 +123,7 @@ export type ProjectCoreState = {
   token: Address;
   usdc: Address;
   owner: Address;
+  projectName: string;
   totalRaised: bigint;
   minRaise: bigint;
   maxRaise: bigint;
@@ -182,10 +183,18 @@ export async function fetchProjectCoreState(
     const bps = await proj.phaseAPRsBps(i);
     aprBps.push(Number(bps));
   }
+  let projectName = '';
+  try {
+    const tokenContract = erc20At(token as Address, provider);
+    projectName = await tokenContract.name();
+  } catch {
+    projectName = '';
+  }
   return {
     token: token as Address,
     usdc: usdc as Address,
     owner: owner as Address,
+    projectName,
     totalRaised,
     minRaise,
     maxRaise,

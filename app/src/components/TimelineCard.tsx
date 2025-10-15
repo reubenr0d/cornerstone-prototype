@@ -9,6 +9,7 @@ interface TimelineCardProps {
   children?: ReactNode;
   actions?: ReactNode;
   status?: string;
+  className?: string;
 }
 
 const typeConfig = {
@@ -20,11 +21,11 @@ const typeConfig = {
   dispute: { icon: '⚠️', color: 'bg-destructive/10 text-destructive border-destructive/20' },
 };
 
-export const TimelineCard = ({ type, title, meta, children, actions, status }: TimelineCardProps) => {
+export const TimelineCard = ({ type, title, meta, children, actions, status, className }: TimelineCardProps) => {
   const config = typeConfig[type];
   
   return (
-    <Card className="p-4 hover:shadow-md transition-shadow">
+    <Card className={`p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg ${className ?? ''}`}>
       <div className="flex items-start gap-4">
         <div className={`flex-shrink-0 w-10 h-10 rounded-lg ${config.color} flex items-center justify-center text-xl border`}>
           {config.icon}
