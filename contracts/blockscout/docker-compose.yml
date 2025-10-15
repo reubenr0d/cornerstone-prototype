@@ -59,6 +59,8 @@ services:
       # Optional: speed up syncing for dev
       MIX_ENV: prod
       BLOCKSCOUT_LOG: info
+      BLOCKSCOUT_HOST: localhost:8080
+      BLOCKSCOUT_PROTOCOL: http
       INDEXER_DISABLE_INTERNAL_TRANSACTIONS: "false"
       INDEXER_DISABLE_PENDING_TRANSACTIONS_FETCHER: "true"
       INDEXER_DISABLE_CSV_EXPORTER: "true"
@@ -102,4 +104,3 @@ services:
 
 volumes:
   db_data:
-
