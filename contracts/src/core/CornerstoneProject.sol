@@ -119,7 +119,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     event InterestClaimed(address indexed user, uint256 amount);
     event ReserveFunded(uint256 amount, address indexed by);
     event FundraiseClosed(bool successful);
-    event PhaseClosed(uint8 indexed phaseId, string[] docTypes, bytes32[] docHashes);
+    event PhaseClosed(uint8 indexed phaseId, string[] docTypes, bytes32[] docHashes, string[] metadataURIs);
     event PhaseFundsWithdrawn(uint8 indexed phaseId, uint256 amount);
     event AppraisalSubmitted(uint256 percentComplete, bytes32 appraisalHash);
     event SalesProceedsSubmitted(uint256 amount);
@@ -228,7 +228,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         // Docs are required for all phases, including phase 0
         require(docTypes.length > 0, "docs required");
         require(docTypes.length == docHashes.length && docTypes.length == metadataURIs.length, "docs length mismatch");
-        emit PhaseClosed(phaseId, docTypes, docHashes);
+        emit PhaseClosed(phaseId, docTypes, docHashes, metadataURIs);
 
         if (phaseId == 0) {
             // Start Phase 1 with required docs. Fundraising remains open beyond phase 0.
