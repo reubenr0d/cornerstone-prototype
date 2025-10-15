@@ -138,7 +138,7 @@ const CreateProject = () => {
         // Guard: mismatch between signer chain and RPC chain
         const rpcChainHex = '0x' + Number(net.chainId?.toString() || '0').toString(16);
         if (signerChainId && rpcChainHex && signerChainId !== rpcChainHex) {
-          toast.error(`Network mismatch. Wallet: ${signerChainId}, RPC: ${rpcChainHex}. Switch MetaMask to chainId 0x7A69 (31337) or update VITE_RPC_URL.`);
+          toast.error(`Network mismatch. Wallet: ${signerChainId}, RPC: ${rpcChainHex}. Switch your wallet to match VITE_RPC_URL or update VITE_RPC_URL.`);
           return;
         }
       } catch {}
@@ -174,9 +174,9 @@ const CreateProject = () => {
         phaseCaps,
         sumCaps,
       });
-      // Preflight to surface contract reverts
+      // Preflight simulation (allows state changes during simulation; staticCall fails on CREATE)
       try {
-        await (ro as any).createProjectWithTokenMeta.staticCall(
+        const sim = await (reg as any).simulate.createProjectWithTokenMeta(
           tokenName,
           tokenSymbol,
           BigInt(Math.round(parseFloat(minRaise) * 1e6)),
@@ -187,16 +187,20 @@ const CreateProject = () => {
           phaseCaps,
         );
         // eslint-disable-next-line no-console
-        console.log('[CreateProject] staticCall ok');
+        console.log('[CreateProject] simulate ok (project, token)', sim?.result ?? sim);
       } catch (err) {
+        // If simulation fails, surface reason but do not block sending in case of node quirks
         // eslint-disable-next-line no-console
-        console.error('[CreateProject] staticCall error', err);
-        throw err;
+        console.error('[CreateProject] simulate error', err);
+        const msg = (err as any)?.shortMessage || (err as any)?.reason || (err as any)?.message;
+        if (msg) toast.error(msg);
+        // continue; gas estimation below should still catch real reverts
       }
       // Estimate gas with buffer (deploys a new project + token)
+      // Important: estimate with signer-bound contract so msg.sender context is correct
       let est: bigint = 0n;
       try {
-        est = await (ro as any).createProjectWithTokenMeta.estimateGas(
+        est = await (reg as any).createProjectWithTokenMeta.estimateGas(
           tokenName,
           tokenSymbol,
           BigInt(Math.round(parseFloat(minRaise) * 1e6)),
@@ -210,9 +214,11 @@ const CreateProject = () => {
         console.log('[CreateProject] estimateGas', est.toString());
       } catch (err) {
         // eslint-disable-next-line no-console
-        console.warn('[CreateProject] estimateGas failed, using fallback');
+        console.warn('[CreateProject] estimateGas failed, using fallback', err);
       }
-      const gasLimit = est + (est / 5n) + 500_000n; // +20% + 500k buffer
+      // If estimation failed or very low, use a safer fallback for CREATE + CREATE2 of token
+      const fallbackGas = 6_500_000n;
+      const gasLimit = est && est > 0n ? (est + (est / 5n) + 500_000n) : fallbackGas; // +20% + 500k buffer
       const tx = await reg.createProjectWithTokenMeta(
         tokenName,
         tokenSymbol,

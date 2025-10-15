@@ -4,6 +4,7 @@ contracts/cache/
 
 # Node modules (scoped to contracts project)
 contracts/node_modules/
+contracts/.env
 
 # IDE
 .DS_Store
