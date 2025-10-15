@@ -25,7 +25,9 @@ export async function getSigner(): Promise<ethers.Signer> {
 
 export function getRpcProvider(): ethers.JsonRpcProvider {
   const url = (import.meta as any).env?.VITE_RPC_URL || 'http://127.0.0.1:8545';
-  return new ethers.JsonRpcProvider(url, undefined, { staticNetwork: true });
+  // Use a non-static provider so reads always target the current chain head.
+  // Static providers can pin a past blockTag and cause errors after node restarts.
+  return new ethers.JsonRpcProvider(url);
 }
 
 export function erc20At(address: Address, signerOrProvider: ethers.Signer | ethers.Provider) {
@@ -78,6 +80,7 @@ export type ProjectCoreState = {
   usdc: Address;
   owner: Address;
   totalRaised: bigint;
+  minRaise: bigint;
   maxRaise: bigint;
   reserveBalance: bigint;
   totalDevWithdrawn: bigint;
@@ -102,11 +105,12 @@ export async function fetchProjectCoreState(
   provider: ethers.Provider | ethers.Signer,
 ): Promise<ProjectCoreState> {
   const proj = projectAt(projectAddress, provider);
-  const [token, owner, totalRaised, maxRaise, reserveBalance, totalDevWithdrawn, poolBalance, currentPhase, lastClosedPhase, phase5PercentComplete, principalBuffer, usdc] = await Promise.all([
+  const [token, owner, totalRaised, maxRaise, minRaise, reserveBalance, totalDevWithdrawn, poolBalance, currentPhase, lastClosedPhase, phase5PercentComplete, principalBuffer, usdc] = await Promise.all([
     proj.token(),
     proj.owner(),
     proj.totalRaised(),
     proj.maxRaise(),
+    proj.minRaise(),
     proj.reserveBalance(),
     proj.totalDevWithdrawn(),
     proj.poolBalance(),
@@ -124,8 +128,8 @@ export async function fetchProjectCoreState(
     caps.push(await proj.getPhaseCap(p));
     withdrawn.push(await proj.getPhaseWithdrawn(p));
   }
-  const aprBps: number[] = [0];
-  for (let i = 0; i < 5; i++) {
+  const aprBps: number[] = [];
+  for (let i = 0; i <= 5; i++) {
     const bps = await proj.phaseAPRsBps(i);
     aprBps.push(Number(bps));
   }
@@ -134,6 +138,7 @@ export async function fetchProjectCoreState(
     usdc: usdc as Address,
     owner: owner as Address,
     totalRaised,
+    minRaise,
     maxRaise,
     reserveBalance,
     totalDevWithdrawn,

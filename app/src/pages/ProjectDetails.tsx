@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from '@/components/ui/sonner';
 import { ExternalLink, Plus, Edit, Upload, DollarSign, AlertTriangle, MessageSquare, Banknote, DoorClosed, Wallet, FileText } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@/components/ui/drawer';
-import { Address, erc20At, fromUSDC, getAccount, getProvider, getSigner, projectAt, toUSDC, fetchProjectCoreState, fetchProjectUserState, fetchSupportersCount } from '@/lib/eth';
+import { Address, erc20At, fromUSDC, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toUSDC, fetchProjectCoreState, fetchProjectUserState, fetchSupportersCount, getWindowEthereum } from '@/lib/eth';
 import { contractsConfig } from '@/config/contracts';
 import { ipfsUpload } from '@/lib/ipfs';
 import { ethers } from 'ethers';
@@ -45,6 +45,7 @@ const ProjectDetails = () => {
     usdc?: Address;
     owner?: Address;
     totalRaised?: bigint;
+    minRaise?: bigint;
     maxRaise?: bigint;
     reserveBalance?: bigint;
     totalDevWithdrawn?: bigint;
@@ -91,8 +92,26 @@ const ProjectDetails = () => {
   async function refresh() {
     try {
       if (!projectAddress) return;
-      const provider = await getProvider();
-      const core = await fetchProjectCoreState(projectAddress, provider);
+      // Try injected provider first; fall back to RPC on failure
+      let provider = getWindowEthereum() ? await getProvider() : getRpcProvider();
+      let core;
+      try {
+        // Ensure contract exists on current network before reading
+        const code = await provider.getCode(projectAddress);
+        if (!code || code === '0x') {
+          toast.error('No contract at this address on current network. Check RPC/network.');
+          return;
+        }
+        core = await fetchProjectCoreState(projectAddress, provider);
+      } catch {
+        provider = getRpcProvider();
+        const code2 = await provider.getCode(projectAddress);
+        if (!code2 || code2 === '0x') {
+          toast.error('No contract at this address on configured RPC. Set VITE_RPC_URL or switch network.');
+          return;
+        }
+        core = await fetchProjectCoreState(projectAddress, provider);
+      }
       const supporters = await fetchSupportersCount(projectAddress, provider);
       let user = { claimableInterest: 0n, claimableRevenue: 0n, userBalance: 0n };
       if (account) {
@@ -103,6 +122,7 @@ const ProjectDetails = () => {
         usdc: core.usdc,
         owner: core.owner,
         totalRaised: core.totalRaised,
+        minRaise: core.minRaise,
         maxRaise: core.maxRaise,
         reserveBalance: core.reserveBalance,
         totalDevWithdrawn: core.totalDevWithdrawn,
@@ -144,7 +164,8 @@ const ProjectDetails = () => {
     (async () => {
       try {
         if (!projectAddress) return;
-        const provider = await getProvider();
+        // Prefer injected provider for subscriptions; else RPC. If it errors, silently no-op.
+        const provider = getWindowEthereum() ? await getProvider() : getRpcProvider();
         const proj = projectAt(projectAddress, provider);
         const handler = () => refresh();
         proj.on('FundraiseClosed', handler);
@@ -169,6 +190,7 @@ const ProjectDetails = () => {
     owner: chain.owner ?? '0x',
     raised: Number(chain.totalRaised ? fromUSDC(chain.totalRaised) : '0'),
     target: Number(chain.maxRaise ? fromUSDC(chain.maxRaise) : '0'),
+    minTarget: Number(chain.minRaise ? fromUSDC(chain.minRaise) : '0'),
     escrow: Number(chain.reserveBalance ? fromUSDC(chain.reserveBalance) : '0'),
     withdrawn: Number(chain.totalDevWithdrawn ? fromUSDC(chain.totalDevWithdrawn) : '0'),
     withdrawable: 0,
@@ -181,6 +203,7 @@ const ProjectDetails = () => {
 
   const raisedPercentage = project.target > 0 ? (project.raised / project.target) * 100 : 0;
   const withdrawnPercentage = project.target > 0 ? (project.withdrawn / project.target) * 100 : 0;
+  const minRaisePercentage = project.target > 0 ? (project.minTarget / project.target) * 100 : 0;
   const format = (n: number) => n.toLocaleString('en-US');
 
   // Phases data (6 phases)
@@ -410,7 +433,7 @@ const ProjectDetails = () => {
                     <span className="font-semibold">{format(project.raised)} USDC raised</span>
                     <span className="text-muted-foreground">{format(project.target)} USDC target</span>
                   </div>
-                  {/* Stacked bar: Raised (primary) and Withdrawn (amber) */}
+                  {/* Stacked bar: Raised (primary), Withdrawn (amber), and Min Raise marker */}
                   <div className="relative h-3 w-full rounded bg-muted overflow-hidden">
                     <div
                       className="absolute inset-y-0 left-0 bg-primary"
@@ -420,9 +443,21 @@ const ProjectDetails = () => {
                       className="absolute inset-y-0 left-0 bg-amber-500/80"
                       style={{ width: `${withdrawnPercentage}%` }}
                     />
+                    {/* Min Raise marker */}
+                    {project.target > 0 && project.minTarget > 0 && (
+                      <div
+                        className="absolute inset-y-0"
+                        style={{ left: `${Math.max(0, Math.min(100, minRaisePercentage))}%` }}
+                      >
+                        <div className="h-full w-0.5 bg-rose-500" />
+                      </div>
+                    )}
                   </div>
-                  <div className="mt-2 text-xs text-muted-foreground">
-                    {format(project.withdrawn)} USDC Withdrawn by Developer
+                  <div className="mt-2 text-xs text-muted-foreground flex items-center justify-between gap-2">
+                    <span>{format(project.withdrawn)} USDC Withdrawn by Developer</span>
+                    {project.minTarget > 0 && (
+                      <span>Min Raise: {format(project.minTarget)} USDC</span>
+                    )}
                   </div>
                 </div>
 
