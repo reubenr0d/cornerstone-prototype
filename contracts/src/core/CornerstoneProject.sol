@@ -33,6 +33,7 @@ interface ICornerstoneProject {
     function withdrawPhaseFunds(uint256 amount) external; // dev only
     function getPhaseCap(uint8 phaseId) external view returns (uint256);
     function getPhaseWithdrawn(uint8 phaseId) external view returns (uint256);
+    function withdrawableDevFunds() external view returns (uint256);
 
     // ---- Construction milestones ----
     function submitAppraisal(uint256 percentComplete, bytes32 appraisalHash) external;
@@ -273,6 +274,14 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         poolBalance -= amount;
         usdc.safeTransfer(owner(), amount);
         emit PhaseFundsWithdrawn(phaseAttr, amount);
+    }
+
+    function withdrawableDevFunds() external view returns (uint256) {
+        if (!fundraiseSuccessful) return 0;
+        uint256 unlocked = _cumulativeUnlocked();
+        if (unlocked <= totalDevWithdrawn) return 0;
+        uint256 remainingUnderCap = unlocked - totalDevWithdrawn;
+        return remainingUnderCap < poolBalance ? remainingUnderCap : poolBalance;
     }
 
     function _cumulativeUnlocked() internal view returns (uint256) {

@@ -133,6 +133,7 @@ export type ProjectCoreState = {
   lastClosedPhase: number;
   phase5PercentComplete: number;
   principalBuffer: bigint;
+  withdrawableDevFunds: bigint;
   perPhaseCaps: bigint[];
   perPhaseWithdrawn: bigint[];
   perPhaseAprBps: number[];
@@ -149,7 +150,7 @@ export async function fetchProjectCoreState(
   provider: ethers.Provider | ethers.Signer,
 ): Promise<ProjectCoreState> {
   const proj = projectAt(projectAddress, provider);
-  const [token, owner, totalRaised, maxRaise, minRaise, reserveBalance, totalDevWithdrawn, poolBalance, currentPhase, lastClosedPhase, phase5PercentComplete, principalBuffer, usdc] = await Promise.all([
+  const [token, owner, totalRaised, maxRaise, minRaise, reserveBalance, totalDevWithdrawn, poolBalance, currentPhase, lastClosedPhase, phase5PercentComplete, principalBuffer, usdc, withdrawableDevFunds] = await Promise.all([
     proj.token(),
     proj.owner(),
     proj.totalRaised(),
@@ -163,6 +164,7 @@ export async function fetchProjectCoreState(
     proj.phase5PercentComplete(),
     proj.principalBuffer(),
     proj.usdc(),
+    proj.withdrawableDevFunds(),
   ]);
   // Return UI-friendly arrays for 6 phases numbered 0..5.
   // Phase 0 (fundraising) has no cap/APR/withdrawn; fill with 0 at index 0.
@@ -191,6 +193,7 @@ export async function fetchProjectCoreState(
     lastClosedPhase: Number(lastClosedPhase),
     phase5PercentComplete: Number(phase5PercentComplete),
     principalBuffer,
+    withdrawableDevFunds,
     perPhaseCaps: caps,
     perPhaseWithdrawn: withdrawn,
     perPhaseAprBps: aprBps,

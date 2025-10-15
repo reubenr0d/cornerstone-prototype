@@ -57,6 +57,7 @@ const ProjectDetails = () => {
     claimableRevenue?: bigint;
     principalBuffer?: bigint;
     userBalance?: bigint;
+    withdrawableDevFunds?: bigint;
     perPhaseCaps?: bigint[];
     perPhaseWithdrawn?: bigint[];
     perPhaseAprBps?: number[];
@@ -134,6 +135,7 @@ const ProjectDetails = () => {
         claimableRevenue: user.claimableRevenue,
         principalBuffer: core.principalBuffer,
         userBalance: user.userBalance,
+        withdrawableDevFunds: core.withdrawableDevFunds,
         perPhaseCaps: core.perPhaseCaps,
         perPhaseWithdrawn: core.perPhaseWithdrawn,
         perPhaseAprBps: core.perPhaseAprBps,
@@ -182,6 +184,8 @@ const ProjectDetails = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectAddress]);
 
+  const withdrawableNow = Number(fromUSDC(chain.withdrawableDevFunds ?? 0n));
+
   const project = {
     name: 'Cornerstone Project',
     status: 'Active',
@@ -193,7 +197,7 @@ const ProjectDetails = () => {
     minTarget: Number(chain.minRaise ? fromUSDC(chain.minRaise) : '0'),
     escrow: Number(chain.reserveBalance ? fromUSDC(chain.reserveBalance) : '0'),
     withdrawn: Number(chain.totalDevWithdrawn ? fromUSDC(chain.totalDevWithdrawn) : '0'),
-    withdrawable: 0,
+    withdrawable: withdrawableNow,
     currentPhase: phaseName(chain.currentPhase ?? 0),
     milestones: 0,
     supporters: chain.supporters ?? 0,
@@ -336,32 +340,6 @@ const ProjectDetails = () => {
   }, [projectAddress]);
 
   const [docViewer, setDocViewer] = useState<Doc | null>(null);
-
-  // Compute withdrawable under caps (6 phases 0..5; phase 0 has no cap)
-  const withdrawableNow: number = useMemo(() => {
-    try {
-      if (!chain.maxRaise || !chain.perPhaseCaps || chain.perPhaseCaps.length !== 6) return 0;
-      const getCap = (p: number) => chain.perPhaseCaps![p]; // p = 0..5
-      let unlocked = 0n;
-      const lc = chain.lastClosedPhase ?? 0;
-      for (let p = 1; p <= 4; p++) {
-        if (p <= lc) unlocked += getCap(p);
-      }
-      const cap5 = getCap(5);
-      if ((chain.lastClosedPhase ?? 0) >= 5) {
-        unlocked += cap5;
-      } else if ((chain.currentPhase ?? 0) === 5) {
-        unlocked += (cap5 * BigInt(chain.phase5PercentComplete ?? 0)) / 100n;
-      }
-      const already = chain.totalDevWithdrawn ?? 0n;
-      const pool = chain.poolBalance ?? 0n;
-      const avail = unlocked > already ? unlocked - already : 0n;
-      const can = avail < pool ? avail : pool;
-      return Number(fromUSDC(can));
-    } catch {
-      return 0;
-    }
-  }, [chain]);
 
   const tabs = [
     { id: 'milestones', label: 'Phases' },

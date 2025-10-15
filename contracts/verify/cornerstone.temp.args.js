@@ -5,14 +5,14 @@
 //  uint256[6] phaseAPRsBps, uint256[6] phaseDurations, uint256[6] phaseCapsBps)
 
 module.exports = [
-  "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9", // developer
-  "0x5FbDB2315678afecb367f032d93F642f64180aa3", // usdc
-  "Cornerstone-asd", // name
-  "CST-ASD", // symbol
-  100000000, // minRaise
-  1000000000000, // maxRaise
-  1763105804, // fundraiseDeadline (unix seconds)
+  "0x218F56910B3d1265c72c8b53A207f045fe7f5042", // developer
+  "0xA5Da203704c02D008476c233da56CfF1D1a7650B", // usdc
+  "Cornerstone-ree", // name
+  "CST-REE", // symbol
+  1000000000, // minRaise
+  10000000000000, // maxRaise
+  1763131837, // fundraiseDeadline (unix seconds)
   [0, 1500, 1200, 900, 500, 300], // phaseAPRsBps (0..5)
   [0, 0, 0, 0, 0, 0], // phaseDurations (0..5)
-  [0, 500, 500, 1000, 3000, 0], // phaseCapsBps (0..5)
+  [5000, 500, 500, 1000, 3000, 0], // phaseCapsBps (0..5)
 ];
