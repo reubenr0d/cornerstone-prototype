@@ -179,7 +179,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     }
 
     function getPhaseCap(uint8 phaseId) public view returns (uint256) {
-        require(phaseId >= 1 && phaseId <= NUM_PHASES, "phase 1..5");
+        require(phaseId <= NUM_PHASES, "phase 0..5");
         return (maxRaise * phaseCapsBps[phaseId]) / BPS_DENOM;
     }
 
