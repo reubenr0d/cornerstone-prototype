@@ -4,7 +4,7 @@ const { deployProjectFixture } = require("./fixtures");
 
 describe("CornerstoneProject - Misc Views", function () {
   it("token() returns deployed token; getPhaseWithdrawn reflects withdrawals; claimables update", async function () {
-    const { dev, user1, project, token, usdc, mintAndApprove, params } = await deployProjectFixture();
+    const { dev, user1, project, token, pyusd, mintAndApprove, params } = await deployProjectFixture();
     expect(await project.token()).to.equal(await token.getAddress());
 
     // Set up: deposit and close success
@@ -20,8 +20,8 @@ describe("CornerstoneProject - Misc Views", function () {
 
     // Revenue distribution yields claimable revenue
     const outstanding = (await project.totalRaised()) - (await project.principalRedeemed());
-    await usdc.mint(dev.address, outstanding + 10_000n);
-    await usdc.connect(dev).approve(await project.getAddress(), outstanding + 10_000n);
+    await pyusd.mint(dev.address, outstanding + 10_000n);
+    await pyusd.connect(dev).approve(await project.getAddress(), outstanding + 10_000n);
     await project.connect(dev).submitSalesProceeds(outstanding + 10_000n);
     const claimableR = await project.claimableRevenue(user1.address);
     expect(claimableR).to.equal(10_000n);

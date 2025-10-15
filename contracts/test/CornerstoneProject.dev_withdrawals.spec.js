@@ -4,7 +4,7 @@ const { deployProjectFixture } = require("./fixtures");
 
 describe("CornerstoneProject - Dev Withdrawals and Caps", function () {
   it("getPhaseCap returns expected and withdrawals limited by unlocked", async function () {
-    const { dev, user1, project, usdc, mintAndApprove, params } = await deployProjectFixture();
+    const { dev, user1, project, pyusd, mintAndApprove, params } = await deployProjectFixture();
     // fund pool via deposits and close success
     await mintAndApprove(user1, params.minRaise);
     await project.connect(user1).deposit(params.minRaise);

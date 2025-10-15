@@ -6,7 +6,7 @@ const { deployRegistryFixture, defaultPhaseParams } = require("./fixtures");
 describe("ProjectRegistry", function () {
   it("deploys with nonzero USDC address", async function () {
     const { registry } = await deployRegistryFixture();
-    const usdc = await registry.usdc();
+    const usdc = await registry.pyusd();
     expect(usdc).to.properAddress;
   });
 
