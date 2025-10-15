@@ -12,7 +12,7 @@ describe("CornerstoneProject - Fundraise", function () {
 
     const CornerstoneProject = await ethers.getContractFactory("CornerstoneProject", dev);
     const now = await time.latest();
-    const badCaps = [3000, 3000, 3000, 2000, 1000]; // sum > 10000
+    const badCaps = [0, 3000, 3000, 3000, 2000, 1000]; // phases 1..5 sum > 10000
     await expect(
       CornerstoneProject.deploy(
         dev.address,
@@ -22,8 +22,8 @@ describe("CornerstoneProject - Fundraise", function () {
         1000,
         2000,
         now + 1000,
-        [0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
         badCaps
       )
     ).to.be.revertedWith("caps sum > 100%");
@@ -37,9 +37,9 @@ describe("CornerstoneProject - Fundraise", function () {
         1000,
         2000,
         now + 1000,
-        [0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0]
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0]
       )
     ).to.be.revertedWith("usdc required");
   });

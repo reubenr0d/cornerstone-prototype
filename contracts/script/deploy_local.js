@@ -27,10 +27,10 @@ async function main() {
   const minRaise = 100_000n * 10n ** 6n;
   const maxRaise = 500_000n * 10n ** 6n;
   const deadline = BigInt(Math.floor(Date.now() / 1000) + 7 * 86400);
-  // Contracts expect 5 entries for development phases 1..5. UI shows 6 (0..5) where phase 0 has no APR/cap.
-  const aprs = [800, 1000, 1200, 1000, 0];
-  const durations = [0, 0, 0, 0, 0];
-  const caps = [1500, 1500, 2000, 3000, 2000];
+  // Provide 6 entries including fundraising phase 0 (typically 0 APR/cap)
+  const aprs = [0, 800, 1000, 1200, 1000, 0];
+  const durations = [0, 0, 0, 0, 0, 0];
+  const caps = [0, 1500, 1500, 2000, 3000, 2000];
   const tx = await reg.createProjectWithTokenMeta(name, sym, minRaise, maxRaise, deadline, aprs, durations, caps);
   const rc = await tx.wait();
   const evt = rc.logs.find(l => l.fragment && l.fragment.name === 'ProjectCreated');

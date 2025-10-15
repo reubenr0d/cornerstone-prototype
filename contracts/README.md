@@ -22,7 +22,7 @@ Cornerstone is a tokenized real‑estate investment protocol. This package conta
 ## Lifecycle
 1. Create project via `ProjectRegistry.createProjectWithTokenMeta(...)` with parameters:
    - `minRaise`, `maxRaise`, `fundraiseDeadline`
-   - `phaseAPRs[5]` (bps), `phaseDurations[5]` (info only), `phaseWithdrawCaps[5]` (bps of `maxRaise`)
+   - `phaseAPRs[6]` (bps; 0..5), `phaseDurations[6]` (info only), `phaseWithdrawCaps[6]` (bps of `maxRaise`; phase 0 typically 0)
 2. Fundraising (stage `0`): users `deposit(amount)`. Developer starts Stage 1 with `closePhase(0, ...)` and must provide docs; a `PhaseClosed(0, ...)` event is emitted. Fundraising remains open.
    - If `totalRaised < minRaise`: refunds enabled via `refundIfMinNotMet(user)`.
    - If successful: phase becomes `1` and interest accrual starts when accruer is triggered.

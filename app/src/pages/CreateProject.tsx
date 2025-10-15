@@ -144,20 +144,21 @@ const CreateProject = () => {
       } catch {}
       const now = Math.floor(Date.now() / 1000);
       const deadline = now + (parseInt(fundingDurationDays || '0', 10) * 86400);
-      // Contracts expect 5 development phases (phases 1..5). UI shows 6 including fundraising (stage 0) — drop the first.
-      const devMilestones = milestones.slice(1, 6);
-      const phaseAPRs = devMilestones.map(m => Math.round(parseFloat(m.apr || '0') * 100)); // % → bps
-      const phaseCaps = devMilestones.map(m => Math.round(parseFloat(m.payout || '0') * 100)); // % → bps
-      if (phaseAPRs.length !== 5 || phaseCaps.length !== 5) {
-        toast.error('Exactly 6 UI phases required; on-chain uses 5 development phases');
+      // Pass all 6 phases including fundraising phase 0; registry maps 0..5 → 1..5 internally
+      const allMilestones = milestones;
+      const phaseAPRs = allMilestones.map(m => Math.round(parseFloat(m.apr || '0') * 100)); // % → bps
+      const phaseCaps = allMilestones.map(m => Math.round(parseFloat(m.payout || '0') * 100)); // % → bps
+      if (phaseAPRs.length !== 6 || phaseCaps.length !== 6) {
+        toast.error('Exactly 6 phases required (including fundraising phase 0)');
         return;
       }
-      const sumCaps = phaseCaps.reduce((a, b) => a + b, 0);
+      const sumCaps = phaseCaps.slice(1).reduce((a, b) => a + b, 0); // only development phases count toward caps
       if (sumCaps > 10000) {
         toast.error('Phase caps exceed 100% total');
         return;
       }
-      const phaseDurations = new Array(5).fill(0); // informational (phases 1..5)
+      // durations: include phase 0 for completeness; informational only
+      const phaseDurations = new Array(6).fill(0);
       // Debug params
       // eslint-disable-next-line no-console
       console.log('[CreateProject] params', {

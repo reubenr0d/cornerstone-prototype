@@ -60,7 +60,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     // Constants
     uint256 private constant BPS_DENOM = 10_000;
     uint256 private constant YEAR = 365 days;
-    uint8 public constant NUM_PHASES = 5; // 0..5 total phases; 0 is fundraising pseudo-phase, 1..5 are development phases
+    uint8 public constant NUM_PHASES = 5; // 0..5 total phases; 0 is fundraising, 1..5 are development phases
 
     // External assets
     IERC20 public immutable usdc;
@@ -71,10 +71,10 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     uint256 public immutable maxRaise;
     uint256 public immutable fundraiseDeadline;
 
-    // Phase config
-    uint256[5] public phaseAPRsBps; // per phase (1..5) APR in bps
-    uint256[5] public phaseDurations; // informational only
-    uint256[5] public phaseCapsBps; // withdraw caps per phase in bps of maxRaise
+    // Phase config (0..5)
+    uint256[6] public phaseAPRsBps; // per phase (0..5) APR in bps (phase 0 typically 0)
+    uint256[6] public phaseDurations; // informational only
+    uint256[6] public phaseCapsBps; // withdraw caps per phase in bps of maxRaise (phase 0 typically 0)
 
     // State
     uint8 public currentPhase; // 0 = fundraising open; 1..5 = active development phases
@@ -144,9 +144,9 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         uint256 minRaise_,
         uint256 maxRaise_,
         uint256 fundraiseDeadline_,
-        uint256[5] memory phaseAPRs_,
-        uint256[5] memory phaseDurations_,
-        uint256[5] memory phaseCapsBps_
+        uint256[6] memory phaseAPRs_,
+        uint256[6] memory phaseDurations_,
+        uint256[6] memory phaseCapsBps_
     ) Ownable(developer) {
         require(usdc_ != address(0), "usdc required");
         usdc = IERC20(usdc_);
@@ -157,9 +157,9 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         phaseDurations = phaseDurations_;
         phaseCapsBps = phaseCapsBps_;
 
-        // enforce sum of caps ≤ 100%
+        // enforce sum of development phase caps (1..5) ≤ 100%
         uint256 sumCaps;
-        for (uint8 i = 0; i < NUM_PHASES; i++) {
+        for (uint8 i = 1; i <= NUM_PHASES; i++) {
             sumCaps += phaseCapsBps_[i];
         }
         require(sumCaps <= BPS_DENOM, "caps sum > 100%");
@@ -180,7 +180,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
 
     function getPhaseCap(uint8 phaseId) public view returns (uint256) {
         require(phaseId >= 1 && phaseId <= NUM_PHASES, "phase 1..5");
-        return (maxRaise * phaseCapsBps[phaseId - 1]) / BPS_DENOM;
+        return (maxRaise * phaseCapsBps[phaseId]) / BPS_DENOM;
     }
 
     function getPhaseWithdrawn(uint8 phaseId) external view returns (uint256) {
@@ -466,9 +466,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     }
 
     function _currentAPR() internal view returns (uint256) {
-        if (currentPhase == 0) return 0; // no interest during fundraising
-        uint8 idx = currentPhase - 1; // 0-based array index
-        return phaseAPRsBps[idx];
+        return phaseAPRsBps[currentPhase];
     }
 
     // ---- Internal: Revenue distribution ----
