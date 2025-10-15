@@ -3,8 +3,8 @@ pragma solidity ^0.8.24;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-contract MockUSDC is ERC20 {
-    constructor() ERC20("Mock USDC", "mUSDC") {}
+contract MockPYUSD is ERC20 {
+    constructor() ERC20("Mock PYUSD", "mPYUSD") {}
 
     function decimals() public pure override returns (uint8) {
         return 6;

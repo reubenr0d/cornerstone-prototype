@@ -11,11 +11,11 @@ import {CornerstoneToken} from "./CornerstoneToken.sol";
 
 interface ICornerstoneProject {
     // ---- Deposits ----
-    function deposit(uint256 amountUSDC) external;
+    function deposit(uint256 amountPYUSD) external;
     function withdrawPrincipal(uint256 shares) external; // only after phase 6 complete
 
     // ---- Reserve ----
-    function fundReserve(uint256 amountUSDC) external;
+    function fundReserve(uint256 amountPYUSD) external;
     function claimInterest(uint256 amount) external;
 
     // ---- Fundraise ----
@@ -39,7 +39,7 @@ interface ICornerstoneProject {
     function submitAppraisal(uint256 percentComplete, bytes32 appraisalHash) external;
 
     // ---- Sales / revenue ----
-    function submitSalesProceeds(uint256 amountUSDC) external;
+    function submitSalesProceeds(uint256 amountPYUSD) external;
     function claimPrincipal(address user) external;
     function claimRevenue(address user) external;
 
@@ -64,7 +64,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     uint8 public constant NUM_PHASES = 5; // 0..5 total phases; 0 is fundraising, 1..5 are development phases
 
     // External assets
-    IERC20 public immutable usdc;
+    IERC20 public immutable pyusd;
     CornerstoneToken private _token;
 
     // Fundraise params
@@ -116,7 +116,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     mapping(address => uint256) private revenueWithdrawn;
 
     // Events
-    event Deposit(address indexed user, uint256 amountUSDC, uint256 sharesMinted);
+    event Deposit(address indexed user, uint256 amountPYUSD, uint256 sharesMinted);
     event InterestClaimed(address indexed user, uint256 amount);
     event ReserveFunded(uint256 amount, address indexed by);
     event FundraiseClosed(bool successful);
@@ -139,7 +139,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
 
     constructor(
         address developer,
-        address usdc_,
+        address pyusd_,
         string memory name_,
         string memory symbol_,
         uint256 minRaise_,
@@ -149,8 +149,8 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         uint256[6] memory phaseDurations_,
         uint256[6] memory phaseCapsBps_
     ) Ownable(developer) {
-        require(usdc_ != address(0), "usdc required");
-        usdc = IERC20(usdc_);
+        require(pyusd_ != address(0), "pyusd required");
+        pyusd = IERC20(pyusd_);
         minRaise = minRaise_;
         maxRaise = maxRaise_;
         fundraiseDeadline = fundraiseDeadline_;
@@ -189,30 +189,30 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     }
 
     // ---- Deposits ----
-    function deposit(uint256 amountUSDC) external nonReentrant whenNotPaused updateAccrual {
+    function deposit(uint256 amountPYUSD) external nonReentrant whenNotPaused updateAccrual {
         // Deposits allowed in phases 0..4 (not in 5) and not if fundraise failed
         require(currentPhase != NUM_PHASES, "deposits closed in phase 5");
         require(!(fundraiseClosed && !fundraiseSuccessful), "fundraise failed");
         if (currentPhase == 0) {
             require(block.timestamp <= fundraiseDeadline && !fundraiseClosed, "fundraise ended");
         }
-        require(amountUSDC > 0, "amount=0");
+        require(amountPYUSD > 0, "amount=0");
 
-        totalRaised += amountUSDC;
-        poolBalance += amountUSDC;
-        accrualBase += amountUSDC;
+        totalRaised += amountPYUSD;
+        poolBalance += amountPYUSD;
+        accrualBase += amountPYUSD;
 
         // If threshold is reached at any time, mark fundraise as successful
         if (!fundraiseSuccessful && totalRaised >= minRaise) {
             fundraiseSuccessful = true;
         }
 
-        usdc.safeTransferFrom(msg.sender, address(this), amountUSDC);
-        _token.mint(msg.sender, amountUSDC);
+        pyusd.safeTransferFrom(msg.sender, address(this), amountPYUSD);
+        _token.mint(msg.sender, amountPYUSD);
 
         // transfer hook will set corrections so new depositors don't get past distributions
 
-        emit Deposit(msg.sender, amountUSDC, amountUSDC);
+        emit Deposit(msg.sender, amountPYUSD, amountPYUSD);
     }
 
     // ---- Phases & fundraise lifecycle ----
@@ -273,7 +273,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         }
 
         poolBalance -= amount;
-        usdc.safeTransfer(owner(), amount);
+        pyusd.safeTransfer(owner(), amount);
         emit PhaseFundsWithdrawn(phaseAttr, amount);
     }
 
@@ -327,11 +327,11 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     }
 
     // ---- Reserve and Interest ----
-    function fundReserve(uint256 amountUSDC) external onlyDev nonReentrant whenNotPaused {
-        require(amountUSDC > 0, "amount=0");
-        reserveBalance += amountUSDC;
-        usdc.safeTransferFrom(msg.sender, address(this), amountUSDC);
-        emit ReserveFunded(amountUSDC, msg.sender);
+    function fundReserve(uint256 amountPYUSD) external onlyDev nonReentrant whenNotPaused {
+        require(amountPYUSD > 0, "amount=0");
+        reserveBalance += amountPYUSD;
+        pyusd.safeTransferFrom(msg.sender, address(this), amountPYUSD);
+        emit ReserveFunded(amountPYUSD, msg.sender);
     }
 
     function accrueInterest() external whenNotPaused updateAccrual {
@@ -346,20 +346,20 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         require(poolBalance >= amount, "pool underflow");
         poolBalance -= amount;
         accrualBase = accrualBase >= amount ? accrualBase - amount : 0;
-        usdc.safeTransfer(msg.sender, amount);
+        pyusd.safeTransfer(msg.sender, amount);
         emit InterestClaimed(msg.sender, amount);
     }
 
     // ---- Sales / revenue ----
-    function submitSalesProceeds(uint256 amountUSDC) external onlyDev nonReentrant whenNotPaused updateAccrual {
-        require(amountUSDC > 0, "amount=0");
-        usdc.safeTransferFrom(msg.sender, address(this), amountUSDC);
+    function submitSalesProceeds(uint256 amountPYUSD) external onlyDev nonReentrant whenNotPaused updateAccrual {
+        require(amountPYUSD > 0, "amount=0");
+        pyusd.safeTransferFrom(msg.sender, address(this), amountPYUSD);
 
-        poolBalance += amountUSDC;
-        accrualBase += amountUSDC; // proceeds increase NAV, start compounding
+        poolBalance += amountPYUSD;
+        accrualBase += amountPYUSD; // proceeds increase NAV, start compounding
 
         // First allocate to principal buffer
-        principalBuffer += amountUSDC;
+        principalBuffer += amountPYUSD;
 
         uint256 principalOutstanding = totalRaised - principalRedeemed; // deposits minus redeemed (no refunds post-success)
         if (principalBuffer > principalOutstanding) {
@@ -368,7 +368,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
             _distributeRevenue(revenueAmt);
         }
 
-        emit SalesProceedsSubmitted(amountUSDC);
+        emit SalesProceedsSubmitted(amountPYUSD);
     }
 
     function withdrawPrincipal(uint256 shares) external nonReentrant whenNotPaused updateAccrual {
@@ -390,7 +390,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         poolBalance -= shares;
         accrualBase = accrualBase >= shares ? accrualBase - shares : 0;
 
-        usdc.safeTransfer(msg.sender, shares);
+        pyusd.safeTransfer(msg.sender, shares);
         emit PrincipalClaimed(msg.sender, shares);
     }
 
@@ -406,7 +406,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         // Paying out revenue reduces pool but not accrual base
         require(poolBalance >= amount, "pool underflow");
         poolBalance -= amount;
-        usdc.safeTransfer(user, amount);
+        pyusd.safeTransfer(user, amount);
         emit RevenueClaimed(user, amount);
     }
 
@@ -424,7 +424,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         require(poolBalance >= bal, "pool underflow");
         poolBalance -= bal;
         accrualBase = accrualBase >= bal ? accrualBase - bal : 0;
-        usdc.safeTransfer(user, bal);
+        pyusd.safeTransfer(user, bal);
     }
 
     // ---- Pause ----

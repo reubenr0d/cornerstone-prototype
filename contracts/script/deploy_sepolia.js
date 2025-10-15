@@ -3,32 +3,32 @@ const hre = require('hardhat');
 // Env:
 // - SEPOLIA_RPC_URL: RPC endpoint
 // - PRIVATE_KEY: deployer private key (no 0x prefix or with, either works via Hardhat)
-// - USDC_ADDRESS: optional pre-existing USDC token address; if omitted, deploy MockUSDC
+// - PYUSD_ADDRESS: optional pre-existing PYUSD token address; if omitted, deploy MockPYUSD
 // - CREATE_SAMPLE_PROJECT=true: optionally create an example project
 
 async function main() {
   const [deployer] = await hre.ethers.getSigners();
   console.log('Deployer:', deployer.address);
 
-  let usdc = process.env.USDC_ADDRESS;
+  let pyusd = process.env.PYUSD_ADDRESS;
   let deployedMock = false;
-  if (!usdc) {
-    console.log('USDC_ADDRESS not set; deploying MockUSDC on Sepolia...');
-    const Mock = await hre.ethers.getContractFactory('MockUSDC');
+  if (!pyusd) {
+    console.log('PYUSD_ADDRESS not set; deploying MockPYUSD on Sepolia...');
+    const Mock = await hre.ethers.getContractFactory('MockPYUSD');
     const mock = await Mock.deploy();
     await mock.waitForDeployment();
-    usdc = await mock.getAddress();
+    pyusd = await mock.getAddress();
     deployedMock = true;
-    console.log('MockUSDC:', usdc);
+    console.log('MockPYUSD:', pyusd);
     // Mint deployer some balance for testing
     await (await mock.mint(deployer.address, 1_000_000n * 10n ** 6n)).wait();
   } else {
-    console.log('Using existing USDC at:', usdc);
+    console.log('Using existing pyusd at:', pyusd);
   }
 
   // Deploy ProjectRegistry
   const Reg = await hre.ethers.getContractFactory('ProjectRegistry');
-  const reg = await Reg.deploy(usdc);
+  const reg = await Reg.deploy(pyusd);
   await reg.waitForDeployment();
   const registry = await reg.getAddress();
   console.log('ProjectRegistry:', registry);
@@ -54,10 +54,10 @@ async function main() {
 
   console.log('\n--- paste into app/.env.local ---');
   console.log(`VITE_RPC_URL=${process.env.SEPOLIA_RPC_URL || ''}`);
-  console.log(`VITE_USDC_ADDRESS=${usdc}`);
+  console.log(`VITE_PYUSD_ADDRESS=${pyusd}`);
   console.log(`VITE_REGISTRY_ADDRESS=${registry}`);
   if (deployedMock) {
-    console.log('\nNote: Deployed MockUSDC on Sepolia for testing.');
+    console.log('\nNote: Deployed MockPYUSD on Sepolia for testing.');
   }
 }
 
