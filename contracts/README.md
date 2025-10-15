@@ -104,6 +104,28 @@ Notes:
 ```
 - The project deploys its own token and exposes `token()`.
 
+### Sepolia (testnet)
+- Prereqs: a funded Sepolia account private key and an RPC URL (Alchemy/Infura/etc).
+- Env in `contracts/` (e.g., a `.env` file):
+  - `SEPOLIA_RPC_URL=...`
+  - `PRIVATE_KEY=...` (0x-prefixed)
+  - Optional: `ETHERSCAN_API_KEY=...` (for `npx hardhat verify`)
+  - Optional: `USDC_ADDRESS=...` to reuse an existing ERC20; otherwise a `MockUSDC` is deployed and minted to the deployer.
+- Deploy:
+  - `cd contracts && npm run deploy:sepolia`
+- Script prints values to paste into the app’s `app/.env.local`:
+  - `VITE_RPC_URL`, `VITE_USDC_ADDRESS`, `VITE_REGISTRY_ADDRESS`
+
+## Verify on Etherscan (API v2)
+- Make sure verify plugin is up to date and installed (already configured here): `@nomicfoundation/hardhat-verify@^2.1.0`.
+- Set `ETHERSCAN_API_KEY` in `contracts/.env`.
+- Install deps if you updated versions: `npm install` (inside `contracts/`).
+- Verify the registry (constructor arg = USDC address):
+  - `npx hardhat verify --network sepolia <REGISTRY_ADDRESS> <USDC_ADDRESS>`
+- If verification races indexing, wait 1–3 minutes and retry.
+- You can pass a fully qualified name if needed:
+  - `npx hardhat verify --network sepolia --contract src/core/ProjectRegistry.sol:ProjectRegistry <REGISTRY_ADDRESS> <USDC_ADDRESS>`
+
 ## Configuration Notes
 - Token decimals = 6 (aligned to USDC).
 - Deposits are allowed in phases 0–4; deposits revert in phase 5.
