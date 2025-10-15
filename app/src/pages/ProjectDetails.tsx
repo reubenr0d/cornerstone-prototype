@@ -288,7 +288,7 @@ const ProjectDetails = () => {
             
             phaseDocs.push({
               id: `phase${phaseId}-doc${i}-${hash.slice(0, 10)}`,
-              name: `${docType} (${hash.slice(0, 10)}...)`,
+              name: uri.split('/').at(-1),
               type: isImage ? 'image' : 'pdf',
               url: uri.startsWith('ipfs://') 
                 ? `https://ipfs.io/ipfs/${uri.replace('ipfs://', '')}` 
