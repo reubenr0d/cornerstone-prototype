@@ -232,6 +232,9 @@ const ProjectDetails = () => {
   // Convert APRs from bps to percent for display
   const aprs = (chain.perPhaseAprBps || [0,0,0,0,0,0]).map((bps)=> bps / 100);
   const currentPhaseIndex = Math.max(0, chain.currentPhase ?? 0);
+  const nextPhaseName = currentPhaseIndex + 1 < phaseNames.length
+    ? phaseNames[currentPhaseIndex + 1]
+    : 'All phases complete';
   const perPhaseWithdrawn = (chain.perPhaseWithdrawn || []).map((w)=> Number(fromUSDC(w)));
   const phaseCloseDates: (string | null)[] = [
     '2025-01-15', // Fundraising and Acquisition
@@ -892,7 +895,7 @@ const ProjectDetails = () => {
                       </div>
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">Next Phase</span>
-                        <span className="font-medium">Revenue and Sales</span>
+                        <span className="font-medium">{nextPhaseName}</span>
                       </div>
                       <div className="grid gap-1">
                         <Label htmlFor="phaseDocs">Upload Documents</Label>
