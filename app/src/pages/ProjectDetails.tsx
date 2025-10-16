@@ -513,7 +513,7 @@ const ProjectDetails = () => {
           <div className="space-y-8">
             <div className="rounded-3xl border border-white/30 bg-white/60 p-6 shadow-soft backdrop-blur dark:border-white/10 dark:bg-slate-950/35">
               <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
-                <div className="flex flex-col gap-6 xl:max-w-3xl">
+                <div className="flex flex-col gap-6 xl:flex-1 xl:min-w-0">
                   <div className="flex flex-wrap items-center justify-between gap-4">
                     <RoleSelector currentRole={currentRole} onRoleChange={setCurrentRole} />
                     <Button

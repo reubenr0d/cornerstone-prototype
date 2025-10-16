@@ -232,6 +232,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         emit PhaseClosed(phaseId, docTypes, docHashes, metadataURIs);
 
         if (phaseId == 0) {
+            require(totalRaised >= minRaise, "min raise not met");
             // Start Phase 1 with required docs. Fundraising remains open beyond phase 0.
             // Mark success flag opportunistically if threshold already met.
             if (!fundraiseSuccessful && totalRaised >= minRaise) {
@@ -408,6 +409,10 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
 
     // ---- Fundraise refunds ----
     function refundIfMinNotMet(address user) public nonReentrant whenNotPaused updateAccrual {
+        if (!fundraiseSuccessful && !fundraiseClosed && block.timestamp > fundraiseDeadline) {
+            fundraiseClosed = true;
+            emit FundraiseClosed(false);
+        }
         require(fundraiseClosed && !fundraiseSuccessful, "not failed");
         require(user != address(0), "bad user");
         uint256 bal = _token.balanceOf(user);
