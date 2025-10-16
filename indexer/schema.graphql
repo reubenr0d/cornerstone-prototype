@@ -1,0 +1,170 @@
+type Depositor {
+  id: ID!
+  totalDeposited: BigInt!
+  sharesHeld: BigInt!
+  interestClaimed: BigInt!
+  revenueClaimed: BigInt!
+  principalRedeemed: BigInt!
+  lastDepositBlock: BigInt!
+  lastDepositTimestamp: BigInt!
+  deposits: [DepositEvent!]! @derivedFrom(field: "depositor")
+  interestClaims: [InterestClaimedEvent!]! @derivedFrom(field: "claimer")
+  revenueClaims: [RevenueClaimedEvent!]! @derivedFrom(field: "claimer")
+  principalClaims: [PrincipalClaimedEvent!]! @derivedFrom(field: "claimer")
+}
+
+type DepositEvent {
+  id: ID!
+  depositor: Depositor! @index
+  projectAddress: Bytes!
+  amountUSDC: BigInt!
+  sharesMinted: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
+type InterestClaimedEvent {
+  id: ID!
+  claimer: Depositor! @index
+  projectAddress: Bytes!
+  amount: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
+type ReserveFundedEvent {
+  id: ID!
+  projectAddress: Bytes!
+  amount: BigInt!
+  fundedBy: Bytes!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
+type FundraiseClosedEvent {
+  id: ID!
+  projectAddress: Bytes!
+  successful: Boolean!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
+type PhaseClosedEvent {
+  id: ID!
+  project: ProjectState! @index
+  phaseId: Int!
+  docTypes: [String!]!
+  docHashes: [Bytes!]!
+  metadataURIs: [String!]!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
+type PhaseFundsWithdrawnEvent {
+  id: ID!
+  projectAddress: Bytes!
+  phaseId: Int!
+  amount: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
+type AppraisalSubmittedEvent {
+  id: ID!
+  projectAddress: Bytes!
+  percentComplete: BigInt!
+  appraisalHash: Bytes!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
+type SalesProceedsSubmittedEvent {
+  id: ID!
+  projectAddress: Bytes!
+  amount: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
+type PrincipalClaimedEvent {
+  id: ID!
+  claimer: Depositor! @index
+  projectAddress: Bytes!
+  amount: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
+type RevenueClaimedEvent {
+  id: ID!
+  claimer: Depositor! @index
+  projectAddress: Bytes!
+  amount: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
+type ProjectState {
+  id: ID!
+  currentPhase: Int!
+  lastClosedPhase: Int!
+  fundraiseClosed: Boolean!
+  fundraiseSuccessful: Boolean!
+  totalRaised: BigInt!
+  totalDevWithdrawn: BigInt!
+  reserveBalance: BigInt!
+  poolBalance: BigInt!
+  principalBuffer: BigInt!
+  principalRedeemed: BigInt!
+  accrualBase: BigInt!
+  phase5PercentComplete: BigInt!
+  lastAppraisalHash: Bytes!
+  interestPerShareX18: BigInt!
+  revenuePerShareX18: BigInt!
+  lastUpdatedBlock: BigInt!
+  lastUpdatedTimestamp: BigInt!
+  phases: [PhaseMetrics!]! @derivedFrom(field: "project")
+  closedPhases: [PhaseClosedEvent!]! @derivedFrom(field: "project")
+}
+
+type PhaseMetrics {
+  id: ID!
+  project: ProjectState! @index
+  phaseId: Int!
+  phaseCap: BigInt!
+  phaseWithdrawn: BigInt!
+  aprBps: BigInt!
+  duration: BigInt!
+  capBps: BigInt!
+  isClosed: Boolean!
+  closedAtBlock: BigInt
+  closedAtTimestamp: BigInt
+}
+
+type DepositorMetrics {
+  id: ID!
+  user: Bytes! @index
+  projectAddress: Bytes! @index
+  depositCount: BigInt!
+  totalDeposited: BigInt!
+  currentShares: BigInt!
+  claimableInterest: BigInt!
+  claimableRevenue: BigInt!
+  totalInterestClaimed: BigInt!
+  totalRevenueClaimed: BigInt!
+  totalPrincipalRedeemed: BigInt!
+  firstDepositBlock: BigInt!
+  firstDepositTimestamp: BigInt!
+  lastActivityBlock: BigInt!
+  lastActivityTimestamp: BigInt!
+}

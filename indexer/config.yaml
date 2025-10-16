@@ -1,0 +1,25 @@
+name: Cornerstone Project
+description: Cornerstone Project Indexer
+
+contracts:
+  - name: CornerstoneProject
+    abi_file_path: ./abis/CornerstoneProject.json
+    handler: src/EventHandlers.ts
+    events:
+      - event: Deposit(address indexed user, uint256 amountPYUSD, uint256 sharesMinted)
+      - event: InterestClaimed(address indexed user, uint256 amount)
+      - event: ReserveFunded(uint256 amount, address indexed by)
+      - event: FundraiseClosed(bool successful)
+      - event: PhaseClosed(uint8 indexed phaseId, string[] docTypes, bytes32[] docHashes, string[] metadataURIs)
+      - event: PhaseFundsWithdrawn(uint8 indexed phaseId, uint256 amount)
+      - event: AppraisalSubmitted(uint256 percentComplete, bytes32 appraisalHash)
+      - event: SalesProceedsSubmitted(uint256 amount)
+      - event: PrincipalClaimed(address indexed user, uint256 amount)
+      - event: RevenueClaimed(address indexed user, uint256 amount)
+
+networks:
+  - id: 11155111
+    start_block: 0
+    contracts:
+      - name: CornerstoneProject
+        address: "0x0000000000000000000000000000000000000000" # wildcard
