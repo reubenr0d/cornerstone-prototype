@@ -441,23 +441,27 @@ const ProjectDetails = () => {
     async function fetchPhaseDocs() {
       try {
         if (!projectAddress) return;
-        const provider = await getProvider();
+        const provider = getRpcProvider();
         const proj = projectAt(projectAddress, provider);
-        
-        // Query PhaseClosed events
+        console.info('[docs] fetching phase docs', { projectAddress });
+
+        // Query PhaseClosed events (explicit fromBlock to catch earlier logs)
+        const latest = await provider.getBlockNumber();
         const filter = proj.filters.PhaseClosed();
-        const events = await proj.queryFilter(filter);
-        
+        const events = await proj.queryFilter(filter, 0n, BigInt(latest));
+        console.info('[docs] fetched PhaseClosed events', { count: events.length });
+
         const docsByPhase: Doc[][] = [[], [], [], [], [], []];
-        
+
         for (const event of events) {
           const phaseId = Number(event.args?.phaseId || 0);
           if (phaseId < 0 || phaseId > 5) continue;
-          
-          const docTypes = event.args?.docTypes || [];
-          const docHashes = event.args?.docHashes || [];
-          const metadataURIs = event.args?.metadataURIs || [];
-          
+
+          const docTypes = Array.from(event.args?.docTypes || [], (t) => (typeof t === 'string' ? t : String(t)));
+          const docHashes = Array.from(event.args?.docHashes || [], (h) => (typeof h === 'string' ? h : String(h)));
+          const metadataURIs = Array.from(event.args?.metadataURIs || [], (u) => (typeof u === 'string' ? u : String(u)));
+          console.info('[docs] processing PhaseClosed', { phaseId, docCount: docTypes.length, docTypes, metadataURIs });
+
           const phaseDocs: Doc[] = [];
           for (let i = 0; i < docTypes.length; i++) {
             const docType = docTypes[i] || 'unknown';
@@ -478,11 +482,12 @@ const ProjectDetails = () => {
               hash: hash,
             });
           }
-          
+
           docsByPhase[phaseId] = phaseDocs;
         }
-        
+
         setPhaseDocuments(docsByPhase);
+        console.info('[docs] updated phaseDocuments state', { phaseDocuments: docsByPhase });
       } catch (e) {
         console.error('Failed to fetch phase documents:', e);
       }
