@@ -74,6 +74,47 @@ describe("CornerstoneProject - Reserve & Interest", function () {
     expect(await project.claimableInterest(user1.address)).to.equal(40_000n);
   });
 
+  it("prevents double-claiming after withdrawing interest and transferring tokens", async function () {
+    const { dev, user1, user2, project, token, usdc, mintAndApprove, params } = await deployProjectFixture();
+    await mintAndApprove(user1, params.minRaise);
+    await project.connect(user1).deposit(params.minRaise);
+    await project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
+
+    const reserveTopUp = 400_000n;
+    await usdc.mint(dev.address, reserveTopUp);
+    await usdc.connect(dev).approve(await project.getAddress(), reserveTopUp);
+    await project.connect(dev).fundReserve(reserveTopUp);
+
+    // accrue first year of interest
+    await time.increase(365 * 24 * 60 * 60);
+    await project.accrueInterest();
+
+    const firstClaim = await project.claimableInterest(user1.address);
+    expect(firstClaim).to.equal(100_000n);
+
+    await project.connect(user1).claimInterest(firstClaim);
+    expect(await project.claimableInterest(user1.address)).to.equal(0n);
+
+    // transfer all tokens to user2 after claiming
+    const balance = await token.balanceOf(user1.address);
+    await token.connect(user1).transfer(user2.address, balance);
+
+    await expect(project.connect(user1).claimInterest(1)).to.be.revertedWith("bad amount");
+    expect(await project.claimableInterest(user1.address)).to.equal(0n);
+    expect(await project.claimableInterest(user2.address)).to.equal(0n);
+
+    // accrue another year after transfer; new interest should follow the new holder
+    await time.increase(365 * 24 * 60 * 60);
+    await project.accrueInterest();
+
+    expect(await project.claimableInterest(user1.address)).to.equal(0n);
+    const user2Claimable = await project.claimableInterest(user2.address);
+    expect(user2Claimable).to.equal(100_000n);
+
+    await project.connect(user2).claimInterest(user2Claimable);
+    expect(await project.claimableInterest(user2.address)).to.equal(0n);
+  });
+
   it("reverts accrual when reserve depleted", async function () {
     const { dev, user1, project, mintAndApprove, params } = await deployProjectFixture();
     await mintAndApprove(user1, params.minRaise);
