@@ -13,3 +13,7 @@ contracts/.env
 
 app/node_modules/
 app/dist/
+
+indexer/node_modules/
+indexer/generated/
+indexer/.env
