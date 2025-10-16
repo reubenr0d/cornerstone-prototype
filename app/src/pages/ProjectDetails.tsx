@@ -13,6 +13,7 @@ import { toast } from '@/components/ui/sonner';
 import { ExternalLink, Plus, Edit, Upload, DollarSign, AlertTriangle, MessageSquare, Banknote, DoorClosed, Wallet, FileText, Target, Users, ShieldCheck } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@/components/ui/drawer';
 import { Address, erc20At, fromUSDC, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toUSDC, fetchProjectCoreState, fetchProjectUserState, fetchSupportersCount, getWindowEthereum } from '@/lib/eth';
+import { fetchPhaseDocsViaHyperSync } from '@/lib/hypersync';
 import { contractsConfig } from '@/config/contracts';
 import { ipfsUpload } from '@/lib/ipfs';
 import { ethers } from 'ethers';
@@ -441,55 +442,16 @@ const ProjectDetails = () => {
     async function fetchPhaseDocs() {
       try {
         if (!projectAddress) return;
-        const provider = getRpcProvider();
-        const proj = projectAt(projectAddress, provider);
-        console.info('[docs] fetching phase docs', { projectAddress });
+        console.info('[docs] fetching phase docs via HyperSync', { projectAddress });
 
-        // Query PhaseClosed events (explicit fromBlock to catch earlier logs)
-        const latest = await provider.getBlockNumber();
-        const filter = proj.filters.PhaseClosed();
-        const events = await proj.queryFilter(filter, 0n, BigInt(latest));
-        console.info('[docs] fetched PhaseClosed events', { count: events.length });
-
-        const docsByPhase: Doc[][] = [[], [], [], [], [], []];
-
-        for (const event of events) {
-          const phaseId = Number(event.args?.phaseId || 0);
-          if (phaseId < 0 || phaseId > 5) continue;
-
-          const docTypes = Array.from(event.args?.docTypes || [], (t) => (typeof t === 'string' ? t : String(t)));
-          const docHashes = Array.from(event.args?.docHashes || [], (h) => (typeof h === 'string' ? h : String(h)));
-          const metadataURIs = Array.from(event.args?.metadataURIs || [], (u) => (typeof u === 'string' ? u : String(u)));
-          console.info('[docs] processing PhaseClosed', { phaseId, docCount: docTypes.length, docTypes, metadataURIs });
-
-          const phaseDocs: Doc[] = [];
-          for (let i = 0; i < docTypes.length; i++) {
-            const docType = docTypes[i] || 'unknown';
-            const hash = docHashes[i] || '0x';
-            const uri = metadataURIs[i] || '';
-            
-            // Determine if it's an image or PDF based on type/URI
-            const isImage = docType.includes('image') || uri.includes('image') || 
-                           ['jpg', 'jpeg', 'png', 'gif', 'webp'].some(ext => uri.toLowerCase().includes(ext));
-            
-            phaseDocs.push({
-              id: `phase${phaseId}-doc${i}-${hash.slice(0, 10)}`,
-              name: uri.split('/').at(-1),
-              type: isImage ? 'image' : 'pdf',
-              url: uri.startsWith('ipfs://') 
-                ? `https://ipfs.io/ipfs/${uri.replace('ipfs://', '')}` 
-                : uri || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-              hash: hash,
-            });
-          }
-
-          docsByPhase[phaseId] = phaseDocs;
-        }
-
+        const docsByPhase = await fetchPhaseDocsViaHyperSync(projectAddress);
+        
         setPhaseDocuments(docsByPhase);
         console.info('[docs] updated phaseDocuments state', { phaseDocuments: docsByPhase });
       } catch (e) {
         console.error('Failed to fetch phase documents:', e);
+        // Fallback to empty arrays if HyperSync fails
+        setPhaseDocuments([[], [], [], [], [], []]);
       }
     }
     
