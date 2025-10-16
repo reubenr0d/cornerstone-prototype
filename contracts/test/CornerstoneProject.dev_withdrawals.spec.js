@@ -23,6 +23,39 @@ describe("CornerstoneProject - Dev Withdrawals and Caps", function () {
     expect(await project.getPhaseWithdrawn(1)).to.equal(cap1);
   });
 
+  it("allows withdrawing phase 0 cap once fundraising closes", async function () {
+    const phaseParams = {
+      phaseAPRs: [0, 1000, 900, 800, 700, 600],
+      phaseDurations: [0, 30, 30, 30, 30, 30],
+      phaseCapsBps: [10000, 0, 0, 0, 0, 0],
+    };
+    const minRaise = 1_000_000n;
+    const maxRaise = 1_000_000n;
+    const { dev, user1, project, mintAndApprove } = await deployProjectFixture({
+      phaseParams,
+      minRaise,
+      maxRaise,
+    });
+    await mintAndApprove(user1, minRaise);
+    await project.connect(user1).deposit(minRaise);
+    await project
+      .connect(dev)
+      .closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
+
+    const cap0 = await project.getPhaseCap(0);
+    expect(cap0).to.equal(maxRaise);
+    expect(await project.withdrawableDevFunds()).to.equal(cap0);
+
+    const poolBefore = await project.poolBalance();
+    await expect(project.connect(dev).withdrawPhaseFunds(cap0))
+      .to.emit(project, "PhaseFundsWithdrawn")
+      .withArgs(0, cap0);
+
+    expect(await project.poolBalance()).to.equal(poolBefore - cap0);
+    expect(await project.getPhaseWithdrawn(0)).to.equal(cap0);
+    expect(await project.withdrawableDevFunds()).to.equal(0n);
+  });
+
   it("phase 5 progressive unlock via submitAppraisal; attribution is 5", async function () {
     const { dev, user1, project, mintAndApprove, params } = await deployProjectFixture();
     await mintAndApprove(user1, params.minRaise);

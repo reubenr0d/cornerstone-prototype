@@ -268,7 +268,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
 
         totalDevWithdrawn += amount;
         uint8 phaseAttr = _phaseAttributionForWithdrawal();
-        if (phaseAttr >= 1 && phaseAttr <= NUM_PHASES) {
+        if (phaseAttr <= NUM_PHASES) {
             phaseWithdrawn[phaseAttr] += amount;
         }
 
@@ -287,6 +287,9 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
 
     function _cumulativeUnlocked() internal view returns (uint256) {
         uint256 unlocked;
+        if (currentPhase >= 1) {
+            unlocked += getPhaseCap(0);
+        }
         uint8 lc = lastClosedPhase;
         // Phases 1..4: unlock upon closure
         for (uint8 p = 1; p <= 4; p++) {
