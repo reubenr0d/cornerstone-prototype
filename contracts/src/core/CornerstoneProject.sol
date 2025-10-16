@@ -11,11 +11,11 @@ import {CornerstoneToken} from "./CornerstoneToken.sol";
 
 interface ICornerstoneProject {
     // ---- Deposits ----
-    function deposit(uint256 amountPYUSD) external;
+    function deposit(uint256 amount) external;
     function withdrawPrincipal(uint256 shares) external; // only after phase 6 complete
 
     // ---- Reserve ----
-    function fundReserve(uint256 amountPYUSD) external;
+    function fundReserve(uint256 amount) external;
     function claimInterest(uint256 amount) external;
 
     // ---- Fundraise ----
@@ -39,7 +39,7 @@ interface ICornerstoneProject {
     function submitAppraisal(uint256 percentComplete, bytes32 appraisalHash) external;
 
     // ---- Sales / revenue ----
-    function submitSalesProceeds(uint256 amountPYUSD) external;
+    function submitSalesProceeds(uint256 amount) external;
     function claimPrincipal(address user) external;
     function claimRevenue(address user) external;
 
@@ -116,7 +116,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     mapping(address => uint256) private revenueWithdrawn;
 
     // Events
-    event Deposit(address indexed user, uint256 amountPYUSD, uint256 sharesMinted);
+    event Deposit(address indexed user, uint256 amount, uint256 sharesMinted);
     event InterestClaimed(address indexed user, uint256 amount);
     event ReserveFunded(uint256 amount, address indexed by);
     event FundraiseClosed(bool successful);
@@ -189,30 +189,30 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     }
 
     // ---- Deposits ----
-    function deposit(uint256 amountPYUSD) external nonReentrant whenNotPaused updateAccrual {
+    function deposit(uint256 amount) external nonReentrant whenNotPaused updateAccrual {
         // Deposits allowed in phases 0..4 (not in 5) and not if fundraise failed
         require(currentPhase != NUM_PHASES, "deposits closed in phase 5");
         require(!(fundraiseClosed && !fundraiseSuccessful), "fundraise failed");
         if (currentPhase == 0) {
             require(block.timestamp <= fundraiseDeadline && !fundraiseClosed, "fundraise ended");
         }
-        require(amountPYUSD > 0, "amount=0");
+        require(amount > 0, "amount=0");
 
-        totalRaised += amountPYUSD;
-        poolBalance += amountPYUSD;
-        accrualBase += amountPYUSD;
+        totalRaised += amount;
+        poolBalance += amount;
+        accrualBase += amount;
 
         // If threshold is reached at any time, mark fundraise as successful
         if (!fundraiseSuccessful && totalRaised >= minRaise) {
             fundraiseSuccessful = true;
         }
 
-        pyusd.safeTransferFrom(msg.sender, address(this), amountPYUSD);
-        _token.mint(msg.sender, amountPYUSD);
+        pyusd.safeTransferFrom(msg.sender, address(this), amount);
+        _token.mint(msg.sender, amount);
 
         // transfer hook will set corrections so new depositors don't get past distributions
 
-        emit Deposit(msg.sender, amountPYUSD, amountPYUSD);
+        emit Deposit(msg.sender, amount, amount);
     }
 
     // ---- Phases & fundraise lifecycle ----
@@ -327,11 +327,11 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     }
 
     // ---- Reserve and Interest ----
-    function fundReserve(uint256 amountPYUSD) external onlyDev nonReentrant whenNotPaused {
-        require(amountPYUSD > 0, "amount=0");
-        reserveBalance += amountPYUSD;
-        pyusd.safeTransferFrom(msg.sender, address(this), amountPYUSD);
-        emit ReserveFunded(amountPYUSD, msg.sender);
+    function fundReserve(uint256 amount) external onlyDev nonReentrant whenNotPaused {
+        require(amount > 0, "amount=0");
+        reserveBalance += amount;
+        pyusd.safeTransferFrom(msg.sender, address(this), amount);
+        emit ReserveFunded(amount, msg.sender);
     }
 
     function accrueInterest() external whenNotPaused updateAccrual {
@@ -351,15 +351,15 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     }
 
     // ---- Sales / revenue ----
-    function submitSalesProceeds(uint256 amountPYUSD) external onlyDev nonReentrant whenNotPaused updateAccrual {
-        require(amountPYUSD > 0, "amount=0");
-        pyusd.safeTransferFrom(msg.sender, address(this), amountPYUSD);
+    function submitSalesProceeds(uint256 amount) external onlyDev nonReentrant whenNotPaused updateAccrual {
+        require(amount > 0, "amount=0");
+        pyusd.safeTransferFrom(msg.sender, address(this), amount);
 
-        poolBalance += amountPYUSD;
-        accrualBase += amountPYUSD; // proceeds increase NAV, start compounding
+        poolBalance += amount;
+        accrualBase += amount; // proceeds increase NAV, start compounding
 
         // First allocate to principal buffer
-        principalBuffer += amountPYUSD;
+        principalBuffer += amount;
 
         uint256 principalOutstanding = totalRaised - principalRedeemed; // deposits minus redeemed (no refunds post-success)
         if (principalBuffer > principalOutstanding) {
@@ -368,7 +368,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
             _distributeRevenue(revenueAmt);
         }
 
-        emit SalesProceedsSubmitted(amountPYUSD);
+        emit SalesProceedsSubmitted(amount);
     }
 
     function withdrawPrincipal(uint256 shares) external nonReentrant whenNotPaused updateAccrual {

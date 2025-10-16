@@ -2,6 +2,20 @@ const hre = require('hardhat');
 
 async function main() {
   const pyusd = process.env.PYUSD_ADDRESS
+  if (!pyusd) {
+    const [deployer] = await hre.ethers.getSigners();
+    console.log('Deployer:', deployer.address);
+  
+    // Deploy MockPYUSD
+    const Mock = await hre.ethers.getContractFactory('MockPYUSD');
+    const mock = await Mock.deploy();
+    await mock.waitForDeployment();
+    const pyusd = await mock.getAddress();
+    console.log('MockPYUSD:', pyusd);
+  
+    // Mint some to deployer
+    await (await mock.mint(deployer.address, 1_000_000n * 10n ** 6n)).wait();
+  }
 
   // Deploy registry
   const Reg = await hre.ethers.getContractFactory('ProjectRegistry');
