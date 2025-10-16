@@ -1,8 +1,78 @@
 import * as Storacha from '@storacha/client';
+import { StoreMemory } from '@storacha/client/stores/memory';
 
 export type Uploaded = { cid: string; path: string; uri: string }[];
 
 let storachaClientPromise: Promise<Storacha.Client> | null = null;
+let decodedArchive: any;
+
+const STORACHA_ARCHIVE_ENV_KEY = 'VITE_STORACHA_AGENT_ARCHIVE' as const;
+const storachaArchiveBase64 = import.meta.env[STORACHA_ARCHIVE_ENV_KEY] as string | undefined;
+
+function decodeBase64(data: string): string {
+  if (typeof window !== 'undefined' && typeof window.atob === 'function') {
+    return window.atob(data);
+  }
+  if (typeof globalThis !== 'undefined' && typeof (globalThis as any).atob === 'function') {
+    return (globalThis as any).atob(data);
+  }
+  const BufferCtor = typeof globalThis !== 'undefined' ? (globalThis as any).Buffer : undefined;
+  if (BufferCtor) {
+    return BufferCtor.from(data, 'base64').toString('utf-8');
+  }
+  throw new Error('Base64 decoding is not supported in this environment.');
+}
+
+function reviveArchiveValue(value: unknown): any {
+  if (Array.isArray(value)) {
+    return value.map((item) => reviveArchiveValue(item));
+  }
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+  const record = value as Record<string, unknown>;
+  if ('$map' in record && Array.isArray((record as any).$map)) {
+    const entries = (record as any).$map as [unknown, unknown][];
+    return new Map(entries.map(([key, val]) => [key, reviveArchiveValue(val)]));
+  }
+  if ('$bytes' in record && Array.isArray((record as any).$bytes)) {
+    return new Uint8Array((record as any).$bytes);
+  }
+  if ('$url' in record && typeof (record as any).$url === 'string') {
+    try {
+      return new URL((record as any).$url);
+    } catch {
+      return (record as any).$url;
+    }
+  }
+  const result: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(record)) {
+    result[key] = reviveArchiveValue(val);
+  }
+  return result;
+}
+
+async function getStoreWithArchive() {
+  if (!storachaArchiveBase64) {
+    throw new Error(`Storacha agent archive missing. Set ${STORACHA_ARCHIVE_ENV_KEY} in your environment.`);
+  }
+  if (!decodedArchive) {
+    let json: string;
+    try {
+      json = decodeBase64(storachaArchiveBase64);
+    } catch (error) {
+      throw new Error('Failed to decode Storacha agent archive from base64.');
+    }
+    try {
+      decodedArchive = reviveArchiveValue(JSON.parse(json));
+    } catch {
+      throw new Error('Storacha agent archive is not valid JSON.');
+    }
+  }
+  const store = new StoreMemory();
+  await store.save(decodedArchive);
+  return store;
+}
 
 const LOG_PREFIX = '[Storacha]';
 function log(...args: unknown[]) {
@@ -31,7 +101,9 @@ function resolveDid(space: any): string | undefined {
 async function getStorachaClient(): Promise<Storacha.Client> {
   if (!storachaClientPromise) {
     log('Creating Storacha client...');
-    storachaClientPromise = Storacha.create().then((c) => {
+    storachaClientPromise = getStoreWithArchive()
+      .then((store) => Storacha.create({ store }))
+      .then((c) => {
       try {
         const spaces = c.spaces?.() || [];
         const dids = spaces.map((s: any) => resolveDid(s)).filter(Boolean) as string[];
@@ -46,65 +118,16 @@ async function getStorachaClient(): Promise<Storacha.Client> {
 }
 
 async function ensureStorachaReady(client: Storacha.Client) {
-  // If no spaces configured, guide the user through login and space setup once.
+  try {
+    await (client as any).capability?.access?.claim?.();
+  } catch (error) {
+    log('Failed to refresh Storacha delegations', error);
+  }
+
   const spaces = client.spaces();
   log('ensureStorachaReady: spaces count =', spaces?.length || 0);
   if (!spaces || spaces.length === 0) {
-    // Prompt for email to authorize this agent. This triggers a magic-link flow.
-    const email = typeof window !== 'undefined'
-      ? window.prompt('Enter your email to login to Storacha (magic link will be sent):') || ''
-      : '';
-    if (!email) throw new Error('Storacha login required to upload documents.');
-    // Request login (sends magic link).
-    log('Initiating login for email', email.replace(/(^.).*(@.*$)/, '$1***$2'));
-    await client.login(email);
-    log('Login initiated. Waiting for delegations (proofs)...');
-    // Attempt to claim any delegations granted via magic-link and wait briefly
-    // for the user to click the link. We poll for up to ~60 seconds.
-    let hasAccount = false;
-    for (let i = 0; i < 60; i++) {
-      try { await (client as any).capability?.access?.claim?.(); } catch {}
-      const accs = (client as any).accounts?.();
-      const count = accs ? Object.keys(accs).length : 0;
-      log(`Claim attempt #${i + 1}: accounts=${count}`);
-      if (count > 0) { hasAccount = true; break; }
-      await new Promise(r => setTimeout(r, 1000));
-    }
-    if (!hasAccount) {
-      throw new Error('Storacha login not completed. Please click the magic-link in your email, then retry the upload.');
-    }
-    // After login, create a space if still none exist.
-    const postLoginSpaces = client.spaces();
-    const postLoginDids = (postLoginSpaces || []).map((s: any) => resolveDid(s)).filter(Boolean) as string[];
-    log('Post-login spaces count =', postLoginSpaces?.length || 0, postLoginDids.length ? `dids=${postLoginDids.join(',')}` : '');
-    if (!postLoginSpaces || postLoginSpaces.length === 0) {
-      let space;
-      try {
-        space = await client.createSpace('Cornerstone');
-        log('Created new space:', resolveDid(space));
-      } catch (e:any) {
-        const msg = e?.message || String(e);
-        if (/no proofs/i.test(msg)) {
-          throw new Error('Storacha is not authorized yet. After clicking the magic link, wait a moment and retry.');
-        }
-        log('createSpace error:', msg);
-        throw e;
-      }
-      {
-        const did = resolveDid(space);
-        if (!did) throw new Error('Storacha: could not resolve new Space DID');
-        await client.setCurrentSpace(did as any);
-        log('Set current space to newly created space:', did);
-      }
-    } else {
-      const first = postLoginSpaces[0];
-      const did = resolveDid(first);
-      log('Resolved DID from first post-login space:', did || typeof (first as any)?.did);
-      if (!did) throw new Error('Storacha: could not resolve existing Space DID');
-      await client.setCurrentSpace(did as any);
-      log('Set current space to existing space:', did);
-    }
-    return;
+    throw new Error('Storacha agent archive is missing delegations for any space. Update the archive env variable.');
   }
   // Use the first existing space if no current space set
   const current = client.currentSpace?.();
@@ -115,44 +138,6 @@ async function ensureStorachaReady(client: Storacha.Client) {
     if (!did) throw new Error('Storacha: could not resolve Space DID');
     await client.setCurrentSpace(did as any);
     log('Selected first existing space as current:', did);
-  }
-
-  // Even if spaces exist, the agent may still lack proofs.
-  // First try a quick claim, then if still no accounts, prompt login + claim loop.
-  try { await (client as any).capability?.access?.claim?.(); } catch {}
-  let accs = (client as any).accounts?.();
-  let count = accs ? Object.keys(accs).length : 0;
-  log('Post-select accounts count =', count);
-
-  if (!count) {
-    // Prompt for email to re-authorize this agent
-    const email = typeof window !== 'undefined'
-      ? window.prompt('Storacha authorization required. Enter your email to receive a magic link:') || ''
-      : '';
-    if (!email) throw new Error('Storacha login required to upload documents.');
-    log('Re-login to obtain proofs for existing space.');
-    await client.login(email);
-    for (let i = 0; i < 60; i++) {
-      try { await (client as any).capability?.access?.claim?.(); } catch {}
-      accs = (client as any).accounts?.();
-      count = accs ? Object.keys(accs).length : 0;
-      log(`Re-claim attempt #${i + 1}: accounts=${count}`);
-      if (count > 0) break;
-      await new Promise(r => setTimeout(r, 1000));
-    }
-    if (!count) {
-      throw new Error('Storacha login not completed. Please click the magic link and retry.');
-    }
-    // Ensure a current space is set now that we have proofs
-    const cur = client.currentSpace?.();
-    const curDid = resolveDid(cur);
-    log('After re-login, current space =', curDid || 'none');
-    if (!cur) {
-      const did = resolveDid(spaces[0]);
-      if (!did) throw new Error('Storacha: could not resolve Space DID after re-login');
-      await client.setCurrentSpace(did as any);
-      log('After re-login, set current space to:', did);
-    }
   }
 }
 
