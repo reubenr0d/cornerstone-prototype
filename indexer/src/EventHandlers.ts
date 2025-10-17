@@ -1,261 +1,291 @@
-import { CornerstoneProject } from "generated/src/Handlers.gen";
+import { CornerstoneProject } from "generated";
 
 export const handleDeposit = CornerstoneProject.Deposit.handler(
-  async (event, context) => {
+  async ({ event, context }) => {
     const depositorId = event.params.user.toLowerCase();
     
     let depositor = await context.Depositor.get(depositorId);
     
     if (!depositor) {
-      depositor = {
+      context.Depositor.set({
         id: depositorId,
-        totalDeposited: 0n,
+        totalDeposited: event.params.amountPYUSD,
         sharesHeld: event.params.sharesMinted,
         interestClaimed: 0n,
         revenueClaimed: 0n,
         principalRedeemed: 0n,
-        lastDepositBlock: BigInt(event.blockNumber),
+        lastDepositBlock: BigInt(event.block.number),
         lastDepositTimestamp: BigInt(event.block.timestamp),
-      };
+      });
     } else {
-      depositor.sharesHeld += event.params.sharesMinted;
-      depositor.lastDepositBlock = BigInt(event.blockNumber);
-      depositor.lastDepositTimestamp = BigInt(event.block.timestamp);
+      context.Depositor.set({
+        ...depositor,
+        sharesHeld: depositor.sharesHeld + event.params.sharesMinted,
+        totalDeposited: depositor.totalDeposited + event.params.amountPYUSD,
+        lastDepositBlock: BigInt(event.block.number),
+        lastDepositTimestamp: BigInt(event.block.timestamp),
+      });
     }
-    
-    depositor.totalDeposited += event.params.amountPYUSD;
-    context.Depositor.set(depositor);
 
+    const txHash = event.block.hash;
+    
     context.DepositEvent.set({
-      id: `${event.transaction.hash}-${event.logIndex}`,
-      depositor: depositorId,
-      projectAddress: event.address,
+      id: `${txHash}-${event.logIndex}`,
+      depositor_id: depositorId,
+      projectAddress: event.srcAddress,
       amountUSDC: event.params.amountPYUSD,
       sharesMinted: event.params.sharesMinted,
-      blockNumber: BigInt(event.blockNumber),
+      blockNumber: BigInt(event.block.number),
       blockTimestamp: BigInt(event.block.timestamp),
-      transactionHash: event.transaction.hash,
+      transactionHash: txHash,
     });
 
-    await updateProjectState(event.address, context);
-
-    await updateDepositorMetrics(depositorId, event.address, context);
+    await updateProjectState(event.srcAddress, event, context);
+    await updateDepositorMetrics(depositorId, event.srcAddress, event, context);
   }
 );
 
 export const handleInterestClaimed = CornerstoneProject.InterestClaimed.handler(
-  async (event, context) => {
+  async ({ event, context }) => {
     const claimerId = event.params.user.toLowerCase();
 
     let depositor = await context.Depositor.get(claimerId);
     if (depositor) {
-      depositor.interestClaimed += event.params.amount;
-      context.Depositor.set(depositor);
+      context.Depositor.set({
+        ...depositor,
+        interestClaimed: depositor.interestClaimed + event.params.amount,
+      });
     }
 
+    const txHash = event.block.hash;
+    
     context.InterestClaimedEvent.set({
-      id: `${event.transaction.hash}-${event.logIndex}`,
-      claimer: claimerId,
-      projectAddress: event.address,
+      id: `${txHash}-${event.logIndex}`,
+      claimer_id: claimerId,
+      projectAddress: event.srcAddress,
       amount: event.params.amount,
-      blockNumber: BigInt(event.blockNumber),
+      blockNumber: BigInt(event.block.number),
       blockTimestamp: BigInt(event.block.timestamp),
-      transactionHash: event.transaction.hash,
+      transactionHash: txHash,
     });
 
-    await updateProjectState(event.address, context);
-    await updateDepositorMetrics(claimerId, event.address, context);
+    await updateProjectState(event.srcAddress, event, context);
+    await updateDepositorMetrics(claimerId, event.srcAddress, event, context);
   }
 );
 
 export const handleReserveFunded = CornerstoneProject.ReserveFunded.handler(
-  async (event, context) => {
+  async ({ event, context }) => {
+    const txHash = event.block.hash;
+    
     context.ReserveFundedEvent.set({
-      id: `${event.transaction.hash}-${event.logIndex}`,
-      projectAddress: event.address,
+      id: `${txHash}-${event.logIndex}`,
+      projectAddress: event.srcAddress,
       amount: event.params.amount,
       fundedBy: event.params.by,
-      blockNumber: BigInt(event.blockNumber),
+      blockNumber: BigInt(event.block.number),
       blockTimestamp: BigInt(event.block.timestamp),
-      transactionHash: event.transaction.hash,
+      transactionHash: txHash,
     });
 
-    await updateProjectState(event.address, context);
+    await updateProjectState(event.srcAddress, event, context);
   }
 );
 
 export const handleFundraiseClosed = CornerstoneProject.FundraiseClosed.handler(
-  async (event, context) => {
+  async ({ event, context }) => {
+    const txHash = event.block.hash;
+    
     context.FundraiseClosedEvent.set({
-      id: `${event.transaction.hash}-${event.logIndex}`,
-      projectAddress: event.address,
+      id: `${txHash}-${event.logIndex}`,
+      projectAddress: event.srcAddress,
       successful: event.params.successful,
-      blockNumber: BigInt(event.blockNumber),
+      blockNumber: BigInt(event.block.number),
       blockTimestamp: BigInt(event.block.timestamp),
-      transactionHash: event.transaction.hash,
+      transactionHash: txHash,
     });
 
-    await updateProjectState(event.address, context);
+    await updateProjectState(event.srcAddress, event, context);
   }
 );
 
 export const handlePhaseClosed = CornerstoneProject.PhaseClosed.handler(
-  async (event, context) => {
-    const projectAddress = event.address.toLowerCase();
+  async ({ event, context }) => {
+    const projectAddress = event.srcAddress.toLowerCase();
+    const txHash = event.block.hash;
 
     context.PhaseClosedEvent.set({
-      id: `${event.transaction.hash}-${event.logIndex}`,
-      project: projectAddress,
-      phaseId: event.params.phaseId,
+      id: `${txHash}-${event.logIndex}`,
+      project_id: projectAddress,
+      phaseId: Number(event.params.phaseId),
       docTypes: event.params.docTypes,
       docHashes: event.params.docHashes,
       metadataURIs: event.params.metadataURIs,
-      blockNumber: BigInt(event.blockNumber),
+      blockNumber: BigInt(event.block.number),
       blockTimestamp: BigInt(event.block.timestamp),
-      transactionHash: event.transaction.hash,
+      transactionHash: txHash,
     });
 
     const phaseMetricsId = `${projectAddress}-phase-${event.params.phaseId}`;
     let phaseMetrics = await context.PhaseMetrics.get(phaseMetricsId);
     
     if (!phaseMetrics) {
-      phaseMetrics = {
+      context.PhaseMetrics.set({
         id: phaseMetricsId,
-        project: projectAddress,
-        phaseId: event.params.phaseId,
+        project_id: projectAddress,
+        phaseId: Number(event.params.phaseId),
         phaseCap: 0n,
         phaseWithdrawn: 0n,
         aprBps: 0n,
         duration: 0n,
         capBps: 0n,
         isClosed: true,
-        closedAtBlock: BigInt(event.blockNumber),
+        closedAtBlock: BigInt(event.block.number),
         closedAtTimestamp: BigInt(event.block.timestamp),
-      };
+      });
     } else {
-      phaseMetrics.isClosed = true;
-      phaseMetrics.closedAtBlock = BigInt(event.blockNumber);
-      phaseMetrics.closedAtTimestamp = BigInt(event.block.timestamp);
+      context.PhaseMetrics.set({
+        ...phaseMetrics,
+        isClosed: true,
+        closedAtBlock: BigInt(event.block.number),
+        closedAtTimestamp: BigInt(event.block.timestamp),
+      });
     }
-    
-    context.PhaseMetrics.set(phaseMetrics);
 
-    await updateProjectState(event.address, context);
+    await updateProjectState(event.srcAddress, event, context);
   }
 );
 
 export const handlePhaseFundsWithdrawn = CornerstoneProject.PhaseFundsWithdrawn.handler(
-  async (event, context) => {
-    const projectAddress = event.address.toLowerCase();
+  async ({ event, context }) => {
+    const projectAddress = event.srcAddress.toLowerCase();
+    const txHash = event.block.hash;
 
     context.PhaseFundsWithdrawnEvent.set({
-      id: `${event.transaction.hash}-${event.logIndex}`,
-      projectAddress: event.address,
-      phaseId: event.params.phaseId,
+      id: `${txHash}-${event.logIndex}`,
+      projectAddress: event.srcAddress,
+      phaseId: Number(event.params.phaseId),
       amount: event.params.amount,
-      blockNumber: BigInt(event.blockNumber),
+      blockNumber: BigInt(event.block.number),
       blockTimestamp: BigInt(event.block.timestamp),
-      transactionHash: event.transaction.hash,
+      transactionHash: txHash,
     });
 
     const phaseMetricsId = `${projectAddress}-phase-${event.params.phaseId}`;
     let phaseMetrics = await context.PhaseMetrics.get(phaseMetricsId);
     
     if (phaseMetrics) {
-      phaseMetrics.phaseWithdrawn += event.params.amount;
-      context.PhaseMetrics.set(phaseMetrics);
+      context.PhaseMetrics.set({
+        ...phaseMetrics,
+        phaseWithdrawn: phaseMetrics.phaseWithdrawn + event.params.amount,
+      });
     }
 
-    await updateProjectState(event.address, context);
+    await updateProjectState(event.srcAddress, event, context);
   }
 );
 
 export const handleAppraisalSubmitted = CornerstoneProject.AppraisalSubmitted.handler(
-  async (event, context) => {
+  async ({ event, context }) => {
+    const txHash = event.block.hash;
+    
     context.AppraisalSubmittedEvent.set({
-      id: `${event.transaction.hash}-${event.logIndex}`,
-      projectAddress: event.address,
+      id: `${txHash}-${event.logIndex}`,
+      projectAddress: event.srcAddress,
       percentComplete: event.params.percentComplete,
       appraisalHash: event.params.appraisalHash,
-      blockNumber: BigInt(event.blockNumber),
+      blockNumber: BigInt(event.block.number),
       blockTimestamp: BigInt(event.block.timestamp),
-      transactionHash: event.transaction.hash,
+      transactionHash: txHash,
     });
 
-    await updateProjectState(event.address, context);
+    await updateProjectState(event.srcAddress, event, context);
   }
 );
 
 export const handleSalesProceedsSubmitted = CornerstoneProject.SalesProceedsSubmitted.handler(
-  async (event, context) => {
+  async ({ event, context }) => {
+    const txHash = event.block.hash;
+    
     context.SalesProceedsSubmittedEvent.set({
-      id: `${event.transaction.hash}-${event.logIndex}`,
-      projectAddress: event.address,
-      amount: event.params.amountPYUSD,
-      blockNumber: BigInt(event.blockNumber),
+      id: `${txHash}-${event.logIndex}`,
+      projectAddress: event.srcAddress,
+      amount: event.params.amount,
+      blockNumber: BigInt(event.block.number),
       blockTimestamp: BigInt(event.block.timestamp),
-      transactionHash: event.transaction.hash,
+      transactionHash: txHash,
     });
 
-    await updateProjectState(event.address, context);
+    await updateProjectState(event.srcAddress, event, context);
   }
 );
 
 export const handlePrincipalClaimed = CornerstoneProject.PrincipalClaimed.handler(
-  async (event, context) => {
+  async ({ event, context }) => {
     const claimerId = event.params.user.toLowerCase();
 
     let depositor = await context.Depositor.get(claimerId);
     if (depositor) {
-      depositor.principalRedeemed += event.params.amount;
-      depositor.sharesHeld = depositor.sharesHeld >= event.params.amount 
+      const newSharesHeld = depositor.sharesHeld >= event.params.amount 
         ? depositor.sharesHeld - event.params.amount 
         : 0n;
-      context.Depositor.set(depositor);
+      
+      context.Depositor.set({
+        ...depositor,
+        principalRedeemed: depositor.principalRedeemed + event.params.amount,
+        sharesHeld: newSharesHeld,
+      });
     }
 
+    const txHash = event.block.hash;
+    
     context.PrincipalClaimedEvent.set({
-      id: `${event.transaction.hash}-${event.logIndex}`,
-      claimer: claimerId,
-      projectAddress: event.address,
+      id: `${txHash}-${event.logIndex}`,
+      claimer_id: claimerId,
+      projectAddress: event.srcAddress,
       amount: event.params.amount,
-      blockNumber: BigInt(event.blockNumber),
+      blockNumber: BigInt(event.block.number),
       blockTimestamp: BigInt(event.block.timestamp),
-      transactionHash: event.transaction.hash,
+      transactionHash: txHash,
     });
 
-    await updateProjectState(event.address, context);
-    await updateDepositorMetrics(claimerId, event.address, context);
+    await updateProjectState(event.srcAddress, event, context);
+    await updateDepositorMetrics(claimerId, event.srcAddress, event, context);
   }
 );
 
 export const handleRevenueClaimed = CornerstoneProject.RevenueClaimed.handler(
-  async (event, context) => {
+  async ({ event, context }) => {
     const claimerId = event.params.user.toLowerCase();
 
     let depositor = await context.Depositor.get(claimerId);
     if (depositor) {
-      depositor.revenueClaimed += event.params.amount;
-      context.Depositor.set(depositor);
+      context.Depositor.set({
+        ...depositor,
+        revenueClaimed: depositor.revenueClaimed + event.params.amount,
+      });
     }
 
+    const txHash = event.block.hash;
+    
     context.RevenueClaimedEvent.set({
-      id: `${event.transaction.hash}-${event.logIndex}`,
-      claimer: claimerId,
-      projectAddress: event.address,
+      id: `${txHash}-${event.logIndex}`,
+      claimer_id: claimerId,
+      projectAddress: event.srcAddress,
       amount: event.params.amount,
-      blockNumber: BigInt(event.blockNumber),
+      blockNumber: BigInt(event.block.number),
       blockTimestamp: BigInt(event.block.timestamp),
-      transactionHash: event.transaction.hash,
+      transactionHash: txHash,
     });
 
-    await updateProjectState(event.address, context);
-    await updateDepositorMetrics(claimerId, event.address, context);
+    await updateProjectState(event.srcAddress, event, context);
+    await updateDepositorMetrics(claimerId, event.srcAddress, event, context);
   }
 );
 
 async function updateProjectState(
   projectAddress: string,
+  event: any,
   context: any
 ): Promise<void> {
   const projectId = projectAddress.toLowerCase();
@@ -263,7 +293,7 @@ async function updateProjectState(
   let projectState = await context.ProjectState.get(projectId);
   
   if (!projectState) {
-    projectState = {
+    context.ProjectState.set({
       id: projectId,
       currentPhase: 0,
       lastClosedPhase: 0,
@@ -280,20 +310,22 @@ async function updateProjectState(
       lastAppraisalHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
       interestPerShareX18: 0n,
       revenuePerShareX18: 0n,
-      lastUpdatedBlock: 0n,
-      lastUpdatedTimestamp: 0n,
-    };
+      lastUpdatedBlock: BigInt(event.block.number),
+      lastUpdatedTimestamp: BigInt(event.block.timestamp),
+    });
+  } else {
+    context.ProjectState.set({
+      ...projectState,
+      lastUpdatedBlock: BigInt(event.block.number),
+      lastUpdatedTimestamp: BigInt(event.block.timestamp),
+    });
   }
-  
-  projectState.lastUpdatedBlock = BigInt(context.blockNumber || 0);
-  projectState.lastUpdatedTimestamp = BigInt(context.block?.timestamp || 0);
-  
-  context.ProjectState.set(projectState);
 }
 
 async function updateDepositorMetrics(
   userId: string,
   projectAddress: string,
+  event: any,
   context: any
 ): Promise<void> {
   const metricsId = `${projectAddress}-${userId}`.toLowerCase();
@@ -302,10 +334,10 @@ async function updateDepositorMetrics(
   const depositor = await context.Depositor.get(userId);
   
   if (!metrics && depositor) {
-    metrics = {
+    context.DepositorMetrics.set({
       id: metricsId,
       user: userId,
-      contractAddress: projectAddress,
+      projectAddress: projectAddress,
       depositCount: 1n,
       totalDeposited: depositor.totalDeposited,
       currentShares: depositor.sharesHeld,
@@ -316,20 +348,19 @@ async function updateDepositorMetrics(
       totalPrincipalRedeemed: depositor.principalRedeemed,
       firstDepositBlock: depositor.lastDepositBlock,
       firstDepositTimestamp: depositor.lastDepositTimestamp,
-      lastActivityBlock: BigInt(context.blockNumber || 0),
-      lastActivityTimestamp: BigInt(context.block?.timestamp || 0),
-    };
+      lastActivityBlock: BigInt(event.block.number),
+      lastActivityTimestamp: BigInt(event.block.timestamp),
+    });
   } else if (metrics && depositor) {
-    metrics.totalDeposited = depositor.totalDeposited;
-    metrics.currentShares = depositor.sharesHeld;
-    metrics.totalInterestClaimed = depositor.interestClaimed;
-    metrics.totalRevenueClaimed = depositor.revenueClaimed;
-    metrics.totalPrincipalRedeemed = depositor.principalRedeemed;
-    metrics.lastActivityBlock = BigInt(context.blockNumber || 0);
-    metrics.lastActivityTimestamp = BigInt(context.block?.timestamp || 0);
-  }
-  
-  if (metrics) {
-    context.DepositorMetrics.set(metrics);
+    context.DepositorMetrics.set({
+      ...metrics,
+      totalDeposited: depositor.totalDeposited,
+      currentShares: depositor.sharesHeld,
+      totalInterestClaimed: depositor.interestClaimed,
+      totalRevenueClaimed: depositor.revenueClaimed,
+      totalPrincipalRedeemed: depositor.principalRedeemed,
+      lastActivityBlock: BigInt(event.block.number),
+      lastActivityTimestamp: BigInt(event.block.timestamp),
+    });
   }
 }
