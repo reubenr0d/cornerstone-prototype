@@ -101,15 +101,19 @@ const CreateProject = () => {
   }, [name]);
 
   const [deployInfo, setDeployInfo] = useState<{ project: string; token: string } | null>(null);
+  const [isPublishing, setIsPublishing] = useState(false);
 
   async function handlePublish() {
+    setIsPublishing(true);
     try {
       if (!contractsConfig.registry) {
         toast.error('Registry address not configured (VITE_REGISTRY_ADDRESS)');
+        setIsPublishing(false);
         return;
       }
       if (!name || !minRaise || !maxRaise) {
         toast.error('Fill in name, min and max raise');
+        setIsPublishing(false);
         return;
       }
       const signer = await getSigner();
@@ -139,6 +143,7 @@ const CreateProject = () => {
         const rpcChainHex = '0x' + Number(net.chainId?.toString() || '0').toString(16);
         if (signerChainId && rpcChainHex && signerChainId !== rpcChainHex) {
           toast.error(`Network mismatch. Wallet: ${signerChainId}, RPC: ${rpcChainHex}. Switch your wallet to match VITE_RPC_URL or update VITE_RPC_URL.`);
+          setIsPublishing(false);
           return;
         }
       } catch {}
@@ -150,11 +155,13 @@ const CreateProject = () => {
       const phaseCaps = allMilestones.map(m => Math.round(parseFloat(m.payout || '0') * 100)); // % → bps
       if (phaseAPRs.length !== 6 || phaseCaps.length !== 6) {
         toast.error('Exactly 6 phases required (including fundraising phase 0)');
+        setIsPublishing(false);
         return;
       }
       const sumCaps = phaseCaps.slice(1).reduce((a, b) => a + b, 0); // only development phases count toward caps
       if (sumCaps > 10000) {
         toast.error('Phase caps exceed 100% total');
+        setIsPublishing(false);
         return;
       }
       // durations: include phase 0 for completeness; informational only
@@ -258,6 +265,8 @@ const CreateProject = () => {
       console.error(e);
       const reason = e?.info?.error?.data?.message || e?.error?.message || e?.reason || e?.message;
       toast.error(reason || 'Deploy failed');
+    } finally {
+      setIsPublishing(false);
     }
   }
 
@@ -501,8 +510,8 @@ const CreateProject = () => {
                 </div>
 
                 <div className="flex gap-3">
-                  <Button className="flex-1" onClick={handlePublish}>
-                    Deploy & Publish
+                  <Button className="flex-1" onClick={handlePublish} disabled={isPublishing}>
+                    {isPublishing ? 'Deploying...' : 'Deploy & Publish'}
                   </Button>
                 </div>
                 {deployInfo && (
