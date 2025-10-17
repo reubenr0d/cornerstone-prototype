@@ -1,7 +1,28 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {CornerstoneProject} from "./CornerstoneProject.sol";
+import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+
+interface ICornerstoneToken {
+    function initialize(string memory name_, string memory symbol_, address project_) external;
+}
+
+interface ICornerstoneProject {
+    function initialize(
+        address developer,
+        address usdc_,
+        string memory name_,
+        string memory symbol_,
+        uint256 minRaise_,
+        uint256 maxRaise_,
+        uint256 fundraiseDeadline_,
+        uint256[6] memory phaseAPRs_,
+        uint256[6] memory phaseDurations_,
+        uint256[6] memory phaseCapsBps_,
+        address token_
+    ) external;
+}
 
 interface IProjectRegistry {
     function createProject(
@@ -25,15 +46,21 @@ interface IProjectRegistry {
     ) external returns (address projectAddress, address tokenAddress);
 }
 
-contract ProjectRegistry is IProjectRegistry {
+contract ProjectRegistry is IProjectRegistry, Ownable {
     address public immutable usdc; // stablecoin used across projects
+    address public immutable projectImpl;
+    address public immutable tokenImpl;
     uint256 public projectCount;
 
     event ProjectCreated(address indexed project, address indexed token, address indexed creator);
 
-    constructor(address _usdc) {
+    constructor(address _usdc, address _projectImpl, address _tokenImpl) Ownable(msg.sender) {
         require(_usdc != address(0), "USDC addr required");
+        require(_projectImpl != address(0), "project impl required");
+        require(_tokenImpl != address(0), "token impl required");
         usdc = _usdc;
+        projectImpl = _projectImpl;
+        tokenImpl = _tokenImpl;
     }
 
     function createProject(
@@ -51,23 +78,7 @@ contract ProjectRegistry is IProjectRegistry {
         string memory tName = _concat("Cornerstone Project #", _uToString(projectCount));
         string memory tSym = _concat("cAGG-", _uToString(projectCount));
 
-        CornerstoneProject project = new CornerstoneProject(
-            msg.sender,
-            usdc,
-            tName,
-            tSym,
-            minRaise,
-            maxRaise,
-            fundraiseDeadline,
-            phaseAPRs,
-            phaseDurations,
-            phaseWithdrawCaps
-        );
-
-        projectAddress = address(project);
-        tokenAddress = project.token();
-
-        emit ProjectCreated(projectAddress, tokenAddress, msg.sender);
+        return _createProjectInternal(msg.sender, tName, tSym, minRaise, maxRaise, fundraiseDeadline, phaseAPRs, phaseDurations, phaseWithdrawCaps);
     }
 
     function createProjectWithTokenMeta(
@@ -85,8 +96,32 @@ contract ProjectRegistry is IProjectRegistry {
         require(fundraiseDeadline > block.timestamp, "deadline in past");
 
         projectCount += 1;
-        CornerstoneProject project = new CornerstoneProject(
-            msg.sender,
+        return _createProjectInternal(msg.sender, tokenName, tokenSymbol, minRaise, maxRaise, fundraiseDeadline, phaseAPRs, phaseDurations, phaseWithdrawCaps);
+    }
+
+    function _createProjectInternal(
+        address developer,
+        string memory tokenName,
+        string memory tokenSymbol,
+        uint256 minRaise,
+        uint256 maxRaise,
+        uint256 fundraiseDeadline,
+        uint256[6] calldata phaseAPRs,
+        uint256[6] calldata phaseDurations,
+        uint256[6] calldata phaseWithdrawCaps
+    ) internal returns (address projectAddress, address tokenAddress) {
+        // Clone token implementation
+        tokenAddress = Clones.clone(tokenImpl);
+        
+        // Clone project implementation
+        projectAddress = Clones.clone(projectImpl);
+
+        // Initialize token
+        ICornerstoneToken(tokenAddress).initialize(tokenName, tokenSymbol, projectAddress);
+
+        // Initialize project
+        ICornerstoneProject(projectAddress).initialize(
+            developer,
             usdc,
             tokenName,
             tokenSymbol,
@@ -95,11 +130,11 @@ contract ProjectRegistry is IProjectRegistry {
             fundraiseDeadline,
             phaseAPRs,
             phaseDurations,
-            phaseWithdrawCaps
+            phaseWithdrawCaps,
+            tokenAddress
         );
-        projectAddress = address(project);
-        tokenAddress = project.token();
-        emit ProjectCreated(projectAddress, tokenAddress, msg.sender);
+
+        emit ProjectCreated(projectAddress, tokenAddress, developer);
     }
 
     function _concat(string memory a, string memory b) internal pure returns (string memory) {

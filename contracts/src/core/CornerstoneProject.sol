@@ -3,11 +3,11 @@ pragma solidity ^0.8.24;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-
-import {CornerstoneToken} from "./CornerstoneToken.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 interface ICornerstoneProject {
     // ---- Deposits ----
@@ -55,7 +55,15 @@ interface ITransferHook {
     function onTokenTransfer(address from, address to, uint256 amount) external;
 }
 
-contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, ReentrancyGuard, ITransferHook {
+contract CornerstoneProject is
+    Initializable,
+    ICornerstoneProject,
+    OwnableUpgradeable,
+    PausableUpgradeable,
+    ReentrancyGuardUpgradeable,
+    UUPSUpgradeable,
+    ITransferHook
+{
     using SafeERC20 for IERC20;
 
     // Constants
@@ -64,13 +72,13 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     uint8 public constant NUM_PHASES = 5; // 0..5 total phases; 0 is fundraising, 1..5 are development phases
 
     // External assets
-    IERC20 public immutable usdc;
-    CornerstoneToken private _token;
+    IERC20 public usdc;
+    address public _token;
 
     // Fundraise params
-    uint256 public immutable minRaise;
-    uint256 public immutable maxRaise;
-    uint256 public immutable fundraiseDeadline;
+    uint256 public minRaise;
+    uint256 public maxRaise;
+    uint256 public fundraiseDeadline;
 
     // Phase config (0..5)
     uint256[6] public phaseAPRsBps; // per phase (0..5) APR in bps (phase 0 typically 0)
@@ -127,17 +135,12 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     event PrincipalClaimed(address indexed user, uint256 amount);
     event RevenueClaimed(address indexed user, uint256 amount);
 
-    modifier onlyDev() {
-        require(msg.sender == owner(), "dev only");
-        _;
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
     }
 
-    modifier updateAccrual() {
-        _accrueInterest();
-        _;
-    }
-
-    constructor(
+    function initialize(
         address developer,
         address usdc_,
         string memory name_,
@@ -147,9 +150,17 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         uint256 fundraiseDeadline_,
         uint256[6] memory phaseAPRs_,
         uint256[6] memory phaseDurations_,
-        uint256[6] memory phaseCapsBps_
-    ) Ownable(developer) {
+        uint256[6] memory phaseCapsBps_,
+        address token_
+    ) public initializer {
         require(usdc_ != address(0), "usdc required");
+        require(token_ != address(0), "token required");
+
+        __Ownable_init(developer);
+        __Pausable_init();
+        __ReentrancyGuard_init();
+        __UUPSUpgradeable_init();
+
         usdc = IERC20(usdc_);
         minRaise = minRaise_;
         maxRaise = maxRaise_;
@@ -157,6 +168,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         phaseAPRsBps = phaseAPRs_;
         phaseDurations = phaseDurations_;
         phaseCapsBps = phaseCapsBps_;
+        _token = token_;
 
         // enforce sum of development phase caps (1..5) ≤ 100%
         uint256 sumCaps;
@@ -169,14 +181,23 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         currentPhase = 0;
         lastClosedPhase = 0;
         lastAccrualTs = block.timestamp;
+    }
 
-        // Deploy token with provided per-project name/symbol
-        _token = new CornerstoneToken(name_, symbol_, address(this));
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+
+    modifier onlyDev() {
+        require(msg.sender == owner(), "dev only");
+        _;
+    }
+
+    modifier updateAccrual() {
+        _accrueInterest();
+        _;
     }
 
     // ---- View helpers ----
     function token() external view returns (address) {
-        return address(_token);
+        return _token;
     }
 
     function getPhaseCap(uint8 phaseId) public view returns (uint256) {
@@ -208,7 +229,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         }
 
         usdc.safeTransferFrom(msg.sender, address(this), amountUSDC);
-        _token.mint(msg.sender, amountUSDC);
+        _mintToken(msg.sender, amountUSDC);
 
         // transfer hook will set corrections so new depositors don't get past distributions
 
@@ -374,13 +395,13 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     function withdrawPrincipal(uint256 shares) external nonReentrant whenNotPaused updateAccrual {
         require(fundraiseSuccessful, "fundraise failed");
         require(shares > 0, "shares=0");
-        require(_token.balanceOf(msg.sender) >= shares, "insufficient shares");
+        require(_tokenBalanceOf(msg.sender) >= shares, "insufficient shares");
 
         // ensure principal buffer has sufficient funds
         require(principalBuffer >= shares, "insufficient principal");
 
         // Burn first to update corrections before transfer
-        _token.burn(msg.sender, shares);
+        _burnToken(msg.sender, shares);
 
         principalBuffer -= shares;
         principalRedeemed += shares;
@@ -418,9 +439,9 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         }
         require(fundraiseClosed && !fundraiseSuccessful, "not failed");
         require(user != address(0), "bad user");
-        uint256 bal = _token.balanceOf(user);
+        uint256 bal = _tokenBalanceOf(user);
         require(bal > 0, "no balance");
-        _token.burn(user, bal);
+        _burnToken(user, bal);
         require(poolBalance >= bal, "pool underflow");
         poolBalance -= bal;
         accrualBase = accrualBase >= bal ? accrualBase - bal : 0;
@@ -438,7 +459,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
 
     // ---- Transfer hook from token to handle corrections ----
     function onTokenTransfer(address from, address to, uint256 amount) external {
-        require(msg.sender == address(_token), "only token");
+        require(msg.sender == _token, "only token");
         if (amount == 0) return;
         int256 iDelta = int256(interestPerShareX18 * amount);
         int256 rDelta = int256(revenuePerShareX18 * amount);
@@ -476,7 +497,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         poolBalance += interest;
         accrualBase += interest; // compounding
 
-        uint256 supply = _token.totalSupply();
+        uint256 supply = _tokenTotalSupply();
         if (supply > 0) {
             interestPerShareX18 += (interest * ACC_PREC) / supply;
         }
@@ -489,7 +510,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     // ---- Internal: Revenue distribution ----
     function _distributeRevenue(uint256 amount) internal {
         if (amount == 0) return;
-        uint256 supply = _token.totalSupply();
+        uint256 supply = _tokenTotalSupply();
         if (supply == 0) return; // nothing to distribute to
         revenuePerShareX18 += (amount * ACC_PREC) / supply;
         // Funds are already in poolBalance; users will pull via claimRevenue
@@ -497,7 +518,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
 
     // ---- Internal: Claimable calculations ----
     function _claimableInterest(address user) internal view returns (uint256) {
-        uint256 bal = _token.balanceOf(user);
+        uint256 bal = _tokenBalanceOf(user);
         uint256 accum = (bal * interestPerShareX18) / ACC_PREC;
         int256 corrected = int256(accum) + (interestCorrection[user] / int256(ACC_PREC));
         if (corrected <= 0) return 0;
@@ -507,7 +528,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     }
 
     function _claimableRevenue(address user) internal view returns (uint256) {
-        uint256 bal = _token.balanceOf(user);
+        uint256 bal = _tokenBalanceOf(user);
         uint256 accum = (bal * revenuePerShareX18) / ACC_PREC;
         int256 corrected = int256(accum) + (revenueCorrection[user] / int256(ACC_PREC));
         if (corrected <= 0) return 0;
@@ -523,6 +544,37 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
 
     function claimableRevenue(address user) external view returns (uint256) {
         return _claimableRevenue(user);
+    }
+
+    // ---- Token helper functions (via external calls) ----
+    function _tokenBalanceOf(address user) internal view returns (uint256) {
+        (bool success, bytes memory data) = _token.staticcall(
+            abi.encodeWithSignature("balanceOf(address)", user)
+        );
+        require(success && data.length >= 32, "balanceOf failed");
+        return abi.decode(data, (uint256));
+    }
+
+    function _tokenTotalSupply() internal view returns (uint256) {
+        (bool success, bytes memory data) = _token.staticcall(
+            abi.encodeWithSignature("totalSupply()")
+        );
+        require(success && data.length >= 32, "totalSupply failed");
+        return abi.decode(data, (uint256));
+    }
+
+    function _mintToken(address to, uint256 amount) internal {
+        (bool success,) = _token.call(
+            abi.encodeWithSignature("mint(address,uint256)", to, amount)
+        );
+        require(success, "mint failed");
+    }
+
+    function _burnToken(address from, uint256 amount) internal {
+        (bool success,) = _token.call(
+            abi.encodeWithSignature("burn(address,uint256)", from, amount)
+        );
+        require(success, "burn failed");
     }
 
     // ---- Utils ----

@@ -31,13 +31,29 @@ async function deployProjectFixture(opts = {}) {
   const maxRaise = opts.maxRaise ?? 5_000_000n; // 5m
   const fundraiseDeadline = opts.deadline ?? now + 7 * 24 * 60 * 60; // +7d
 
-  const CornerstoneProject = await ethers.getContractFactory(
+  // Deploy implementations
+  const TokenImpl = await ethers.getContractFactory("CornerstoneToken", dev);
+  const tokenImpl = await TokenImpl.deploy();
+  await tokenImpl.waitForDeployment();
+
+  const ProjectImpl = await ethers.getContractFactory(
     "CornerstoneProject",
-    dev
+    dev,
   );
-  const project = await CornerstoneProject.deploy(
-    dev.address,
+  const projectImpl = await ProjectImpl.deploy();
+  await projectImpl.waitForDeployment();
+
+  // Deploy registry with implementations
+  const Registry = await ethers.getContractFactory("ProjectRegistry", dev);
+  const registry = await Registry.deploy(
     await usdc.getAddress(),
+    await projectImpl.getAddress(),
+    await tokenImpl.getAddress(),
+  );
+  await registry.waitForDeployment();
+
+  // Create project via registry
+  const tx = await registry.createProjectWithTokenMeta(
     "Cornerstone Token",
     "cAGG-TEST",
     minRaise,
@@ -45,12 +61,21 @@ async function deployProjectFixture(opts = {}) {
     fundraiseDeadline,
     phaseAPRs,
     phaseDurations,
-    phaseCapsBps
+    phaseCapsBps,
   );
-  await project.waitForDeployment();
+  const rc = await tx.wait();
+  const evt = rc.logs.find(
+    (l) => l.fragment && l.fragment.name === "ProjectCreated",
+  );
+  const projectAddr = evt?.args?.project;
+  const tokenAddr = evt?.args?.token;
 
-  const tokenAddr = await project.token();
-  const token = await ethers.getContractAt("CornerstoneToken", tokenAddr);
+  const project = await ethers.getContractAt(
+    "CornerstoneProject",
+    projectAddr,
+    dev,
+  );
+  const token = await ethers.getContractAt("CornerstoneToken", tokenAddr, dev);
 
   // helpers: mint balances and approvals
   async function mintAndApprove(user, amount) {
@@ -66,7 +91,14 @@ async function deployProjectFixture(opts = {}) {
     usdc,
     project,
     token,
-    params: { minRaise, maxRaise, fundraiseDeadline, phaseAPRs, phaseDurations, phaseCapsBps },
+    params: {
+      minRaise,
+      maxRaise,
+      fundraiseDeadline,
+      phaseAPRs,
+      phaseDurations,
+      phaseCapsBps,
+    },
     mintAndApprove,
   };
 }
@@ -74,11 +106,32 @@ async function deployProjectFixture(opts = {}) {
 async function deployRegistryFixture() {
   const [deployer] = await ethers.getSigners();
   const { usdc } = await deployUSDC();
+
+  // Deploy implementations
+  const TokenImpl = await ethers.getContractFactory(
+    "CornerstoneToken",
+    deployer,
+  );
+  const tokenImpl = await TokenImpl.deploy();
+  await tokenImpl.waitForDeployment();
+
+  const ProjectImpl = await ethers.getContractFactory(
+    "CornerstoneProject",
+    deployer,
+  );
+  const projectImpl = await ProjectImpl.deploy();
+  await projectImpl.waitForDeployment();
+
+  // Deploy registry with implementations
   const ProjectRegistry = await ethers.getContractFactory(
     "ProjectRegistry",
-    deployer
+    deployer,
   );
-  const registry = await ProjectRegistry.deploy(await usdc.getAddress());
+  const registry = await ProjectRegistry.deploy(
+    await usdc.getAddress(),
+    await projectImpl.getAddress(),
+    await tokenImpl.getAddress(),
+  );
   await registry.waitForDeployment();
   return { deployer, usdc, registry };
 }
