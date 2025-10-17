@@ -5,6 +5,17 @@ import IERC20Artifact from './IERC20.json';
 
 type ArtifactWithAbi = { abi: unknown };
 
-export const CornerstoneProjectABI = (CornerstoneProjectArtifact as ArtifactWithAbi).abi;
-export const ProjectRegistryABI = (ProjectRegistryArtifact as ArtifactWithAbi).abi;
-export const ERC20ABI = (IERC20Artifact as ArtifactWithAbi).abi;
+// Helper to extract ABI from either raw ABI array or Hardhat artifact
+function extractAbi(artifact: unknown): unknown {
+  if (Array.isArray(artifact)) {
+    return artifact;
+  }
+  if (artifact && typeof artifact === 'object' && 'abi' in artifact) {
+    return (artifact as ArtifactWithAbi).abi;
+  }
+  throw new Error('Invalid ABI artifact format');
+}
+
+export const CornerstoneProjectABI = extractAbi(CornerstoneProjectArtifact);
+export const ProjectRegistryABI = extractAbi(ProjectRegistryArtifact);
+export const ERC20ABI = extractAbi(IERC20Artifact);
