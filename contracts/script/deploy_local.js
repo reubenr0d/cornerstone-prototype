@@ -1,22 +1,25 @@
 const hre = require('hardhat');
 
 async function main() {
-  const [deployer] = await hre.ethers.getSigners();
-  console.log('Deployer:', deployer.address);
-
-  // Deploy MockUSDC
-  const Mock = await hre.ethers.getContractFactory('MockUSDC');
-  const mock = await Mock.deploy();
-  await mock.waitForDeployment();
-  const usdc = await mock.getAddress();
-  console.log('MockUSDC:', usdc);
-
-  // Mint some to deployer
-  await (await mock.mint(deployer.address, 1_000_000n * 10n ** 6n)).wait();
+  const pyusd = process.env.PYUSD_ADDRESS
+  if (!pyusd) {
+    const [deployer] = await hre.ethers.getSigners();
+    console.log('Deployer:', deployer.address);
+  
+    // Deploy MockPYUSD
+    const Mock = await hre.ethers.getContractFactory('MockPYUSD');
+    const mock = await Mock.deploy();
+    await mock.waitForDeployment();
+    const pyusd = await mock.getAddress();
+    console.log('MockPYUSD:', pyusd);
+  
+    // Mint some to deployer
+    await (await mock.mint(deployer.address, 1_000_000n * 10n ** 6n)).wait();
+  }
 
   // Deploy registry
   const Reg = await hre.ethers.getContractFactory('ProjectRegistry');
-  const reg = await Reg.deploy(usdc);
+  const reg = await Reg.deploy(pyusd);
   await reg.waitForDeployment();
   const registry = await reg.getAddress();
   console.log('ProjectRegistry:', registry);
@@ -41,7 +44,7 @@ async function main() {
 
   // Output for frontend env
   console.log('\n--- paste into app/.env.local ---');
-  console.log(`VITE_USDC_ADDRESS=${usdc}`);
+  console.log(`VITE_PYUSD_ADDRESS=${pyusd}`);
   console.log(`VITE_REGISTRY_ADDRESS=${registry}`);
   // Project and Token addresses are shown above; do not write as env.
 }

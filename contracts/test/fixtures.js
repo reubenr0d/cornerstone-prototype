@@ -1,12 +1,12 @@
 const { ethers } = require("hardhat");
 const { time } = require("@nomicfoundation/hardhat-network-helpers");
 
-async function deployUSDC() {
+async function deployPYUSD() {
   const [deployer] = await ethers.getSigners();
-  const MockUSDC = await ethers.getContractFactory("MockUSDC", deployer);
-  const usdc = await MockUSDC.deploy();
-  await usdc.waitForDeployment();
-  return { usdc, deployer };
+  const MockPYUSD = await ethers.getContractFactory("MockPYUSD", deployer);
+  const pyusd = await MockPYUSD.deploy();
+  await pyusd.waitForDeployment();
+  return { pyusd, deployer };
 }
 
 function defaultPhaseParams() {
@@ -21,7 +21,7 @@ function defaultPhaseParams() {
 
 async function deployProjectFixture(opts = {}) {
   const [dev, user1, user2, other] = await ethers.getSigners();
-  const { usdc } = await deployUSDC();
+  const { pyusd } = await deployPYUSD();
 
   const { phaseAPRs, phaseDurations, phaseCapsBps } =
     opts.phaseParams || defaultPhaseParams();
@@ -37,7 +37,7 @@ async function deployProjectFixture(opts = {}) {
   );
   const project = await CornerstoneProject.deploy(
     dev.address,
-    await usdc.getAddress(),
+    await pyusd.getAddress(),
     "Cornerstone Token",
     "cAGG-TEST",
     minRaise,
@@ -54,8 +54,8 @@ async function deployProjectFixture(opts = {}) {
 
   // helpers: mint balances and approvals
   async function mintAndApprove(user, amount) {
-    await usdc.mint(user.address, amount);
-    await usdc.connect(user).approve(await project.getAddress(), amount);
+    await pyusd.mint(user.address, amount);
+    await pyusd.connect(user).approve(await project.getAddress(), amount);
   }
 
   return {
@@ -63,7 +63,7 @@ async function deployProjectFixture(opts = {}) {
     user1,
     user2,
     other,
-    usdc,
+    pyusd,
     project,
     token,
     params: { minRaise, maxRaise, fundraiseDeadline, phaseAPRs, phaseDurations, phaseCapsBps },
@@ -73,14 +73,14 @@ async function deployProjectFixture(opts = {}) {
 
 async function deployRegistryFixture() {
   const [deployer] = await ethers.getSigners();
-  const { usdc } = await deployUSDC();
+  const { pyusd } = await deployPYUSD();
   const ProjectRegistry = await ethers.getContractFactory(
     "ProjectRegistry",
     deployer
   );
-  const registry = await ProjectRegistry.deploy(await usdc.getAddress());
+  const registry = await ProjectRegistry.deploy(await pyusd.getAddress());
   await registry.waitForDeployment();
-  return { deployer, usdc, registry };
+  return { deployer, pyusd, registry };
 }
 
 module.exports = {

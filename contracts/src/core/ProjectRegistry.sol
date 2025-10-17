@@ -26,14 +26,14 @@ interface IProjectRegistry {
 }
 
 contract ProjectRegistry is IProjectRegistry {
-    address public immutable usdc; // stablecoin used across projects
+    address public immutable pyusd; // stablecoin used across projects
     uint256 public projectCount;
 
     event ProjectCreated(address indexed project, address indexed token, address indexed creator);
 
-    constructor(address _usdc) {
-        require(_usdc != address(0), "USDC addr required");
-        usdc = _usdc;
+    constructor(address _pyusd) {
+        require(_pyusd != address(0), "pyusd addr required");
+        pyusd = _pyusd;
     }
 
     function createProject(
@@ -53,7 +53,7 @@ contract ProjectRegistry is IProjectRegistry {
 
         CornerstoneProject project = new CornerstoneProject(
             msg.sender,
-            usdc,
+            pyusd,
             tName,
             tSym,
             minRaise,
@@ -87,7 +87,7 @@ contract ProjectRegistry is IProjectRegistry {
         projectCount += 1;
         CornerstoneProject project = new CornerstoneProject(
             msg.sender,
-            usdc,
+            pyusd,
             tokenName,
             tokenSymbol,
             minRaise,

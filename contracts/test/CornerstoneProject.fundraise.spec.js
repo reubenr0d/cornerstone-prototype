@@ -4,11 +4,11 @@ const { time } = require("@nomicfoundation/hardhat-network-helpers");
 const { deployProjectFixture } = require("./fixtures");
 
 describe("CornerstoneProject - Fundraise", function () {
-  it("constructor enforces caps sum <= 100% and nonzero USDC", async function () {
+  it("constructor enforces caps sum <= 100% and nonzero PYUSD", async function () {
     const [dev] = await ethers.getSigners();
-    const MockUSDC = await ethers.getContractFactory("MockUSDC", dev);
-    const usdc = await MockUSDC.deploy();
-    await usdc.waitForDeployment();
+    const MockPYUSD = await ethers.getContractFactory("MockPYUSD", dev);
+    const pyusd = await MockPYUSD.deploy();
+    await pyusd.waitForDeployment();
 
     const CornerstoneProject = await ethers.getContractFactory("CornerstoneProject", dev);
     const now = await time.latest();
@@ -16,7 +16,7 @@ describe("CornerstoneProject - Fundraise", function () {
     await expect(
       CornerstoneProject.deploy(
         dev.address,
-        await usdc.getAddress(),
+        await pyusd.getAddress(),
         "T",
         "SYM",
         1000,
@@ -41,16 +41,16 @@ describe("CornerstoneProject - Fundraise", function () {
         [0, 0, 0, 0, 0, 0],
         [0, 0, 0, 0, 0, 0]
       )
-    ).to.be.revertedWith("usdc required");
+    ).to.be.revertedWith("pyusd required");
   });
 
-  it("deposit in phase 0 mints 1:1 shares and moves USDC", async function () {
-    const { user1, usdc, project, token, mintAndApprove } = await deployProjectFixture();
+  it("deposit in phase 0 mints 1:1 shares and moves PYUSD", async function () {
+    const { user1, pyusd, project, token, mintAndApprove } = await deployProjectFixture();
     await mintAndApprove(user1, 500_000n);
 
     await project.connect(user1).deposit(250_000);
     expect(await token.balanceOf(user1.address)).to.equal(250_000n);
-    expect(await usdc.balanceOf(await project.getAddress())).to.equal(250_000n);
+    expect(await pyusd.balanceOf(await project.getAddress())).to.equal(250_000n);
   });
 
   it("closePhase(0) advances to phase 1 without closing fundraise; success once min met", async function () {
@@ -91,7 +91,7 @@ describe("CornerstoneProject - Fundraise", function () {
   });
 
   it("failed fundraise refunds user via refundIfMinNotMet after deadline passes", async function () {
-    const { dev, user1, usdc, project, token, mintAndApprove, params } = await deployProjectFixture({
+    const { dev, user1, pyusd, project, token, mintAndApprove, params } = await deployProjectFixture({
       minRaise: 1_000_000n,
       maxRaise: 2_000_000n,
     });
@@ -106,11 +106,11 @@ describe("CornerstoneProject - Fundraise", function () {
     const deadline = BigInt(params.fundraiseDeadline);
     await time.increaseTo(deadline + 1n);
 
-    const balBefore = await usdc.balanceOf(user1.address);
+    const balBefore = await pyusd.balanceOf(user1.address);
     await expect(project.refundIfMinNotMet(user1.address))
       .to.emit(project, "FundraiseClosed")
       .withArgs(false);
-    const balAfter = await usdc.balanceOf(user1.address);
+    const balAfter = await pyusd.balanceOf(user1.address);
     expect(balAfter - balBefore).to.equal(100_000n);
     expect(await token.balanceOf(user1.address)).to.equal(0n);
     expect(await project.fundraiseClosed()).to.equal(true);
