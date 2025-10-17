@@ -12,7 +12,7 @@ contracts:
     abi_file_path: ./abis/CornerstoneProject.json
     handler: src/EventHandlers.ts
     events:
-      - event: Deposit(address indexed user, uint256 amountUSDC, uint256 sharesMinted)
+      - event: Deposit(address indexed user, uint256 amount, uint256 sharesMinted)
       - event: InterestClaimed(address indexed user, uint256 amount)
       - event: ReserveFunded(uint256 amount, address indexed by)
       - event: FundraiseClosed(bool successful)
