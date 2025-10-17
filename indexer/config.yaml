@@ -2,11 +2,17 @@ name: Cornerstone Project
 description: Cornerstone Project Indexer
 
 contracts:
+  - name: ProjectRegistry
+    abi_file_path: ./abis/ProjectRegistry.json
+    handler: src/EventHandlers.ts
+    events:
+      - event: ProjectCreated(address indexed project, address indexed token, address indexed creator)
+  
   - name: CornerstoneProject
     abi_file_path: ./abis/CornerstoneProject.json
     handler: src/EventHandlers.ts
     events:
-      - event: Deposit(address indexed user, uint256 amountPYUSD, uint256 sharesMinted)
+      - event: Deposit(address indexed user, uint256 amountUSDC, uint256 sharesMinted)
       - event: InterestClaimed(address indexed user, uint256 amount)
       - event: ReserveFunded(uint256 amount, address indexed by)
       - event: FundraiseClosed(bool successful)
@@ -21,5 +27,8 @@ networks:
   - id: 11155111
     start_block: 0
     contracts:
+      - name: ProjectRegistry
+        address: "0x38896E07B8b927861443c672CfA81539E24995A5"
+      
       - name: CornerstoneProject
         address: "0x0000000000000000000000000000000000000000" # wildcard
