@@ -75,14 +75,14 @@ describe("CornerstoneProject - Reserve & Interest", function () {
   });
 
   it("prevents double-claiming after withdrawing interest and transferring tokens", async function () {
-    const { dev, user1, user2, project, token, usdc, mintAndApprove, params } = await deployProjectFixture();
+    const { dev, user1, user2, project, token, pyusd, mintAndApprove, params } = await deployProjectFixture();
     await mintAndApprove(user1, params.minRaise);
     await project.connect(user1).deposit(params.minRaise);
     await project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
 
     const reserveTopUp = 400_000n;
-    await usdc.mint(dev.address, reserveTopUp);
-    await usdc.connect(dev).approve(await project.getAddress(), reserveTopUp);
+    await pyusd.mint(dev.address, reserveTopUp);
+    await pyusd.connect(dev).approve(await project.getAddress(), reserveTopUp);
     await project.connect(dev).fundReserve(reserveTopUp);
 
     // accrue first year of interest
