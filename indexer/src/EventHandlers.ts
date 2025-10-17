@@ -100,7 +100,7 @@ export const handleDeposit = CornerstoneProject.Deposit.handler(
     if (!depositor) {
       context.Depositor.set({
         id: depositorId,
-        totalDeposited: event.params.amountUSDC,
+        totalDeposited: event.params.amount,
         sharesHeld: event.params.sharesMinted,
         interestClaimed: 0n,
         revenueClaimed: 0n,
@@ -112,7 +112,7 @@ export const handleDeposit = CornerstoneProject.Deposit.handler(
       context.Depositor.set({
         ...depositor,
         sharesHeld: depositor.sharesHeld + event.params.sharesMinted,
-        totalDeposited: depositor.totalDeposited + event.params.amountUSDC,
+        totalDeposited: depositor.totalDeposited + event.params.amount,
         lastDepositBlock: BigInt(event.block.number),
         lastDepositTimestamp: BigInt(event.block.timestamp),
       });
@@ -125,7 +125,7 @@ export const handleDeposit = CornerstoneProject.Deposit.handler(
       depositor_id: depositorId,
       project_id: projectAddress,
       projectAddress: event.srcAddress,
-      amountUSDC: event.params.amountUSDC,
+      amountPYUSD: event.params.amount,
       sharesMinted: event.params.sharesMinted,
       blockNumber: BigInt(event.block.number),
       blockTimestamp: BigInt(event.block.timestamp),
@@ -136,9 +136,9 @@ export const handleDeposit = CornerstoneProject.Deposit.handler(
     if (projectState) {
       context.ProjectState.set({
         ...projectState,
-        totalRaised: projectState.totalRaised + event.params.amountUSDC,
-        poolBalance: projectState.poolBalance + event.params.amountUSDC,
-        accrualBase: projectState.accrualBase + event.params.amountUSDC,
+        totalRaised: projectState.totalRaised + event.params.amount,
+        poolBalance: projectState.poolBalance + event.params.amount,
+        accrualBase: projectState.accrualBase + event.params.amount,
         lastUpdatedBlock: BigInt(event.block.number),
         lastUpdatedTimestamp: BigInt(event.block.timestamp),
       });

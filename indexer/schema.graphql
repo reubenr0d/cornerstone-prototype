@@ -115,7 +115,7 @@ type DepositEvent {
   depositor: Depositor! @index
   project: Project! @index
   projectAddress: Bytes!
-  amountUSDC: BigInt!
+  amountPYUSD: BigInt!
   sharesMinted: BigInt!
   blockNumber: BigInt!
   blockTimestamp: BigInt!
