@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/components/ui/sonner';
+import { Skeleton } from '@/components/ui/skeleton';
 import { ExternalLink, Plus, Edit, Upload, DollarSign, AlertTriangle, MessageSquare, Banknote, DoorClosed, Wallet, FileText, Target, Users, ShieldCheck } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@/components/ui/drawer';
 import { Address, erc20At, fromUSDC, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toUSDC, fetchProjectRealtimeState, fetchProjectStaticConfig, getWindowEthereum } from '@/lib/eth';
@@ -32,6 +33,19 @@ const ProjectDetails = () => {
   const [approvedSupport, setApprovedSupport] = useState(false);
   const [approvedReserve, setApprovedReserve] = useState(false);
   const [approvedProceeds, setApprovedProceeds] = useState(false);
+  
+  // Loading states for transactions
+  const [isApprovingSupport, setIsApprovingSupport] = useState(false);
+  const [isDepositing, setIsDepositing] = useState(false);
+  const [isClaimingInterest, setIsClaimingInterest] = useState(false);
+  const [isRedeemingPrincipal, setIsRedeemingPrincipal] = useState(false);
+  const [isClaimingRevenue, setIsClaimingRevenue] = useState(false);
+  const [isApprovingReserve, setIsApprovingReserve] = useState(false);
+  const [isFundingReserve, setIsFundingReserve] = useState(false);
+  const [isClosingPhase, setIsClosingPhase] = useState(false);
+  const [isWithdrawingFunds, setIsWithdrawingFunds] = useState(false);
+  const [isApprovingProceeds, setIsApprovingProceeds] = useState(false);
+  const [isSubmittingProceeds, setIsSubmittingProceeds] = useState(false);
 
   const projectAddress = useMemo<Address | null>(() => {
     const p = id as string | undefined;
@@ -45,6 +59,7 @@ const ProjectDetails = () => {
   const [realtimeData, setRealtimeData] = useState<any>(null);
   const [staticConfig, setStaticConfig] = useState<any>(null);
   const [supporters, setSupporters] = useState<number>(0);
+  const [loading, setLoading] = useState(true);
 
   async function connectWallet() {
     try {
@@ -76,6 +91,8 @@ const ProjectDetails = () => {
     try {
       if (!projectAddress) return;
       
+      setLoading(true);
+      
       // Try injected provider first; fall back to RPC on failure
       let provider = getWindowEthereum() ? await getProvider() : getRpcProvider();
       
@@ -84,6 +101,7 @@ const ProjectDetails = () => {
         const code = await provider.getCode(projectAddress);
         if (!code || code === '0x') {
           toast.error('No contract at this address on current network. Check RPC/network.');
+          setLoading(false);
           return;
         }
       } catch {
@@ -91,6 +109,7 @@ const ProjectDetails = () => {
         const code2 = await provider.getCode(projectAddress);
         if (!code2 || code2 === '0x') {
           toast.error('No contract at this address on configured RPC. Set VITE_RPC_URL or switch network.');
+          setLoading(false);
           return;
         }
       }
@@ -109,6 +128,8 @@ const ProjectDetails = () => {
     } catch (e) {
       console.error('Error refreshing project data:', e);
       toast.error('Failed to load project data');
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -486,50 +507,58 @@ const ProjectDetails = () => {
                   </div>
 
                   <div className="flex items-start gap-5">
-                    <div className="relative h-28 w-28 flex-shrink-0 overflow-hidden rounded-3xl border border-white/40 shadow-soft dark:border-white/10">
-                      <img
-                        src="https://images.unsplash.com/photo-1501183638710-841dd1904471?w=600&q=60&auto=format&fit=crop"
-                        alt="Project visual"
-                        className="h-full w-full object-cover"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-br from-primary/45 via-transparent to-transparent mix-blend-multiply" />
-                    </div>
-                    <div className="min-w-0 space-y-3">
-                      <div className="flex flex-wrap items-center gap-3">
-                        <h1 className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">
-                          {project.name}
-                        </h1>
-                        <Badge className="rounded-full bg-success/90 px-3 py-1 text-xs font-semibold text-success-foreground shadow-sm">
-                          {project.status}
-                        </Badge>
+                      <div className="relative h-28 w-28 flex-shrink-0 overflow-hidden rounded-3xl border border-white/40 shadow-soft dark:border-white/10">
+                        <img
+                          src="https://images.unsplash.com/photo-1501183638710-841dd1904471?w=600&q=60&auto=format&fit=crop"
+                          alt="Project visual"
+                          className="h-full w-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-br from-primary/45 via-transparent to-transparent mix-blend-multiply" />
                       </div>
-                      <p className="text-sm text-slate-600 dark:text-slate-300">
-                        Project:{' '}
-                        <a
-                          href={`https://sepolia.etherscan.io/address/${project.contractAddress}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="font-mono text-xs underline decoration-dotted underline-offset-4 hover:text-primary"
-                        >
-                          {project.contractAddress}
-                        </a>
-                      </p>
-                      <p className="text-sm text-slate-600 dark:text-slate-300">
-                        Token:{' '}
-                        <a
-                          href={`https://sepolia.etherscan.io/address/${project.tokenAddress}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="font-mono text-xs underline decoration-dotted underline-offset-4 hover:text-primary"
-                        >
-                          {project.tokenAddress}
-                        </a>
-                      </p>
-                      <p className="text-sm text-slate-700 dark:text-slate-200/80">
-                        {project.description}
-                      </p>
+                      <div className="min-w-0 space-y-3">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <h1 className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">
+                            {loading ? <Skeleton className="h-9 w-64" /> : project.name}
+                          </h1>
+                          <Badge className="rounded-full bg-success/90 px-3 py-1 text-xs font-semibold text-success-foreground shadow-sm">
+                            {project.status}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-slate-600 dark:text-slate-300">
+                          Project:{' '}
+                          {loading ? (
+                            <Skeleton className="inline-block h-4 w-48" />
+                          ) : (
+                            <a
+                              href={`https://sepolia.etherscan.io/address/${project.contractAddress}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-mono text-xs underline decoration-dotted underline-offset-4 hover:text-primary"
+                            >
+                              {project.contractAddress}
+                            </a>
+                          )}
+                        </p>
+                        <p className="text-sm text-slate-600 dark:text-slate-300">
+                          Token:{' '}
+                          {loading ? (
+                            <Skeleton className="inline-block h-4 w-48" />
+                          ) : (
+                            <a
+                              href={`https://sepolia.etherscan.io/address/${project.tokenAddress}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-mono text-xs underline decoration-dotted underline-offset-4 hover:text-primary"
+                            >
+                              {project.tokenAddress}
+                            </a>
+                          )}
+                        </p>
+                        <p className="text-sm text-slate-700 dark:text-slate-200/80">
+                          {project.description}
+                        </p>
+                      </div>
                     </div>
-                  </div>
                 </div>
 
                 {/* Role-aware action bar */}
@@ -580,8 +609,8 @@ const ProjectDetails = () => {
               <CardContent className="space-y-6 pt-6">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-[0.7rem] font-semibold uppercase tracking-[0.35em] text-slate-600 dark:text-slate-300">
-                    <span>{format(project.raised)} USDC Raised</span>
-                    <span>{format(project.target)} USDC Target</span>
+                    <span>{loading ? <Skeleton className="inline-block h-3 w-24" /> : `${format(project.raised)} USDC Raised`}</span>
+                    <span>{loading ? <Skeleton className="inline-block h-3 w-24" /> : `${format(project.target)} USDC Target`}</span>
                   </div>
                   <div className="relative h-3 w-full overflow-hidden rounded-full bg-slate-200/70 dark:bg-slate-800">
                     <div
@@ -604,17 +633,17 @@ const ProjectDetails = () => {
                   <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-slate-300">
                     <span className="inline-flex items-center gap-1 rounded-full bg-white/60 px-2 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.25em] text-slate-600 dark:bg-slate-800/70 dark:text-slate-200">
                       <Banknote className="h-3 w-3" />
-                      {format(project.withdrawn)} Withdrawn
+                      {loading ? <Skeleton className="inline-block h-3 w-20" /> : `${format(project.withdrawn)} Withdrawn`}
                     </span>
-                    {project.minTarget > 0 && (
+                    {(loading || project.minTarget > 0) && (
                       <span className="inline-flex items-center gap-1 rounded-full bg-white/60 px-2 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.25em] text-slate-600 dark:bg-slate-800/70 dark:text-slate-200">
                         <Target className="h-3 w-3" />
-                        Min Raise {format(project.minTarget)}
+                        {loading ? <Skeleton className="inline-block h-3 w-20" /> : `Min Raise ${format(project.minTarget)}`}
                       </span>
                     )}
                     <span className="inline-flex items-center gap-1 rounded-full bg-white/60 px-2 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.25em] text-slate-600 dark:bg-slate-800/70 dark:text-slate-200">
                       <ShieldCheck className="h-3 w-3" />
-                      {format(project.withdrawable)} USDC Unlockable
+                      {loading ? <Skeleton className="inline-block h-3 w-24" /> : `${format(project.withdrawable)} USDC Unlockable`}
                     </span>
                   </div>
                 </div>
@@ -639,11 +668,13 @@ const ProjectDetails = () => {
                             <p className="text-[0.7rem] font-semibold uppercase tracking-[0.35em] text-slate-600 dark:text-slate-300">
                               {stat.label}
                             </p>
-                            <p className="text-lg font-semibold text-slate-900 dark:text-white">{stat.value}</p>
+                            <p className="text-lg font-semibold text-slate-900 dark:text-white">
+                              {loading ? <Skeleton className="h-6 w-32" /> : stat.value}
+                            </p>
                           </div>
                         </div>
                         <p className="relative z-10 mt-auto pt-4 text-xs text-slate-600 dark:text-slate-300">
-                          {stat.helper}
+                          {loading ? <Skeleton className="h-3 w-full" /> : stat.helper}
                         </p>
                       </div>
                     );
@@ -760,7 +791,9 @@ const ProjectDetails = () => {
                                   <p className="text-[0.65rem] font-semibold uppercase tracking-[0.3em] text-slate-500 dark:text-slate-300">
                                     {block.label}
                                   </p>
-                                  <p className="text-sm font-semibold text-slate-900 dark:text-white">{block.value}</p>
+                                  <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                                    {loading ? <Skeleton className="h-4 w-20" /> : block.value}
+                                  </p>
                                 </div>
                               ))}
                             </div>
@@ -918,10 +951,11 @@ const ProjectDetails = () => {
                     <Input id="support-amount" type="number" inputMode="decimal" placeholder="0.00" value={supportAmount} onChange={(e)=>{ setSupportAmount(e.target.value); setApprovedSupport(false); }} />
                   </div>
                   {!approvedSupport ? (
-                    <Button className="w-full" size="lg" onClick={async ()=>{
+                    <Button className="w-full" size="lg" disabled={isApprovingSupport} onClick={async ()=>{
                       try {
                         if (!projectAddress || !staticConfig?.usdc) { toast.error('Addresses not loaded'); return; }
                         if (!supportAmount || Number(supportAmount) <= 0) { toast.error('Enter amount'); return; }
+                        setIsApprovingSupport(true);
                         const signer = await getSigner();
                         const owner = await signer.getAddress();
                         const amt = toUSDC(supportAmount);
@@ -931,13 +965,15 @@ const ProjectDetails = () => {
                         setApprovedSupport(true);
                         toast.success('Approved');
                       } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Approve failed'); }
+                      finally { setIsApprovingSupport(false); }
                     }}>
-                      <Wallet className="w-4 h-4 mr-2" /> Approve
+                      <Wallet className="w-4 h-4 mr-2" /> {isApprovingSupport ? 'Approving...' : 'Approve'}
                     </Button>
                   ) : (
-                    <Button className="w-full" size="lg" onClick={async ()=>{
+                    <Button className="w-full" size="lg" disabled={isDepositing} onClick={async ()=>{
                       try {
                         if (!projectAddress) return;
+                        setIsDepositing(true);
                         const signer = await getSigner();
                         const proj = projectAt(projectAddress, signer);
                         const amt = toUSDC(supportAmount);
@@ -958,8 +994,9 @@ const ProjectDetails = () => {
                         
                         refresh();
                       } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Deposit failed'); }
+                      finally { setIsDepositing(false); }
                     }}>
-                      <DollarSign className="w-4 h-4 mr-2" /> Deposit
+                      <DollarSign className="w-4 h-4 mr-2" /> {isDepositing ? 'Depositing...' : 'Deposit'}
                     </Button>
                   )}
                 </CardContent>
@@ -975,15 +1012,20 @@ const ProjectDetails = () => {
                 <CardContent className="space-y-3 text-sm">
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Your Balance</span>
-                    <span className="font-semibold">{realtimeData?.userBalance ? Number(fromUSDC(realtimeData.userBalance)).toLocaleString('en-US') : 0} USDC</span>
+                    <span className="font-semibold">
+                      {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.userBalance ? Number(fromUSDC(realtimeData.userBalance)).toLocaleString('en-US') : 0} USDC`}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Claimable Interest</span>
-                    <span className="font-semibold">{realtimeData?.claimableInterest ? Number(fromUSDC(realtimeData.claimableInterest)).toLocaleString('en-US') : 0} USDC</span>
+                    <span className="font-semibold">
+                      {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.claimableInterest ? Number(fromUSDC(realtimeData.claimableInterest)).toLocaleString('en-US') : 0} USDC`}
+                    </span>
                   </div>
-                  <Button variant="outline" className="w-full mt-1" onClick={async ()=>{
+                  <Button variant="outline" className="w-full mt-1" disabled={isClaimingInterest} onClick={async ()=>{
                     try {
                       if (!projectAddress || !realtimeData?.claimableInterest || realtimeData.claimableInterest === 0n) { toast.error('Nothing to claim'); return; }
+                      setIsClaimingInterest(true);
                       const signer = await getSigner();
                       const proj = projectAt(projectAddress, signer);
                       const tx = await proj.claimInterest(realtimeData.claimableInterest);
@@ -991,19 +1033,23 @@ const ProjectDetails = () => {
                       toast.success('Interest claimed');
                       refresh();
                     } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Claim failed'); }
-                  }}>Withdraw Interest</Button>
+                    finally { setIsClaimingInterest(false); }
+                  }}>{isClaimingInterest ? 'Claiming...' : 'Withdraw Interest'}</Button>
 
                   {/* Principal Redemption */}
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Principal Buffer</span>
-                    <span className="font-semibold">{realtimeData?.principalBuffer ? Number(fromUSDC(realtimeData.principalBuffer)).toLocaleString('en-US') : 0} USDC</span>
+                    <span className="font-semibold">
+                      {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.principalBuffer ? Number(fromUSDC(realtimeData.principalBuffer)).toLocaleString('en-US') : 0} USDC`}
+                    </span>
                   </div>
                   {realtimeData?.principalBuffer && realtimeData?.userBalance && realtimeData.principalBuffer > 0n && (
-                    <Button variant="outline" className="w-full mt-1" onClick={async ()=>{
+                    <Button variant="outline" className="w-full mt-1" disabled={isRedeemingPrincipal} onClick={async ()=>{
                       try {
                         if (!projectAddress) return;
                         const shares = realtimeData.userBalance! < realtimeData.principalBuffer! ? realtimeData.userBalance! : realtimeData.principalBuffer!;
                         if (shares === 0n) { toast.error('No redeemable principal yet'); return; }
+                        setIsRedeemingPrincipal(true);
                         const signer = await getSigner();
                         const proj = projectAt(projectAddress, signer);
                         const tx = await proj.withdrawPrincipal(shares);
@@ -1011,17 +1057,21 @@ const ProjectDetails = () => {
                         toast.success('Principal redeemed');
                         refresh();
                       } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Redeem failed'); }
-                    }}>Redeem Principal</Button>
+                      finally { setIsRedeemingPrincipal(false); }
+                    }}>{isRedeemingPrincipal ? 'Redeeming...' : 'Redeem Principal'}</Button>
                   )}
                   {/* Revenue Claim */}
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Claimable Revenue</span>
-                    <span className="font-semibold">{realtimeData?.claimableRevenue ? Number(fromUSDC(realtimeData.claimableRevenue)).toLocaleString('en-US') : 0} USDC</span>
+                    <span className="font-semibold">
+                      {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.claimableRevenue ? Number(fromUSDC(realtimeData.claimableRevenue)).toLocaleString('en-US') : 0} USDC`}
+                    </span>
                   </div>
-                  <Button variant="outline" className="w-full mt-1" onClick={async ()=>{
+                  <Button variant="outline" className="w-full mt-1" disabled={isClaimingRevenue} onClick={async ()=>{
                     try {
                       if (!projectAddress || !account) return;
                       if (!realtimeData?.claimableRevenue || realtimeData.claimableRevenue === 0n) { toast.error('No revenue to claim'); return; }
+                      setIsClaimingRevenue(true);
                       const signer = await getSigner();
                       const proj = projectAt(projectAddress, signer);
                       const tx = await proj.claimRevenue(account);
@@ -1029,7 +1079,8 @@ const ProjectDetails = () => {
                       toast.success('Revenue claimed');
                       refresh();
                     } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Claim failed'); }
-                  }}>Claim Revenue</Button>
+                    finally { setIsClaimingRevenue(false); }
+                  }}>{isClaimingRevenue ? 'Claiming...' : 'Claim Revenue'}</Button>
                 </CardContent>
               </Card>
             </RoleGate>
@@ -1060,11 +1111,12 @@ const ProjectDetails = () => {
                         />
                       </div>
                       {!approvedReserve ? (
-                        <Button size="sm" className="justify-start" onClick={async ()=>{
+                        <Button size="sm" className="justify-start" disabled={isApprovingReserve} onClick={async ()=>{
                           try {
                             if (!projectAddress || !staticConfig?.usdc) { toast.error('Addresses not loaded'); return; }
                             const amt = reserveAmount.trim();
                             if (!amt || Number(amt) <= 0) { toast.error('Enter amount'); return; }
+                            setIsApprovingReserve(true);
                             const signer = await getSigner();
                             const t = erc20At(staticConfig.usdc, signer);
                             const tx = await t.approve(projectAddress, toUSDC(amt));
@@ -1072,13 +1124,15 @@ const ProjectDetails = () => {
                             setApprovedReserve(true);
                             toast.success('Approved');
                           } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Approve failed'); }
+                          finally { setIsApprovingReserve(false); }
                         }}>
-                          <Wallet className="w-4 h-4 mr-2" /> Approve
+                          <Wallet className="w-4 h-4 mr-2" /> {isApprovingReserve ? 'Approving...' : 'Approve'}
                         </Button>
                       ) : (
-                        <Button size="sm" className="justify-start" onClick={async ()=>{
+                        <Button size="sm" className="justify-start" disabled={isFundingReserve} onClick={async ()=>{
                           try {
                             if (!projectAddress) return;
+                            setIsFundingReserve(true);
                             const signer = await getSigner();
                             const proj = projectAt(projectAddress, signer);
                             const tx = await proj.fundReserve(toUSDC(reserveAmount));
@@ -1088,8 +1142,9 @@ const ProjectDetails = () => {
                             setReserveAmount('');
                             refresh();
                           } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Fund failed'); }
+                          finally { setIsFundingReserve(false); }
                         }}>
-                          <Banknote className="w-4 h-4 mr-2" /> Fund Reserve
+                          <Banknote className="w-4 h-4 mr-2" /> {isFundingReserve ? 'Funding...' : 'Fund Reserve'}
                         </Button>
                       )}
                     </div>
@@ -1104,11 +1159,15 @@ const ProjectDetails = () => {
                     <div className="grid gap-2">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">Current Phase</span>
-                        <span className="font-medium">{project.currentPhase}</span>
+                        <span className="font-medium">
+                          {loading ? <Skeleton className="inline-block h-4 w-32" /> : project.currentPhase}
+                        </span>
                       </div>
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">Next Phase</span>
-                        <span className="font-medium">{nextPhaseName}</span>
+                        <span className="font-medium">
+                          {loading ? <Skeleton className="inline-block h-4 w-32" /> : nextPhaseName}
+                        </span>
                       </div>
                       <div className="grid gap-1">
                         <Label htmlFor="phaseDocs">Upload Documents</Label>
@@ -1120,10 +1179,11 @@ const ProjectDetails = () => {
                         />
                         <p className="text-xs text-muted-foreground">Attach evidence to close the current phase.</p>
                       </div>
-                      <Button size="sm" variant="secondary" className="justify-start" onClick={async ()=>{
+                      <Button size="sm" variant="secondary" className="justify-start" disabled={isClosingPhase} onClick={async ()=>{
                         try {
                           if (!projectAddress) return;
                           if (!uploadedDocs.length) { toast.error('Please upload at least one document'); return; }
+                          setIsClosingPhase(true);
                           const signer = await getSigner();
                           const proj = projectAt(projectAddress, signer);
                           const phaseId: number = (envioData?.projectState?.currentPhase ?? 0);
@@ -1147,8 +1207,9 @@ const ProjectDetails = () => {
                           setUploadedDocs([]);
                           refresh();
                         } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Close failed'); }
+                        finally { setIsClosingPhase(false); }
                       }}>
-                        <DoorClosed className="w-4 h-4 mr-2" /> Close Phase
+                        <DoorClosed className="w-4 h-4 mr-2" /> {isClosingPhase ? 'Closing...' : 'Close Phase'}
                       </Button>
                     </div>
                   </div>
@@ -1162,18 +1223,21 @@ const ProjectDetails = () => {
                     <div className="grid gap-2">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">Withdrawable Now</span>
-                        <span className="font-medium">{withdrawableNow.toLocaleString('en-US')} USDC</span>
+                        <span className="font-medium">
+                          {loading ? <Skeleton className="inline-block h-4 w-24" /> : `${withdrawableNow.toLocaleString('en-US')} USDC`}
+                        </span>
                       </div>
                       <div className="grid gap-1">
                         <Label htmlFor="withdrawAmount">Amount (USDC)</Label>
                         <Input id="withdrawAmount" inputMode="decimal" placeholder="e.g. 10000" value={withdrawAmount} onChange={(e)=>setWithdrawAmount(e.target.value)} />
                       </div>
-                      <Button size="sm" variant="outline" className="justify-start" onClick={async ()=>{
+                      <Button size="sm" variant="outline" className="justify-start" disabled={isWithdrawingFunds} onClick={async ()=>{
                         try {
                           if (!projectAddress) return;
                           const amt = Number(withdrawAmount || '0');
                           if (!amt || amt <= 0) { toast.error('Enter amount'); return; }
                           if (amt > withdrawableNow) { toast.error('Exceeds withdrawable'); return; }
+                          setIsWithdrawingFunds(true);
                           const signer = await getSigner();
                           const proj = projectAt(projectAddress, signer);
                           const tx = await proj.withdrawPhaseFunds(toUSDC(amt.toString()));
@@ -1182,8 +1246,9 @@ const ProjectDetails = () => {
                           setWithdrawAmount('');
                           refresh();
                         } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Withdraw failed'); }
+                        finally { setIsWithdrawingFunds(false); }
                       }}>
-                        <DollarSign className="w-4 h-4 mr-2" /> Withdraw Funds
+                        <DollarSign className="w-4 h-4 mr-2" /> {isWithdrawingFunds ? 'Withdrawing...' : 'Withdraw Funds'}
                       </Button>
                     </div>
                   </div>
@@ -1200,11 +1265,12 @@ const ProjectDetails = () => {
                         <Input id="proceedsAmount" inputMode="decimal" placeholder="e.g. 25000" value={proceedsAmount} onChange={(e)=>{ setProceedsAmount(e.target.value); setApprovedProceeds(false); }} />
                       </div>
                       {!approvedProceeds ? (
-                        <Button size="sm" className="justify-start" onClick={async ()=>{
+                        <Button size="sm" className="justify-start" disabled={isApprovingProceeds} onClick={async ()=>{
                           try {
                             if (!projectAddress || !staticConfig?.usdc) { toast.error('Addresses not loaded'); return; }
                             const amt = proceedsAmount.trim();
                             if (!amt || Number(amt) <= 0) { toast.error('Enter amount'); return; }
+                            setIsApprovingProceeds(true);
                             const signer = await getSigner();
                             const t = erc20At(staticConfig.usdc, signer);
                             const tx = await t.approve(projectAddress, toUSDC(amt));
@@ -1212,13 +1278,15 @@ const ProjectDetails = () => {
                             setApprovedProceeds(true);
                             toast.success('Approved');
                           } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Approve failed'); }
+                          finally { setIsApprovingProceeds(false); }
                         }}>
-                          <Wallet className="w-4 h-4 mr-2" /> Approve
+                          <Wallet className="w-4 h-4 mr-2" /> {isApprovingProceeds ? 'Approving...' : 'Approve'}
                         </Button>
                       ) : (
-                        <Button size="sm" className="justify-start" onClick={async ()=>{
+                        <Button size="sm" className="justify-start" disabled={isSubmittingProceeds} onClick={async ()=>{
                           try {
                             if (!projectAddress) return;
+                            setIsSubmittingProceeds(true);
                             const signer = await getSigner();
                             const proj = projectAt(projectAddress, signer);
                             const tx = await proj.submitSalesProceeds(toUSDC(proceedsAmount));
@@ -1228,8 +1296,9 @@ const ProjectDetails = () => {
                             setProceedsAmount('');
                             refresh();
                           } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Submit failed'); }
+                          finally { setIsSubmittingProceeds(false); }
                         }}>
-                          <DollarSign className="w-4 h-4 mr-2" /> Submit
+                          <DollarSign className="w-4 h-4 mr-2" /> {isSubmittingProceeds ? 'Submitting...' : 'Submit'}
                         </Button>
                       )}
                     </div>
@@ -1246,19 +1315,27 @@ const ProjectDetails = () => {
               <CardContent className="space-y-3 text-sm">
                 <div>
                   <p className="text-muted-foreground">Owner</p>
-                  <p className="font-mono">{project.owner}</p>
+                  <p className="font-mono">
+                    {loading ? <Skeleton className="h-4 w-full" /> : project.owner}
+                  </p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Interest Reserve</p>
-                  <p className="font-semibold">{project.escrow} USDC</p>
+                  <p className="font-semibold">
+                    {loading ? <Skeleton className="h-4 w-24" /> : `${project.escrow} USDC`}
+                  </p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Current Phase</p>
-                  <p className="font-semibold">{project.currentPhase}</p>
+                  <p className="font-semibold">
+                    {loading ? <Skeleton className="h-4 w-32" /> : project.currentPhase}
+                  </p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Supporters</p>
-                  <p className="font-semibold">{project.supporters}</p>
+                  <p className="font-semibold">
+                    {loading ? <Skeleton className="h-4 w-16" /> : project.supporters}
+                  </p>
                 </div>
               </CardContent>
             </Card>
