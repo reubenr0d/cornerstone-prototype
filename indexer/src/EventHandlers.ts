@@ -1,15 +1,14 @@
 import { ProjectRegistry, CornerstoneProject } from "generated";
 
+// Register new CornerstoneProject contracts dynamically
+ProjectRegistry.ProjectCreated.contractRegister(({ event, context }) => {
+  context.addCornerstoneProject(event.params.project);
+});
+
 export const handleProjectCreated = ProjectRegistry.ProjectCreated.handler(
   async ({ event, context }) => {
     const projectAddress = event.params.project.toLowerCase();
     const txHash = event.block.hash;
-
-    // With wildcard address (0x0000...) in config.yaml, Envio automatically indexes all CornerstoneProject instances
-    // This handler processes the ProjectCreated event from the registry
-
-    // Register the new CornerstoneProject instance for indexing
-    context.addCornerstoneProject(event.params.project);
 
     context.Project.set({
       id: projectAddress,
