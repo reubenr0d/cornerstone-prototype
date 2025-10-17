@@ -1,0 +1,172 @@
+[
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_usdc",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "project",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "token",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "creator",
+          "type": "address"
+        }
+      ],
+      "name": "ProjectCreated",
+      "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "minRaise",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "maxRaise",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "fundraiseDeadline",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256[6]",
+          "name": "phaseAPRs",
+          "type": "uint256[6]"
+        },
+        {
+          "internalType": "uint256[6]",
+          "name": "phaseDurations",
+          "type": "uint256[6]"
+        },
+        {
+          "internalType": "uint256[6]",
+          "name": "phaseWithdrawCaps",
+          "type": "uint256[6]"
+        }
+      ],
+      "name": "createProject",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "projectAddress",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "tokenAddress",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "tokenName",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "tokenSymbol",
+          "type": "string"
+        },
+        {
+          "internalType": "uint256",
+          "name": "minRaise",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "maxRaise",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "fundraiseDeadline",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256[6]",
+          "name": "phaseAPRs",
+          "type": "uint256[6]"
+        },
+        {
+          "internalType": "uint256[6]",
+          "name": "phaseDurations",
+          "type": "uint256[6]"
+        },
+        {
+          "internalType": "uint256[6]",
+          "name": "phaseWithdrawCaps",
+          "type": "uint256[6]"
+        }
+      ],
+      "name": "createProjectWithTokenMeta",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "projectAddress",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "tokenAddress",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "projectCount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "usdc",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ]
