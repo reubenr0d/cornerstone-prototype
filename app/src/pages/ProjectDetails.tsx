@@ -502,7 +502,8 @@ const ProjectDetails = () => {
                       className="gap-2 bg-primary/90 text-primary-foreground hover:bg-primary"
                       onClick={connectWallet}
                     >
-                      {connected ? 'Wallet Connected' : 'Connect Wallet'}
+                      <Wallet className="w-4 h-4" />
+                      {connected && account ? `${account.slice(0, 6)}...${account.slice(-4)}` : 'Connect Wallet'}
                     </Button>
                   </div>
 
@@ -938,152 +939,178 @@ const ProjectDetails = () => {
 
           {/* Right rail */}
           <div className="space-y-6">
-            {/* Support card (investor/holder only) */}
-            <RoleGate currentRole={currentRole} allowedRoles={['holder']}>
-              <Card>
+            {!connected ? (
+              // Placeholder when wallet not connected
+              <Card className="border-dashed">
                 <CardHeader>
-                  <CardTitle>Support This Project</CardTitle>
-                  <CardDescription>Invest in this project using USDC</CardDescription>
+                  <CardTitle className="text-center">Connect Your Wallet</CardTitle>
+                  <CardDescription className="text-center">
+                    Connect your wallet to invest in this project and view your portfolio
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium" htmlFor="support-amount">Amount (USDC)</label>
-                    <Input id="support-amount" type="number" inputMode="decimal" placeholder="0.00" value={supportAmount} onChange={(e)=>{ setSupportAmount(e.target.value); setApprovedSupport(false); }} />
+                  <div className="flex flex-col items-center justify-center py-6 text-center">
+                    <Wallet className="h-16 w-16 text-muted-foreground mb-4" />
+                    <p className="text-sm text-muted-foreground mb-4">
+                      You need to connect your wallet to support this project and manage your investments.
+                    </p>
+                    <Button onClick={connectWallet} size="lg" className="w-full">
+                      <Wallet className="w-4 h-4 mr-2" />
+                      Connect Wallet
+                    </Button>
                   </div>
-                  {!approvedSupport ? (
-                    <Button className="w-full" size="lg" disabled={isApprovingSupport} onClick={async ()=>{
-                      try {
-                        if (!projectAddress || !staticConfig?.usdc) { toast.error('Addresses not loaded'); return; }
-                        if (!supportAmount || Number(supportAmount) <= 0) { toast.error('Enter amount'); return; }
-                        setIsApprovingSupport(true);
-                        const signer = await getSigner();
-                        const owner = await signer.getAddress();
-                        const amt = toUSDC(supportAmount);
-                        const t = erc20At(staticConfig.usdc, signer);
-                        const tx = await t.approve(projectAddress, amt);
-                        await tx.wait();
-                        setApprovedSupport(true);
-                        toast.success('Approved');
-                      } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Approve failed'); }
-                      finally { setIsApprovingSupport(false); }
-                    }}>
-                      <Wallet className="w-4 h-4 mr-2" /> {isApprovingSupport ? 'Approving...' : 'Approve'}
-                    </Button>
-                  ) : (
-                    <Button className="w-full" size="lg" disabled={isDepositing} onClick={async ()=>{
-                      try {
-                        if (!projectAddress) return;
-                        setIsDepositing(true);
-                        const signer = await getSigner();
-                        const proj = projectAt(projectAddress, signer);
-                        const amt = toUSDC(supportAmount);
-                        
-                        // Check if this is user's first deposit to increment supporters count
-                        const isFirstDeposit = !realtimeData?.userBalance || realtimeData.userBalance === 0n;
-                        
-                        const tx = await proj.deposit(amt);
-                        await tx.wait();
-                        toast.success('Deposited');
-                        setApprovedSupport(false);
-                        setSupportAmount('');
-                        
-                        // Optimistically increment supporters count if first deposit
-                        if (isFirstDeposit) {
-                          setSupporters(prev => prev + 1);
-                        }
-                        
-                        refresh();
-                      } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Deposit failed'); }
-                      finally { setIsDepositing(false); }
-                    }}>
-                      <DollarSign className="w-4 h-4 mr-2" /> {isDepositing ? 'Depositing...' : 'Deposit'}
-                    </Button>
-                  )}
                 </CardContent>
               </Card>
-            </RoleGate>
+            ) : (
+              <>
+                {/* Support card (investor/holder only) */}
+                <RoleGate currentRole={currentRole} allowedRoles={['holder']}>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Support This Project</CardTitle>
+                      <CardDescription>Invest in this project using USDC</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium" htmlFor="support-amount">Amount (USDC)</label>
+                        <Input id="support-amount" type="number" inputMode="decimal" placeholder="0.00" value={supportAmount} onChange={(e)=>{ setSupportAmount(e.target.value); setApprovedSupport(false); }} />
+                      </div>
+                      {!approvedSupport ? (
+                        <Button className="w-full" size="lg" disabled={isApprovingSupport} onClick={async ()=>{
+                          try {
+                            if (!projectAddress || !staticConfig?.usdc) { toast.error('Addresses not loaded'); return; }
+                            if (!supportAmount || Number(supportAmount) <= 0) { toast.error('Enter amount'); return; }
+                            setIsApprovingSupport(true);
+                            const signer = await getSigner();
+                            const owner = await signer.getAddress();
+                            const amt = toUSDC(supportAmount);
+                            const t = erc20At(staticConfig.usdc, signer);
+                            const tx = await t.approve(projectAddress, amt);
+                            await tx.wait();
+                            setApprovedSupport(true);
+                            toast.success('Approved');
+                          } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Approve failed'); }
+                          finally { setIsApprovingSupport(false); }
+                        }}>
+                          <Wallet className="w-4 h-4 mr-2" /> {isApprovingSupport ? 'Approving...' : 'Approve'}
+                        </Button>
+                      ) : (
+                        <Button className="w-full" size="lg" disabled={isDepositing} onClick={async ()=>{
+                          try {
+                            if (!projectAddress) return;
+                            setIsDepositing(true);
+                            const signer = await getSigner();
+                            const proj = projectAt(projectAddress, signer);
+                            const amt = toUSDC(supportAmount);
+                            
+                            // Check if this is user's first deposit to increment supporters count
+                            const isFirstDeposit = !realtimeData?.userBalance || realtimeData.userBalance === 0n;
+                            
+                            const tx = await proj.deposit(amt);
+                            await tx.wait();
+                            toast.success('Deposited');
+                            setApprovedSupport(false);
+                            setSupportAmount('');
+                            
+                            // Optimistically increment supporters count if first deposit
+                            if (isFirstDeposit) {
+                              setSupporters(prev => prev + 1);
+                            }
+                            
+                            refresh();
+                          } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Deposit failed'); }
+                          finally { setIsDepositing(false); }
+                        }}>
+                          <DollarSign className="w-4 h-4 mr-2" /> {isDepositing ? 'Depositing...' : 'Deposit'}
+                        </Button>
+                      )}
+                    </CardContent>
+                  </Card>
+                </RoleGate>
 
-            {/* Holder investment overview */}
-            <RoleGate currentRole={currentRole} allowedRoles={['holder']}>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Your Investment</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Your Balance</span>
-                    <span className="font-semibold">
-                      {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.userBalance ? Number(fromUSDC(realtimeData.userBalance)).toLocaleString('en-US') : 0} USDC`}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Claimable Interest</span>
-                    <span className="font-semibold">
-                      {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.claimableInterest ? Number(fromUSDC(realtimeData.claimableInterest)).toLocaleString('en-US') : 0} USDC`}
-                    </span>
-                  </div>
-                  <Button variant="outline" className="w-full mt-1" disabled={isClaimingInterest} onClick={async ()=>{
-                    try {
-                      if (!projectAddress || !realtimeData?.claimableInterest || realtimeData.claimableInterest === 0n) { toast.error('Nothing to claim'); return; }
-                      setIsClaimingInterest(true);
-                      const signer = await getSigner();
-                      const proj = projectAt(projectAddress, signer);
-                      const tx = await proj.claimInterest(realtimeData.claimableInterest);
-                      await tx.wait();
-                      toast.success('Interest claimed');
-                      refresh();
-                    } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Claim failed'); }
-                    finally { setIsClaimingInterest(false); }
-                  }}>{isClaimingInterest ? 'Claiming...' : 'Withdraw Interest'}</Button>
+                {/* Holder investment overview */}
+                <RoleGate currentRole={currentRole} allowedRoles={['holder']}>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Your Investment</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Your Balance</span>
+                        <span className="font-semibold">
+                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.userBalance ? Number(fromUSDC(realtimeData.userBalance)).toLocaleString('en-US') : 0} USDC`}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Claimable Interest</span>
+                        <span className="font-semibold">
+                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.claimableInterest ? Number(fromUSDC(realtimeData.claimableInterest)).toLocaleString('en-US') : 0} USDC`}
+                        </span>
+                      </div>
+                      <Button variant="outline" className="w-full mt-1" disabled={isClaimingInterest} onClick={async ()=>{
+                        try {
+                          if (!projectAddress || !realtimeData?.claimableInterest || realtimeData.claimableInterest === 0n) { toast.error('Nothing to claim'); return; }
+                          setIsClaimingInterest(true);
+                          const signer = await getSigner();
+                          const proj = projectAt(projectAddress, signer);
+                          const tx = await proj.claimInterest(realtimeData.claimableInterest);
+                          await tx.wait();
+                          toast.success('Interest claimed');
+                          refresh();
+                        } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Claim failed'); }
+                        finally { setIsClaimingInterest(false); }
+                      }}>{isClaimingInterest ? 'Claiming...' : 'Withdraw Interest'}</Button>
 
-                  {/* Principal Redemption */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Principal Buffer</span>
-                    <span className="font-semibold">
-                      {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.principalBuffer ? Number(fromUSDC(realtimeData.principalBuffer)).toLocaleString('en-US') : 0} USDC`}
-                    </span>
-                  </div>
-                  {realtimeData?.principalBuffer && realtimeData?.userBalance && realtimeData.principalBuffer > 0n && (
-                    <Button variant="outline" className="w-full mt-1" disabled={isRedeemingPrincipal} onClick={async ()=>{
-                      try {
-                        if (!projectAddress) return;
-                        const shares = realtimeData.userBalance! < realtimeData.principalBuffer! ? realtimeData.userBalance! : realtimeData.principalBuffer!;
-                        if (shares === 0n) { toast.error('No redeemable principal yet'); return; }
-                        setIsRedeemingPrincipal(true);
-                        const signer = await getSigner();
-                        const proj = projectAt(projectAddress, signer);
-                        const tx = await proj.withdrawPrincipal(shares);
-                        await tx.wait();
-                        toast.success('Principal redeemed');
-                        refresh();
-                      } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Redeem failed'); }
-                      finally { setIsRedeemingPrincipal(false); }
-                    }}>{isRedeemingPrincipal ? 'Redeeming...' : 'Redeem Principal'}</Button>
-                  )}
-                  {/* Revenue Claim */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Claimable Revenue</span>
-                    <span className="font-semibold">
-                      {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.claimableRevenue ? Number(fromUSDC(realtimeData.claimableRevenue)).toLocaleString('en-US') : 0} USDC`}
-                    </span>
-                  </div>
-                  <Button variant="outline" className="w-full mt-1" disabled={isClaimingRevenue} onClick={async ()=>{
-                    try {
-                      if (!projectAddress || !account) return;
-                      if (!realtimeData?.claimableRevenue || realtimeData.claimableRevenue === 0n) { toast.error('No revenue to claim'); return; }
-                      setIsClaimingRevenue(true);
-                      const signer = await getSigner();
-                      const proj = projectAt(projectAddress, signer);
-                      const tx = await proj.claimRevenue(account);
-                      await tx.wait();
-                      toast.success('Revenue claimed');
-                      refresh();
-                    } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Claim failed'); }
-                    finally { setIsClaimingRevenue(false); }
-                  }}>{isClaimingRevenue ? 'Claiming...' : 'Claim Revenue'}</Button>
-                </CardContent>
-              </Card>
-            </RoleGate>
+                      {/* Principal Redemption */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Principal Buffer</span>
+                        <span className="font-semibold">
+                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.principalBuffer ? Number(fromUSDC(realtimeData.principalBuffer)).toLocaleString('en-US') : 0} USDC`}
+                        </span>
+                      </div>
+                      {realtimeData?.principalBuffer && realtimeData?.userBalance && realtimeData.principalBuffer > 0n && (
+                        <Button variant="outline" className="w-full mt-1" disabled={isRedeemingPrincipal} onClick={async ()=>{
+                          try {
+                            if (!projectAddress) return;
+                            const shares = realtimeData.userBalance! < realtimeData.principalBuffer! ? realtimeData.userBalance! : realtimeData.principalBuffer!;
+                            if (shares === 0n) { toast.error('No redeemable principal yet'); return; }
+                            setIsRedeemingPrincipal(true);
+                            const signer = await getSigner();
+                            const proj = projectAt(projectAddress, signer);
+                            const tx = await proj.withdrawPrincipal(shares);
+                            await tx.wait();
+                            toast.success('Principal redeemed');
+                            refresh();
+                          } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Redeem failed'); }
+                          finally { setIsRedeemingPrincipal(false); }
+                        }}>{isRedeemingPrincipal ? 'Redeeming...' : 'Redeem Principal'}</Button>
+                      )}
+                      {/* Revenue Claim */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Claimable Revenue</span>
+                        <span className="font-semibold">
+                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.claimableRevenue ? Number(fromUSDC(realtimeData.claimableRevenue)).toLocaleString('en-US') : 0} USDC`}
+                        </span>
+                      </div>
+                      <Button variant="outline" className="w-full mt-1" disabled={isClaimingRevenue} onClick={async ()=>{
+                        try {
+                          if (!projectAddress || !account) return;
+                          if (!realtimeData?.claimableRevenue || realtimeData.claimableRevenue === 0n) { toast.error('No revenue to claim'); return; }
+                          setIsClaimingRevenue(true);
+                          const signer = await getSigner();
+                          const proj = projectAt(projectAddress, signer);
+                          const tx = await proj.claimRevenue(account);
+                          await tx.wait();
+                          toast.success('Revenue claimed');
+                          refresh();
+                        } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Claim failed'); }
+                        finally { setIsClaimingRevenue(false); }
+                      }}>{isClaimingRevenue ? 'Claiming...' : 'Claim Revenue'}</Button>
+                    </CardContent>
+                  </Card>
+                </RoleGate>
+              </>
+            )}
 
             {/* Developer actions */}
             <RoleGate currentRole={currentRole} allowedRoles={['developer']}>

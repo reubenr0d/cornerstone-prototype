@@ -1,12 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
-import { getRpcProvider, getSigner, registryAt } from '@/lib/eth';
+import { ArrowLeft, ArrowRight, Check, Wallet } from 'lucide-react';
+import { getRpcProvider, getSigner, registryAt, getAccount, Address } from '@/lib/eth';
 import { contractsConfig } from '@/config/contracts';
 import { toast } from '@/components/ui/sonner';
 
@@ -21,6 +21,8 @@ interface Milestone {
 
 const CreateProject = () => {
   const [currentStep, setCurrentStep] = useState(0);
+  const [account, setAccount] = useState<Address | null>(null);
+  const [connected, setConnected] = useState(false);
   const [milestones, setMilestones] = useState<Milestone[]>([
     {
       id: '1',
@@ -102,6 +104,27 @@ const CreateProject = () => {
 
   const [deployInfo, setDeployInfo] = useState<{ project: string; token: string } | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
+
+  useEffect(() => {
+    getAccount().then((a) => {
+      if (a) {
+        setAccount(a);
+        setConnected(true);
+      }
+    });
+  }, []);
+
+  async function connectWallet() {
+    try {
+      const signer = await getSigner();
+      const addr = (await signer.getAddress()) as Address;
+      setAccount(addr);
+      setConnected(true);
+      toast.success('Wallet connected');
+    } catch (e: any) {
+      toast.error(e?.shortMessage || e?.message || 'Connect failed');
+    }
+  }
 
   async function handlePublish() {
     setIsPublishing(true);
@@ -280,10 +303,21 @@ const CreateProject = () => {
               <h1 className="text-3xl font-bold mb-1">Create New Project</h1>
               <p className="text-muted-foreground">Build and fund your next big idea</p>
             </div>
-            <Button variant="outline" onClick={() => window.history.back()}>
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Cancel
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button
+                variant={connected ? 'secondary' : 'default'}
+                size="sm"
+                className="gap-2"
+                onClick={connectWallet}
+              >
+                <Wallet className="w-4 h-4" />
+                {connected && account ? `${account.slice(0, 6)}...${account.slice(-4)}` : 'Connect Wallet'}
+              </Button>
+              <Button variant="outline" onClick={() => window.history.back()}>
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Cancel
+              </Button>
+            </div>
           </div>
         </div>
       </header>
