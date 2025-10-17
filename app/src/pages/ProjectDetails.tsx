@@ -12,7 +12,8 @@ import { Label } from '@/components/ui/label';
 import { toast } from '@/components/ui/sonner';
 import { ExternalLink, Plus, Edit, Upload, DollarSign, AlertTriangle, MessageSquare, Banknote, DoorClosed, Wallet, FileText, Target, Users, ShieldCheck } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@/components/ui/drawer';
-import { Address, erc20At, fromUSDC, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toUSDC, fetchProjectCoreState, fetchProjectUserState, fetchSupportersCount, getWindowEthereum } from '@/lib/eth';
+import { Address, erc20At, fromUSDC, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toUSDC, fetchProjectRealtimeState, fetchProjectStaticConfig, getWindowEthereum } from '@/lib/eth';
+import { getCompleteProjectData } from '@/lib/envio';
 import { contractsConfig } from '@/config/contracts';
 import { ipfsUpload } from '@/lib/ipfs';
 import { ethers } from 'ethers';
@@ -39,31 +40,11 @@ const ProjectDetails = () => {
   const [account, setAccount] = useState<Address | null>(null);
   const [connected, setConnected] = useState(false);
 
-  // On-chain state
-  const [chain, setChain] = useState<{
-    token?: Address;
-    usdc?: Address;
-    owner?: Address;
-    projectName?: string;
-    totalRaised?: bigint;
-    minRaise?: bigint;
-    maxRaise?: bigint;
-    reserveBalance?: bigint;
-    totalDevWithdrawn?: bigint;
-    poolBalance?: bigint;
-    currentPhase?: number;
-    lastClosedPhase?: number;
-    phase5PercentComplete?: number;
-    claimableInterest?: bigint;
-    claimableRevenue?: bigint;
-    principalBuffer?: bigint;
-    userBalance?: bigint;
-    withdrawableDevFunds?: bigint;
-    perPhaseCaps?: bigint[];
-    perPhaseWithdrawn?: bigint[];
-    perPhaseAprBps?: number[];
-    supporters?: number;
-  }>({});
+  // Separate data sources: Envio (historical) + Contract (real-time)
+  const [envioData, setEnvioData] = useState<any>(null);
+  const [realtimeData, setRealtimeData] = useState<any>(null);
+  const [staticConfig, setStaticConfig] = useState<any>(null);
+  const [supporters, setSupporters] = useState<number>(0);
 
   async function connectWallet() {
     try {
@@ -94,9 +75,10 @@ const ProjectDetails = () => {
   async function refresh() {
     try {
       if (!projectAddress) return;
+      
       // Try injected provider first; fall back to RPC on failure
       let provider = getWindowEthereum() ? await getProvider() : getRpcProvider();
-      let core;
+      
       try {
         // Ensure contract exists on current network before reading
         const code = await provider.getCode(projectAddress);
@@ -104,7 +86,6 @@ const ProjectDetails = () => {
           toast.error('No contract at this address on current network. Check RPC/network.');
           return;
         }
-        core = await fetchProjectCoreState(projectAddress, provider);
       } catch {
         provider = getRpcProvider();
         const code2 = await provider.getCode(projectAddress);
@@ -112,39 +93,22 @@ const ProjectDetails = () => {
           toast.error('No contract at this address on configured RPC. Set VITE_RPC_URL or switch network.');
           return;
         }
-        core = await fetchProjectCoreState(projectAddress, provider);
       }
-      const supporters = await fetchSupportersCount(projectAddress, provider);
-      let user = { claimableInterest: 0n, claimableRevenue: 0n, userBalance: 0n };
-      if (account) {
-        user = await fetchProjectUserState(projectAddress, provider, account);
-      }
-      setChain({
-        token: core.token,
-        usdc: core.usdc,
-        owner: core.owner,
-        projectName: core.projectName,
-        totalRaised: core.totalRaised,
-        minRaise: core.minRaise,
-        maxRaise: core.maxRaise,
-        reserveBalance: core.reserveBalance,
-        totalDevWithdrawn: core.totalDevWithdrawn,
-        poolBalance: core.poolBalance,
-        currentPhase: core.currentPhase,
-        lastClosedPhase: core.lastClosedPhase,
-        phase5PercentComplete: core.phase5PercentComplete,
-        claimableInterest: user.claimableInterest,
-        claimableRevenue: user.claimableRevenue,
-        principalBuffer: core.principalBuffer,
-        userBalance: user.userBalance,
-        withdrawableDevFunds: core.withdrawableDevFunds,
-        perPhaseCaps: core.perPhaseCaps,
-        perPhaseWithdrawn: core.perPhaseWithdrawn,
-        perPhaseAprBps: core.perPhaseAprBps,
-        supporters,
-      });
+
+      // Fetch data in parallel: Single Envio query + Contract queries
+      const [envioResult, realtimeResult, staticResult] = await Promise.all([
+        getCompleteProjectData(projectAddress, account || undefined),
+        fetchProjectRealtimeState(projectAddress, provider, account || undefined),
+        fetchProjectStaticConfig(projectAddress, provider),
+      ]);
+      
+      setEnvioData(envioResult.project);
+      setRealtimeData(realtimeResult);
+      setStaticConfig(staticResult);
+      setSupporters(envioResult.supportersCount);
     } catch (e) {
-      console.error(e);
+      console.error('Error refreshing project data:', e);
+      toast.error('Failed to load project data');
     }
   }
 
@@ -186,23 +150,27 @@ const ProjectDetails = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectAddress]);
 
-  const withdrawableNow = Number(fromUSDC(chain.withdrawableDevFunds ?? 0n));
+  const withdrawableNow = Number(fromUSDC(realtimeData?.withdrawableDevFunds ?? 0n));
 
   const project = {
-    name: chain.projectName?.trim() || 'Cornerstone Residences',
+    name: staticConfig?.projectName?.trim() || 'Cornerstone Residences',
     status: 'Active',
     contractAddress: projectAddress ?? '0x',
-    tokenAddress: chain.token ?? '0x',
-    owner: chain.owner ?? '0x',
-    raised: Number(chain.totalRaised ? fromUSDC(chain.totalRaised) : '0'),
-    target: Number(chain.maxRaise ? fromUSDC(chain.maxRaise) : '0'),
-    minTarget: Number(chain.minRaise ? fromUSDC(chain.minRaise) : '0'),
-    escrow: Number(chain.reserveBalance ? fromUSDC(chain.reserveBalance) : '0'),
-    withdrawn: Number(chain.totalDevWithdrawn ? fromUSDC(chain.totalDevWithdrawn) : '0'),
+    tokenAddress: envioData?.tokenAddress ?? staticConfig?.token ?? '0x',
+    owner: staticConfig?.owner ?? '0x',
+    // From Envio (historical data)
+    raised: Number(envioData?.projectState?.totalRaised ? fromUSDC(BigInt(envioData.projectState.totalRaised)) : '0'),
+    withdrawn: Number(envioData?.projectState?.totalDevWithdrawn ? fromUSDC(BigInt(envioData.projectState.totalDevWithdrawn)) : '0'),
+    // From static config
+    target: Number(staticConfig?.maxRaise ? fromUSDC(staticConfig.maxRaise) : '0'),
+    minTarget: Number(staticConfig?.minRaise ? fromUSDC(staticConfig.minRaise) : '0'),
+    // From real-time contract
+    escrow: Number(realtimeData?.reserveBalance ? fromUSDC(realtimeData.reserveBalance) : '0'),
     withdrawable: withdrawableNow,
-    currentPhase: phaseName(chain.currentPhase ?? 0),
+    // Current phase from Envio or fallback
+    currentPhase: phaseName(envioData?.projectState?.currentPhase ?? 0),
     milestones: 0,
-    supporters: chain.supporters ?? 0,
+    supporters: supporters ?? 0,
     description:
       'Redevelopment of a 120k sq. ft. mixed-use tower with ground floor retail, 140 market-rate apartments, and a rooftop amenity deck overlooking the South Lakefront Greenway.',
   };
@@ -222,10 +190,11 @@ const ProjectDetails = () => {
     'Revenue and Sales',
   ] as const;
 
-  // Compute cumulative withdraw limits (caps) per phase
-  const perPhaseCapAmounts = (chain.perPhaseCaps || []).map((c)=> Number(fromUSDC(c)));
+  // Get phase data from Envio
+  const envioPhases = envioData?.projectState?.phases || [];
+  const perPhaseCapAmounts = envioPhases.map((p: any) => Number(fromUSDC(BigInt(p.phaseCap || '0'))));
   const cumulativeCapAmounts: number[] = [];
-  for (let i = 0; i < (perPhaseCapAmounts.length || 0); i++) {
+  for (let i = 0; i < 6; i++) {
     const prev = i > 0 ? cumulativeCapAmounts[i-1] : 0;
     cumulativeCapAmounts[i] = prev + (perPhaseCapAmounts[i] || 0);
   }
@@ -236,12 +205,12 @@ const ProjectDetails = () => {
   const capBps = Array.from({ length: 6 }, (_, i) => capBpsRaw[i] ?? 0);
   const cumulativeCapAmountsFilled = Array.from({ length: 6 }, (_, i) => cumulativeCapAmounts[i] ?? 0);
   // Convert APRs from bps to percent for display
-  const aprs = (chain.perPhaseAprBps || [0,0,0,0,0,0]).map((bps)=> bps / 100);
-  const currentPhaseIndex = Math.max(0, chain.currentPhase ?? 0);
+  const aprs = (staticConfig?.perPhaseAprBps || [0,0,0,0,0,0]).map((bps: number)=> bps / 100);
+  const currentPhaseIndex = Math.max(0, envioData?.projectState?.currentPhase ?? 0);
   const nextPhaseName = currentPhaseIndex + 1 < phaseNames.length
     ? phaseNames[currentPhaseIndex + 1]
     : 'All phases complete';
-  const perPhaseWithdrawn = (chain.perPhaseWithdrawn || []).map((w)=> Number(fromUSDC(w)));
+  const perPhaseWithdrawn = envioPhases.map((p: any) => Number(fromUSDC(BigInt(p.phaseWithdrawn || '0'))));
   const phaseCloseDates: (string | null)[] = [
     '2025-01-15', // Fundraising and Acquisition
     '2025-03-15', // Design and Architectural
@@ -257,7 +226,7 @@ const ProjectDetails = () => {
     const raisedAt = i === 0 ? project.raised : 0; // fundraising phase shows raised amount
     const status = i < currentPhaseIndex ? 'Past' : i === currentPhaseIndex ? 'Current' : 'Upcoming';
     const withdrawnPctOfCap = capAmount > 0 ? Math.min(100, (withdrawn / capAmount) * 100) : 0;
-    const showWithdrawn = (i + 1) <= (chain.lastClosedPhase ?? 0);
+    const showWithdrawn = (i + 1) <= (envioData?.projectState?.lastClosedPhase ?? 0);
     let closingDisplay = 'TBD';
     if (i === currentPhaseIndex) {
       closingDisplay = 'In Progress';
@@ -305,7 +274,7 @@ const ProjectDetails = () => {
       id: 'supporters',
       label: 'Supporters',
       value: format(project.supporters),
-      helper: `${format(Number(fromUSDC(chain.claimableInterest ?? 0n)))} USDC interest paid out`,
+      helper: `${format(Number(fromUSDC(BigInt(envioData?.projectState?.accrualBase || '0'))))} USDC interest accrued`,
       icon: Users,
       tone: 'from-indigo-400/80 via-primary/60 to-accent/40',
     },
@@ -436,65 +405,50 @@ const ProjectDetails = () => {
   type Doc = { id: string; name: string; type: 'image' | 'pdf'; url: string; hash: string };
   const [phaseDocuments, setPhaseDocuments] = useState<Doc[][]>([[], [], [], [], [], []]);
 
-  // Fetch phase documents from contract events
+  // Process phase documents from already-loaded Envio data
   useEffect(() => {
-    async function fetchPhaseDocs() {
-      try {
-        if (!projectAddress) return;
-        const provider = getRpcProvider();
-        const proj = projectAt(projectAddress, provider);
-        console.info('[docs] fetching phase docs', { projectAddress });
-
-        // Query PhaseClosed events (explicit fromBlock to catch earlier logs)
-        const latest = await provider.getBlockNumber();
-        const filter = proj.filters.PhaseClosed();
-        const events = await proj.queryFilter(filter, 0n, BigInt(latest));
-        console.info('[docs] fetched PhaseClosed events', { count: events.length });
-
-        const docsByPhase: Doc[][] = [[], [], [], [], [], []];
-
-        for (const event of events) {
-          const phaseId = Number(event.args?.phaseId || 0);
-          if (phaseId < 0 || phaseId > 5) continue;
-
-          const docTypes = Array.from(event.args?.docTypes || [], (t) => (typeof t === 'string' ? t : String(t)));
-          const docHashes = Array.from(event.args?.docHashes || [], (h) => (typeof h === 'string' ? h : String(h)));
-          const metadataURIs = Array.from(event.args?.metadataURIs || [], (u) => (typeof u === 'string' ? u : String(u)));
-          console.info('[docs] processing PhaseClosed', { phaseId, docCount: docTypes.length, docTypes, metadataURIs });
-
-          const phaseDocs: Doc[] = [];
-          for (let i = 0; i < docTypes.length; i++) {
-            const docType = docTypes[i] || 'unknown';
-            const hash = docHashes[i] || '0x';
-            const uri = metadataURIs[i] || '';
-            
-            // Determine if it's an image or PDF based on type/URI
-            const isImage = docType.includes('image') || uri.includes('image') || 
-                           ['jpg', 'jpeg', 'png', 'gif', 'webp'].some(ext => uri.toLowerCase().includes(ext));
-            
-            phaseDocs.push({
-              id: `phase${phaseId}-doc${i}-${hash.slice(0, 10)}`,
-              name: uri.split('/').at(-1),
-              type: isImage ? 'image' : 'pdf',
-              url: uri.startsWith('ipfs://') 
-                ? `https://ipfs.io/ipfs/${uri.replace('ipfs://', '')}` 
-                : uri || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-              hash: hash,
-            });
-          }
-
-          docsByPhase[phaseId] = phaseDocs;
-        }
-
-        setPhaseDocuments(docsByPhase);
-        console.info('[docs] updated phaseDocuments state', { phaseDocuments: docsByPhase });
-      } catch (e) {
-        console.error('Failed to fetch phase documents:', e);
-      }
-    }
+    if (!envioData?.phasesClosed) return;
     
-    fetchPhaseDocs();
-  }, [projectAddress]);
+    const phaseClosedEvents = envioData.phasesClosed || [];
+    console.info('[docs] processing PhaseClosed events from loaded data', { count: phaseClosedEvents.length });
+
+    const docsByPhase: Doc[][] = [[], [], [], [], [], []];
+
+    for (const event of phaseClosedEvents) {
+      const phaseId = Number(event.phaseId);
+      if (phaseId < 0 || phaseId > 5) continue;
+
+      const docTypes = event.docTypes || [];
+      const docHashes = event.docHashes || [];
+      const metadataURIs = event.metadataURIs || [];
+
+      const phaseDocs: Doc[] = [];
+      for (let i = 0; i < docTypes.length; i++) {
+        const docType = docTypes[i] || 'unknown';
+        const hash = docHashes[i] || '0x';
+        const uri = metadataURIs[i] || '';
+        
+        // Determine if it's an image or PDF based on type/URI
+        const isImage = docType.includes('image') || uri.includes('image') || 
+                       ['jpg', 'jpeg', 'png', 'gif', 'webp'].some(ext => uri.toLowerCase().includes(ext));
+        
+        phaseDocs.push({
+          id: `phase${phaseId}-doc${i}-${hash.slice(0, 10)}`,
+          name: uri.split('/').at(-1),
+          type: isImage ? 'image' : 'pdf',
+          url: uri.startsWith('ipfs://') 
+            ? `https://ipfs.io/ipfs/${uri.replace('ipfs://', '')}` 
+            : uri || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+          hash: hash,
+        });
+      }
+
+      docsByPhase[phaseId] = phaseDocs;
+    }
+
+    setPhaseDocuments(docsByPhase);
+    console.info('[docs] updated phaseDocuments state', { phaseDocuments: docsByPhase });
+  }, [envioData]);
 
   const [activeDocPhase, setActiveDocPhase] = useState(0);
   const [docViewer, setDocViewer] = useState<Doc | null>(null);
@@ -966,12 +920,12 @@ const ProjectDetails = () => {
                   {!approvedSupport ? (
                     <Button className="w-full" size="lg" onClick={async ()=>{
                       try {
-                        if (!projectAddress || !chain.usdc) { toast.error('Addresses not loaded'); return; }
+                        if (!projectAddress || !staticConfig?.usdc) { toast.error('Addresses not loaded'); return; }
                         if (!supportAmount || Number(supportAmount) <= 0) { toast.error('Enter amount'); return; }
                         const signer = await getSigner();
                         const owner = await signer.getAddress();
                         const amt = toUSDC(supportAmount);
-                        const t = erc20At(chain.usdc, signer);
+                        const t = erc20At(staticConfig.usdc, signer);
                         const tx = await t.approve(projectAddress, amt);
                         await tx.wait();
                         setApprovedSupport(true);
@@ -987,11 +941,21 @@ const ProjectDetails = () => {
                         const signer = await getSigner();
                         const proj = projectAt(projectAddress, signer);
                         const amt = toUSDC(supportAmount);
+                        
+                        // Check if this is user's first deposit to increment supporters count
+                        const isFirstDeposit = !realtimeData?.userBalance || realtimeData.userBalance === 0n;
+                        
                         const tx = await proj.deposit(amt);
                         await tx.wait();
                         toast.success('Deposited');
                         setApprovedSupport(false);
                         setSupportAmount('');
+                        
+                        // Optimistically increment supporters count if first deposit
+                        if (isFirstDeposit) {
+                          setSupporters(prev => prev + 1);
+                        }
+                        
                         refresh();
                       } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Deposit failed'); }
                     }}>
@@ -1011,18 +975,18 @@ const ProjectDetails = () => {
                 <CardContent className="space-y-3 text-sm">
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Your Balance</span>
-                    <span className="font-semibold">{chain.userBalance ? Number(fromUSDC(chain.userBalance)).toLocaleString('en-US') : 0} USDC</span>
+                    <span className="font-semibold">{realtimeData?.userBalance ? Number(fromUSDC(realtimeData.userBalance)).toLocaleString('en-US') : 0} USDC</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Claimable Interest</span>
-                    <span className="font-semibold">{chain.claimableInterest ? Number(fromUSDC(chain.claimableInterest)).toLocaleString('en-US') : 0} USDC</span>
+                    <span className="font-semibold">{realtimeData?.claimableInterest ? Number(fromUSDC(realtimeData.claimableInterest)).toLocaleString('en-US') : 0} USDC</span>
                   </div>
                   <Button variant="outline" className="w-full mt-1" onClick={async ()=>{
                     try {
-                      if (!projectAddress || !chain.claimableInterest || chain.claimableInterest === 0n) { toast.error('Nothing to claim'); return; }
+                      if (!projectAddress || !realtimeData?.claimableInterest || realtimeData.claimableInterest === 0n) { toast.error('Nothing to claim'); return; }
                       const signer = await getSigner();
                       const proj = projectAt(projectAddress, signer);
-                      const tx = await proj.claimInterest(chain.claimableInterest);
+                      const tx = await proj.claimInterest(realtimeData.claimableInterest);
                       await tx.wait();
                       toast.success('Interest claimed');
                       refresh();
@@ -1032,13 +996,13 @@ const ProjectDetails = () => {
                   {/* Principal Redemption */}
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Principal Buffer</span>
-                    <span className="font-semibold">{chain.principalBuffer ? Number(fromUSDC(chain.principalBuffer)).toLocaleString('en-US') : 0} USDC</span>
+                    <span className="font-semibold">{realtimeData?.principalBuffer ? Number(fromUSDC(realtimeData.principalBuffer)).toLocaleString('en-US') : 0} USDC</span>
                   </div>
-                  {chain.principalBuffer && chain.userBalance && chain.principalBuffer > 0n && (
+                  {realtimeData?.principalBuffer && realtimeData?.userBalance && realtimeData.principalBuffer > 0n && (
                     <Button variant="outline" className="w-full mt-1" onClick={async ()=>{
                       try {
                         if (!projectAddress) return;
-                        const shares = chain.userBalance! < chain.principalBuffer! ? chain.userBalance! : chain.principalBuffer!;
+                        const shares = realtimeData.userBalance! < realtimeData.principalBuffer! ? realtimeData.userBalance! : realtimeData.principalBuffer!;
                         if (shares === 0n) { toast.error('No redeemable principal yet'); return; }
                         const signer = await getSigner();
                         const proj = projectAt(projectAddress, signer);
@@ -1052,12 +1016,12 @@ const ProjectDetails = () => {
                   {/* Revenue Claim */}
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Claimable Revenue</span>
-                    <span className="font-semibold">{chain.claimableRevenue ? Number(fromUSDC(chain.claimableRevenue)).toLocaleString('en-US') : 0} USDC</span>
+                    <span className="font-semibold">{realtimeData?.claimableRevenue ? Number(fromUSDC(realtimeData.claimableRevenue)).toLocaleString('en-US') : 0} USDC</span>
                   </div>
                   <Button variant="outline" className="w-full mt-1" onClick={async ()=>{
                     try {
                       if (!projectAddress || !account) return;
-                      if (!chain.claimableRevenue || chain.claimableRevenue === 0n) { toast.error('No revenue to claim'); return; }
+                      if (!realtimeData?.claimableRevenue || realtimeData.claimableRevenue === 0n) { toast.error('No revenue to claim'); return; }
                       const signer = await getSigner();
                       const proj = projectAt(projectAddress, signer);
                       const tx = await proj.claimRevenue(account);
@@ -1098,11 +1062,11 @@ const ProjectDetails = () => {
                       {!approvedReserve ? (
                         <Button size="sm" className="justify-start" onClick={async ()=>{
                           try {
-                            if (!projectAddress || !chain.usdc) { toast.error('Addresses not loaded'); return; }
+                            if (!projectAddress || !staticConfig?.usdc) { toast.error('Addresses not loaded'); return; }
                             const amt = reserveAmount.trim();
                             if (!amt || Number(amt) <= 0) { toast.error('Enter amount'); return; }
                             const signer = await getSigner();
-                            const t = erc20At(chain.usdc, signer);
+                            const t = erc20At(staticConfig.usdc, signer);
                             const tx = await t.approve(projectAddress, toUSDC(amt));
                             await tx.wait();
                             setApprovedReserve(true);
@@ -1162,7 +1126,7 @@ const ProjectDetails = () => {
                           if (!uploadedDocs.length) { toast.error('Please upload at least one document'); return; }
                           const signer = await getSigner();
                           const proj = projectAt(projectAddress, signer);
-                          const phaseId: number = (chain.currentPhase ?? 0);
+                          const phaseId: number = (envioData?.projectState?.currentPhase ?? 0);
                           // Upload to IPFS
                           const uploaded = await ipfsUpload(uploadedDocs);
                           const nameByPath = Object.fromEntries(uploaded.map(u=>[u.path,u]));
@@ -1238,11 +1202,11 @@ const ProjectDetails = () => {
                       {!approvedProceeds ? (
                         <Button size="sm" className="justify-start" onClick={async ()=>{
                           try {
-                            if (!projectAddress || !chain.usdc) { toast.error('Addresses not loaded'); return; }
+                            if (!projectAddress || !staticConfig?.usdc) { toast.error('Addresses not loaded'); return; }
                             const amt = proceedsAmount.trim();
                             if (!amt || Number(amt) <= 0) { toast.error('Enter amount'); return; }
                             const signer = await getSigner();
-                            const t = erc20At(chain.usdc, signer);
+                            const t = erc20At(staticConfig.usdc, signer);
                             const tx = await t.approve(projectAddress, toUSDC(amt));
                             await tx.wait();
                             setApprovedProceeds(true);
