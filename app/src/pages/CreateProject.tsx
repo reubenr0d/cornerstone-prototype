@@ -101,8 +101,10 @@ const CreateProject = () => {
   }, [name]);
 
   const [deployInfo, setDeployInfo] = useState<{ project: string; token: string } | null>(null);
+  const [isPublishing, setIsPublishing] = useState(false);
 
   async function handlePublish() {
+    setIsPublishing(true);
     try {
       if (!contractsConfig.registry) {
         toast.error('Registry address not configured (VITE_REGISTRY_ADDRESS)');
@@ -258,6 +260,8 @@ const CreateProject = () => {
       console.error(e);
       const reason = e?.info?.error?.data?.message || e?.error?.message || e?.reason || e?.message;
       toast.error(reason || 'Deploy failed');
+    } finally {
+      setIsPublishing(false);
     }
   }
 
@@ -501,8 +505,8 @@ const CreateProject = () => {
                 </div>
 
                 <div className="flex gap-3">
-                  <Button className="flex-1" onClick={handlePublish}>
-                    Deploy & Publish
+                  <Button className="flex-1" onClick={handlePublish} disabled={isPublishing}>
+                    {isPublishing ? 'Deploying...' : 'Deploy & Publish'}
                   </Button>
                 </div>
                 {deployInfo && (

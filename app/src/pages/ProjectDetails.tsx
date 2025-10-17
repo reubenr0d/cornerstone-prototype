@@ -32,6 +32,19 @@ const ProjectDetails = () => {
   const [approvedReserve, setApprovedReserve] = useState(false);
   const [approvedProceeds, setApprovedProceeds] = useState(false);
 
+  // Loading states for transactions
+  const [isApprovingSupport, setIsApprovingSupport] = useState(false);
+  const [isDepositing, setIsDepositing] = useState(false);
+  const [isClaimingInterest, setIsClaimingInterest] = useState(false);
+  const [isRedeemingPrincipal, setIsRedeemingPrincipal] = useState(false);
+  const [isClaimingRevenue, setIsClaimingRevenue] = useState(false);
+  const [isApprovingReserve, setIsApprovingReserve] = useState(false);
+  const [isFundingReserve, setIsFundingReserve] = useState(false);
+  const [isClosingPhase, setIsClosingPhase] = useState(false);
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const [isApprovingProceeds, setIsApprovingProceeds] = useState(false);
+  const [isSubmittingProceeds, setIsSubmittingProceeds] = useState(false);
+
   const projectAddress = useMemo<Address | null>(() => {
     const p = id as string | undefined;
     return (p && p.startsWith('0x') ? (p as Address) : null);
@@ -964,7 +977,8 @@ const ProjectDetails = () => {
                     <Input id="support-amount" type="number" inputMode="decimal" placeholder="0.00" value={supportAmount} onChange={(e)=>{ setSupportAmount(e.target.value); setApprovedSupport(false); }} />
                   </div>
                   {!approvedSupport ? (
-                    <Button className="w-full" size="lg" onClick={async ()=>{
+                    <Button className="w-full" size="lg" disabled={isApprovingSupport} onClick={async ()=>{
+                      setIsApprovingSupport(true);
                       try {
                         if (!projectAddress || !chain.usdc) { toast.error('Addresses not loaded'); return; }
                         if (!supportAmount || Number(supportAmount) <= 0) { toast.error('Enter amount'); return; }
@@ -977,11 +991,13 @@ const ProjectDetails = () => {
                         setApprovedSupport(true);
                         toast.success('Approved');
                       } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Approve failed'); }
+                      finally { setIsApprovingSupport(false); }
                     }}>
-                      <Wallet className="w-4 h-4 mr-2" /> Approve
+                      <Wallet className="w-4 h-4 mr-2" /> {isApprovingSupport ? 'Approving...' : 'Approve'}
                     </Button>
                   ) : (
-                    <Button className="w-full" size="lg" onClick={async ()=>{
+                    <Button className="w-full" size="lg" disabled={isDepositing} onClick={async ()=>{
+                      setIsDepositing(true);
                       try {
                         if (!projectAddress) return;
                         const signer = await getSigner();
@@ -994,8 +1010,9 @@ const ProjectDetails = () => {
                         setSupportAmount('');
                         refresh();
                       } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Deposit failed'); }
+                      finally { setIsDepositing(false); }
                     }}>
-                      <DollarSign className="w-4 h-4 mr-2" /> Deposit
+                      <DollarSign className="w-4 h-4 mr-2" /> {isDepositing ? 'Depositing...' : 'Deposit'}
                     </Button>
                   )}
                 </CardContent>
@@ -1017,7 +1034,8 @@ const ProjectDetails = () => {
                     <span className="text-muted-foreground">Claimable Interest</span>
                     <span className="font-semibold">{chain.claimableInterest ? Number(fromUSDC(chain.claimableInterest)).toLocaleString('en-US') : 0} USDC</span>
                   </div>
-                  <Button variant="outline" className="w-full mt-1" onClick={async ()=>{
+                  <Button variant="outline" className="w-full mt-1" disabled={isClaimingInterest} onClick={async ()=>{
+                    setIsClaimingInterest(true);
                     try {
                       if (!projectAddress || !chain.claimableInterest || chain.claimableInterest === 0n) { toast.error('Nothing to claim'); return; }
                       const signer = await getSigner();
@@ -1027,7 +1045,8 @@ const ProjectDetails = () => {
                       toast.success('Interest claimed');
                       refresh();
                     } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Claim failed'); }
-                  }}>Withdraw Interest</Button>
+                    finally { setIsClaimingInterest(false); }
+                  }}>{isClaimingInterest ? 'Claiming...' : 'Withdraw Interest'}</Button>
 
                   {/* Principal Redemption */}
                   <div className="flex items-center justify-between">
@@ -1035,7 +1054,8 @@ const ProjectDetails = () => {
                     <span className="font-semibold">{chain.principalBuffer ? Number(fromUSDC(chain.principalBuffer)).toLocaleString('en-US') : 0} USDC</span>
                   </div>
                   {chain.principalBuffer && chain.userBalance && chain.principalBuffer > 0n && (
-                    <Button variant="outline" className="w-full mt-1" onClick={async ()=>{
+                    <Button variant="outline" className="w-full mt-1" disabled={isRedeemingPrincipal} onClick={async ()=>{
+                      setIsRedeemingPrincipal(true);
                       try {
                         if (!projectAddress) return;
                         const shares = chain.userBalance! < chain.principalBuffer! ? chain.userBalance! : chain.principalBuffer!;
@@ -1047,14 +1067,16 @@ const ProjectDetails = () => {
                         toast.success('Principal redeemed');
                         refresh();
                       } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Redeem failed'); }
-                    }}>Redeem Principal</Button>
+                      finally { setIsRedeemingPrincipal(false); }
+                    }}>{isRedeemingPrincipal ? 'Redeeming...' : 'Redeem Principal'}</Button>
                   )}
                   {/* Revenue Claim */}
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Claimable Revenue</span>
                     <span className="font-semibold">{chain.claimableRevenue ? Number(fromUSDC(chain.claimableRevenue)).toLocaleString('en-US') : 0} USDC</span>
                   </div>
-                  <Button variant="outline" className="w-full mt-1" onClick={async ()=>{
+                  <Button variant="outline" className="w-full mt-1" disabled={isClaimingRevenue} onClick={async ()=>{
+                    setIsClaimingRevenue(true);
                     try {
                       if (!projectAddress || !account) return;
                       if (!chain.claimableRevenue || chain.claimableRevenue === 0n) { toast.error('No revenue to claim'); return; }
@@ -1065,7 +1087,8 @@ const ProjectDetails = () => {
                       toast.success('Revenue claimed');
                       refresh();
                     } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Claim failed'); }
-                  }}>Claim Revenue</Button>
+                    finally { setIsClaimingRevenue(false); }
+                  }}>{isClaimingRevenue ? 'Claiming...' : 'Claim Revenue'}</Button>
                 </CardContent>
               </Card>
             </RoleGate>
@@ -1096,7 +1119,8 @@ const ProjectDetails = () => {
                         />
                       </div>
                       {!approvedReserve ? (
-                        <Button size="sm" className="justify-start" onClick={async ()=>{
+                        <Button size="sm" className="justify-start" disabled={isApprovingReserve} onClick={async ()=>{
+                          setIsApprovingReserve(true);
                           try {
                             if (!projectAddress || !chain.usdc) { toast.error('Addresses not loaded'); return; }
                             const amt = reserveAmount.trim();
@@ -1108,11 +1132,13 @@ const ProjectDetails = () => {
                             setApprovedReserve(true);
                             toast.success('Approved');
                           } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Approve failed'); }
+                          finally { setIsApprovingReserve(false); }
                         }}>
-                          <Wallet className="w-4 h-4 mr-2" /> Approve
+                          <Wallet className="w-4 h-4 mr-2" /> {isApprovingReserve ? 'Approving...' : 'Approve'}
                         </Button>
                       ) : (
-                        <Button size="sm" className="justify-start" onClick={async ()=>{
+                        <Button size="sm" className="justify-start" disabled={isFundingReserve} onClick={async ()=>{
+                          setIsFundingReserve(true);
                           try {
                             if (!projectAddress) return;
                             const signer = await getSigner();
@@ -1124,8 +1150,9 @@ const ProjectDetails = () => {
                             setReserveAmount('');
                             refresh();
                           } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Fund failed'); }
+                          finally { setIsFundingReserve(false); }
                         }}>
-                          <Banknote className="w-4 h-4 mr-2" /> Fund Reserve
+                          <Banknote className="w-4 h-4 mr-2" /> {isFundingReserve ? 'Funding...' : 'Fund Reserve'}
                         </Button>
                       )}
                     </div>
@@ -1156,7 +1183,8 @@ const ProjectDetails = () => {
                         />
                         <p className="text-xs text-muted-foreground">Attach evidence to close the current phase.</p>
                       </div>
-                      <Button size="sm" variant="secondary" className="justify-start" onClick={async ()=>{
+                      <Button size="sm" variant="secondary" className="justify-start" disabled={isClosingPhase} onClick={async ()=>{
+                        setIsClosingPhase(true);
                         try {
                           if (!projectAddress) return;
                           if (!uploadedDocs.length) { toast.error('Please upload at least one document'); return; }
@@ -1183,8 +1211,9 @@ const ProjectDetails = () => {
                           setUploadedDocs([]);
                           refresh();
                         } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Close failed'); }
+                        finally { setIsClosingPhase(false); }
                       }}>
-                        <DoorClosed className="w-4 h-4 mr-2" /> Close Phase
+                        <DoorClosed className="w-4 h-4 mr-2" /> {isClosingPhase ? 'Closing...' : 'Close Phase'}
                       </Button>
                     </div>
                   </div>
@@ -1204,7 +1233,8 @@ const ProjectDetails = () => {
                         <Label htmlFor="withdrawAmount">Amount (USDC)</Label>
                         <Input id="withdrawAmount" inputMode="decimal" placeholder="e.g. 10000" value={withdrawAmount} onChange={(e)=>setWithdrawAmount(e.target.value)} />
                       </div>
-                      <Button size="sm" variant="outline" className="justify-start" onClick={async ()=>{
+                      <Button size="sm" variant="outline" className="justify-start" disabled={isWithdrawing} onClick={async ()=>{
+                        setIsWithdrawing(true);
                         try {
                           if (!projectAddress) return;
                           const amt = Number(withdrawAmount || '0');
@@ -1218,8 +1248,9 @@ const ProjectDetails = () => {
                           setWithdrawAmount('');
                           refresh();
                         } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Withdraw failed'); }
+                        finally { setIsWithdrawing(false); }
                       }}>
-                        <DollarSign className="w-4 h-4 mr-2" /> Withdraw Funds
+                        <DollarSign className="w-4 h-4 mr-2" /> {isWithdrawing ? 'Withdrawing...' : 'Withdraw Funds'}
                       </Button>
                     </div>
                   </div>
@@ -1236,7 +1267,8 @@ const ProjectDetails = () => {
                         <Input id="proceedsAmount" inputMode="decimal" placeholder="e.g. 25000" value={proceedsAmount} onChange={(e)=>{ setProceedsAmount(e.target.value); setApprovedProceeds(false); }} />
                       </div>
                       {!approvedProceeds ? (
-                        <Button size="sm" className="justify-start" onClick={async ()=>{
+                        <Button size="sm" className="justify-start" disabled={isApprovingProceeds} onClick={async ()=>{
+                          setIsApprovingProceeds(true);
                           try {
                             if (!projectAddress || !chain.usdc) { toast.error('Addresses not loaded'); return; }
                             const amt = proceedsAmount.trim();
@@ -1248,11 +1280,13 @@ const ProjectDetails = () => {
                             setApprovedProceeds(true);
                             toast.success('Approved');
                           } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Approve failed'); }
+                          finally { setIsApprovingProceeds(false); }
                         }}>
-                          <Wallet className="w-4 h-4 mr-2" /> Approve
+                          <Wallet className="w-4 h-4 mr-2" /> {isApprovingProceeds ? 'Approving...' : 'Approve'}
                         </Button>
                       ) : (
-                        <Button size="sm" className="justify-start" onClick={async ()=>{
+                        <Button size="sm" className="justify-start" disabled={isSubmittingProceeds} onClick={async ()=>{
+                          setIsSubmittingProceeds(true);
                           try {
                             if (!projectAddress) return;
                             const signer = await getSigner();
@@ -1264,8 +1298,9 @@ const ProjectDetails = () => {
                             setProceedsAmount('');
                             refresh();
                           } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Submit failed'); }
+                          finally { setIsSubmittingProceeds(false); }
                         }}>
-                          <DollarSign className="w-4 h-4 mr-2" /> Submit
+                          <DollarSign className="w-4 h-4 mr-2" /> {isSubmittingProceeds ? 'Submitting...' : 'Submit'}
                         </Button>
                       )}
                     </div>
