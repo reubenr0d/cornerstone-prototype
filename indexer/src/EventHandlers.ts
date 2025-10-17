@@ -1,5 +1,10 @@
 import { ProjectRegistry, CornerstoneProject } from "generated";
 
+// Register new CornerstoneProject contracts dynamically
+ProjectRegistry.ProjectCreated.contractRegister(({ event, context }) => {
+  context.addCornerstoneProject(event.params.project);
+});
+
 export const handleProjectCreated = ProjectRegistry.ProjectCreated.handler(
   async ({ event, context }) => {
     const projectAddress = event.params.project.toLowerCase();
@@ -499,17 +504,15 @@ async function updateDepositorMetrics(
   if (!depositor) return;
 
   if (!metrics) {
-    const depositEvents = await context.DepositEvent.getWhere({
-      depositor_id: userId,
-      project_id: projectAddress,
-    });
+    // Creating new metrics - this is the first activity for this user on this project
+    const isFirstDeposit = event.name === "Deposit";
 
     context.DepositorMetrics.set({
       id: metricsId,
       user: userId,
       project_id: projectAddress,
       projectAddress: projectAddress,
-      depositCount: BigInt(depositEvents.length || 1),
+      depositCount: isFirstDeposit ? 1n : 0n,
       totalDeposited: depositor.totalDeposited,
       currentShares: depositor.sharesHeld,
       claimableInterest: 0n,
