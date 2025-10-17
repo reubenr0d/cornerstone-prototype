@@ -14,5 +14,9 @@
 	},
 	"optionalDependencies": {
 		"generated": "./generated"
+	},
+	"dependencies": {
+		"@types/node": "^24.8.1",
+		"typescript": "^5.9.3"
 	}
 }
