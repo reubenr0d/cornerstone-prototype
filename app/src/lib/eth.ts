@@ -1,11 +1,12 @@
 import { ethers } from 'ethers';
 import { CornerstoneProjectABI, ProjectRegistryABI, ERC20ABI } from '@/abi';
+import { TOKEN_CONFIG } from '@/config/contracts';
 
 export type Address = `0x${string}`;
 
 export type ContractsConfig = {
   registry?: Address;
-  usdc?: Address;
+  stablecoin?: Address;
 };
 
 export const getWindowEthereum = () => (window as any).ethereum as any | undefined;
@@ -86,13 +87,13 @@ export function projectAt(address: Address, signerOrProvider: ethers.Signer | et
   return new ethers.Contract(address, CornerstoneProjectABI as ethers.InterfaceAbi, signerOrProvider);
 }
 
-export function toUSDC(amount: string | number): bigint {
+export function toStablecoin(amount: string | number): bigint {
   const v = typeof amount === 'number' ? amount.toString() : amount;
-  return ethers.parseUnits(v || '0', 6);
+  return ethers.parseUnits(v || '0', TOKEN_CONFIG.decimals);
 }
 
-export function fromUSDC(amount: bigint): string {
-  return ethers.formatUnits(amount, 6);
+export function fromStablecoin(amount: bigint): string {
+  return ethers.formatUnits(amount, TOKEN_CONFIG.decimals);
 }
 
 export async function ensureAllowance(
@@ -145,7 +146,7 @@ export type ProjectRealtimeState = {
  */
 export type ProjectStaticConfig = {
   token: Address;
-  usdc: Address;
+  stablecoin: Address;
   owner: Address;
   projectName: string;
   minRaise: bigint;
@@ -216,9 +217,9 @@ export async function fetchProjectStaticConfig(
 ): Promise<ProjectStaticConfig> {
   const proj = projectAt(projectAddress, provider);
   
-  const [token, usdc, owner, minRaise, maxRaise, fundraiseDeadline] = await Promise.all([
+  const [token, stablecoin, owner, minRaise, maxRaise, fundraiseDeadline] = await Promise.all([
     proj.token(),
-    proj.usdc(),
+    proj.pyusd(),
     proj.owner(),
     proj.minRaise(),
     proj.maxRaise(),
@@ -241,7 +242,7 @@ export async function fetchProjectStaticConfig(
   
   return {
     token: token as Address,
-    usdc: usdc as Address,
+    stablecoin: stablecoin as Address,
     owner: owner as Address,
     projectName,
     minRaise,

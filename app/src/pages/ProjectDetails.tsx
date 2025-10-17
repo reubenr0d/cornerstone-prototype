@@ -13,9 +13,9 @@ import { toast } from '@/components/ui/sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ExternalLink, Plus, Edit, Upload, DollarSign, AlertTriangle, MessageSquare, Banknote, DoorClosed, Wallet, FileText, Target, Users, ShieldCheck } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@/components/ui/drawer';
-import { Address, erc20At, fromUSDC, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toUSDC, fetchProjectRealtimeState, fetchProjectStaticConfig, getWindowEthereum } from '@/lib/eth';
+import { Address, erc20At, fromStablecoin, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toStablecoin, fetchProjectRealtimeState, fetchProjectStaticConfig, getWindowEthereum } from '@/lib/eth';
 import { getCompleteProjectData } from '@/lib/envio';
-import { contractsConfig } from '@/config/contracts';
+import { contractsConfig, TOKEN_CONFIG } from '@/config/contracts';
 import { ipfsUpload } from '@/lib/ipfs';
 import { ethers } from 'ethers';
 
@@ -171,7 +171,7 @@ const ProjectDetails = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectAddress]);
 
-  const withdrawableNow = Number(fromUSDC(realtimeData?.withdrawableDevFunds ?? 0n));
+  const withdrawableNow = Number(fromStablecoin(realtimeData?.withdrawableDevFunds ?? 0n));
 
   const project = {
     name: staticConfig?.projectName?.trim() || 'Cornerstone Residences',
@@ -180,13 +180,13 @@ const ProjectDetails = () => {
     tokenAddress: envioData?.tokenAddress ?? staticConfig?.token ?? '0x',
     owner: staticConfig?.owner ?? '0x',
     // From Envio (historical data)
-    raised: Number(envioData?.projectState?.totalRaised ? fromUSDC(BigInt(envioData.projectState.totalRaised)) : '0'),
-    withdrawn: Number(envioData?.projectState?.totalDevWithdrawn ? fromUSDC(BigInt(envioData.projectState.totalDevWithdrawn)) : '0'),
+    raised: Number(envioData?.projectState?.totalRaised ? fromStablecoin(BigInt(envioData.projectState.totalRaised)) : '0'),
+    withdrawn: Number(envioData?.projectState?.totalDevWithdrawn ? fromStablecoin(BigInt(envioData.projectState.totalDevWithdrawn)) : '0'),
     // From static config
-    target: Number(staticConfig?.maxRaise ? fromUSDC(staticConfig.maxRaise) : '0'),
-    minTarget: Number(staticConfig?.minRaise ? fromUSDC(staticConfig.minRaise) : '0'),
+    target: Number(staticConfig?.maxRaise ? fromStablecoin(staticConfig.maxRaise) : '0'),
+    minTarget: Number(staticConfig?.minRaise ? fromStablecoin(staticConfig.minRaise) : '0'),
     // From real-time contract
-    escrow: Number(realtimeData?.reserveBalance ? fromUSDC(realtimeData.reserveBalance) : '0'),
+    escrow: Number(realtimeData?.reserveBalance ? fromStablecoin(realtimeData.reserveBalance) : '0'),
     withdrawable: withdrawableNow,
     // Current phase from Envio or fallback
     currentPhase: phaseName(envioData?.projectState?.currentPhase ?? 0),
@@ -213,7 +213,7 @@ const ProjectDetails = () => {
 
   // Get phase data from Envio
   const envioPhases = envioData?.projectState?.phases || [];
-  const perPhaseCapAmounts = envioPhases.map((p: any) => Number(fromUSDC(BigInt(p.phaseCap || '0'))));
+  const perPhaseCapAmounts = envioPhases.map((p: any) => Number(fromStablecoin(BigInt(p.phaseCap || '0'))));
   const cumulativeCapAmounts: number[] = [];
   for (let i = 0; i < 6; i++) {
     const prev = i > 0 ? cumulativeCapAmounts[i-1] : 0;
@@ -231,7 +231,7 @@ const ProjectDetails = () => {
   const nextPhaseName = currentPhaseIndex + 1 < phaseNames.length
     ? phaseNames[currentPhaseIndex + 1]
     : 'All phases complete';
-  const perPhaseWithdrawn = envioPhases.map((p: any) => Number(fromUSDC(BigInt(p.phaseWithdrawn || '0'))));
+  const perPhaseWithdrawn = envioPhases.map((p: any) => Number(fromStablecoin(BigInt(p.phaseWithdrawn || '0'))));
   const phaseCloseDates: (string | null)[] = [
     '2025-01-15', // Fundraising and Acquisition
     '2025-03-15', // Design and Architectural
@@ -278,8 +278,8 @@ const ProjectDetails = () => {
     {
       id: 'reserve',
       label: 'Interest Reserve',
-      value: `${format(project.escrow)} USDC`,
-      helper: `${format(project.withdrawn)} USDC withdrawn`,
+      value: `${format(project.escrow)} ${TOKEN_CONFIG.symbol}`,
+      helper: `${format(project.withdrawn)} ${TOKEN_CONFIG.symbol} withdrawn`,
       icon: ShieldCheck,
       tone: 'from-emerald-400/80 via-accent/60 to-primary/30',
     },
@@ -295,7 +295,7 @@ const ProjectDetails = () => {
       id: 'supporters',
       label: 'Supporters',
       value: format(project.supporters),
-      helper: `${format(Number(fromUSDC(BigInt(envioData?.projectState?.accrualBase || '0'))))} USDC interest accrued`,
+      helper: `${format(Number(fromStablecoin(BigInt(envioData?.projectState?.accrualBase || '0'))))} ${TOKEN_CONFIG.symbol} interest accrued`,
       icon: Users,
       tone: 'from-indigo-400/80 via-primary/60 to-accent/40',
     },
@@ -353,7 +353,7 @@ const ProjectDetails = () => {
       id: 'reserve-funded',
       type: 'payout',
       title: 'Reserve Funded',
-      meta: '40 days ago • Developer added 100,000 USDC',
+      meta: `40 days ago • Developer added 100,000 ${TOKEN_CONFIG.symbol}`,
       description: 'Interest reserve topped up to enable on-chain APR accrual.',
     },
     {
@@ -367,7 +367,7 @@ const ProjectDetails = () => {
       id: 'developer-withdrawal',
       type: 'payout',
       title: 'Developer Withdrawal',
-      meta: '29 days ago • 50,000 USDC withdrawn under caps',
+      meta: `29 days ago • 50,000 ${TOKEN_CONFIG.symbol} withdrawn under caps`,
       description: 'Funds transferred to developer wallet within cumulative unlocked limits.',
       actions: (
         <a
@@ -389,7 +389,7 @@ const ProjectDetails = () => {
       id: 'sales-proceeds',
       type: 'payout',
       title: 'Sales Proceeds Submitted',
-      meta: '10 days ago • 25,000 USDC added to pool',
+      meta: `10 days ago • 25,000 ${TOKEN_CONFIG.symbol} added to pool`,
       description: 'Proceeds deposited; principal buffer updated and excess will distribute pro-rata when applicable.',
       actions: (
         <a
@@ -610,8 +610,8 @@ const ProjectDetails = () => {
               <CardContent className="space-y-6 pt-6">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-[0.7rem] font-semibold uppercase tracking-[0.35em] text-slate-600 dark:text-slate-300">
-                    <span>{loading ? <Skeleton className="inline-block h-3 w-24" /> : `${format(project.raised)} USDC Raised`}</span>
-                    <span>{loading ? <Skeleton className="inline-block h-3 w-24" /> : `${format(project.target)} USDC Target`}</span>
+                    <span>{loading ? <Skeleton className="inline-block h-3 w-24" /> : `${format(project.raised)} ${TOKEN_CONFIG.symbol} Raised`}</span>
+                    <span>{loading ? <Skeleton className="inline-block h-3 w-24" /> : `${format(project.target)} ${TOKEN_CONFIG.symbol} Target`}</span>
                   </div>
                   <div className="relative h-3 w-full overflow-hidden rounded-full bg-slate-200/70 dark:bg-slate-800">
                     <div
@@ -644,7 +644,7 @@ const ProjectDetails = () => {
                     )}
                     <span className="inline-flex items-center gap-1 rounded-full bg-white/60 px-2 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.25em] text-slate-600 dark:bg-slate-800/70 dark:text-slate-200">
                       <ShieldCheck className="h-3 w-3" />
-                      {loading ? <Skeleton className="inline-block h-3 w-24" /> : `${format(project.withdrawable)} USDC Unlockable`}
+                      {loading ? <Skeleton className="inline-block h-3 w-24" /> : `${format(project.withdrawable)} ${TOKEN_CONFIG.symbol} Unlockable`}
                     </span>
                   </div>
                 </div>
@@ -752,14 +752,14 @@ const ProjectDetails = () => {
                         p.showCumulativeCap
                           ? {
                               label: 'Cumulative Cap',
-                              value: `${(p.capBps / 100).toFixed(1)}% (${format(Math.round(p.capAmount))} USDC)`,
+                              value: `${(p.capBps / 100).toFixed(1)}% (${format(Math.round(p.capAmount))} ${TOKEN_CONFIG.symbol})`,
                             }
                           : {
                               label: 'Raised in Phase',
-                              value: `${format(p.raisedAt)} USDC`,
+                              value: `${format(p.raisedAt)} ${TOKEN_CONFIG.symbol}`,
                             },
                         p.showWithdrawn
-                          ? { label: 'Withdrawn', value: `${format(Math.round(p.withdrawn))} USDC` }
+                          ? { label: 'Withdrawn', value: `${format(Math.round(p.withdrawn))} ${TOKEN_CONFIG.symbol}` }
                           : null,
                         { label: 'Closing', value: p.closingDisplay },
                       ].filter(Boolean) as Array<{ label: string; value: string }>;
@@ -968,23 +968,23 @@ const ProjectDetails = () => {
                   <Card>
                     <CardHeader>
                       <CardTitle>Support This Project</CardTitle>
-                      <CardDescription>Invest in this project using USDC</CardDescription>
+                      <CardDescription>Invest in this project using {TOKEN_CONFIG.symbol}</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="space-y-2">
-                        <label className="text-sm font-medium" htmlFor="support-amount">Amount (USDC)</label>
+                        <label className="text-sm font-medium" htmlFor="support-amount">Amount ({TOKEN_CONFIG.symbol})</label>
                         <Input id="support-amount" type="number" inputMode="decimal" placeholder="0.00" value={supportAmount} onChange={(e)=>{ setSupportAmount(e.target.value); setApprovedSupport(false); }} />
                       </div>
                       {!approvedSupport ? (
                         <Button className="w-full" size="lg" disabled={isApprovingSupport} onClick={async ()=>{
                           try {
-                            if (!projectAddress || !staticConfig?.usdc) { toast.error('Addresses not loaded'); return; }
+                            if (!projectAddress || !staticConfig?.stablecoin) { toast.error('Addresses not loaded'); return; }
                             if (!supportAmount || Number(supportAmount) <= 0) { toast.error('Enter amount'); return; }
                             setIsApprovingSupport(true);
                             const signer = await getSigner();
                             const owner = await signer.getAddress();
-                            const amt = toUSDC(supportAmount);
-                            const t = erc20At(staticConfig.usdc, signer);
+                            const amt = toStablecoin(supportAmount);
+                            const t = erc20At(staticConfig.stablecoin, signer);
                             const tx = await t.approve(projectAddress, amt);
                             await tx.wait();
                             setApprovedSupport(true);
@@ -1001,7 +1001,7 @@ const ProjectDetails = () => {
                             setIsDepositing(true);
                             const signer = await getSigner();
                             const proj = projectAt(projectAddress, signer);
-                            const amt = toUSDC(supportAmount);
+                            const amt = toStablecoin(supportAmount);
                             
                             // Check if this is user's first deposit to increment supporters count
                             const isFirstDeposit = !realtimeData?.userBalance || realtimeData.userBalance === 0n;
@@ -1038,13 +1038,13 @@ const ProjectDetails = () => {
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Your Balance</span>
                         <span className="font-semibold">
-                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.userBalance ? Number(fromUSDC(realtimeData.userBalance)).toLocaleString('en-US') : 0} USDC`}
+                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.userBalance ? Number(fromStablecoin(realtimeData.userBalance)).toLocaleString('en-US') : 0} ${TOKEN_CONFIG.symbol}`}
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Claimable Interest</span>
                         <span className="font-semibold">
-                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.claimableInterest ? Number(fromUSDC(realtimeData.claimableInterest)).toLocaleString('en-US') : 0} USDC`}
+                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.claimableInterest ? Number(fromStablecoin(realtimeData.claimableInterest)).toLocaleString('en-US') : 0} ${TOKEN_CONFIG.symbol}`}
                         </span>
                       </div>
                       <Button variant="outline" className="w-full mt-1" disabled={isClaimingInterest} onClick={async ()=>{
@@ -1065,7 +1065,7 @@ const ProjectDetails = () => {
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Principal Buffer</span>
                         <span className="font-semibold">
-                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.principalBuffer ? Number(fromUSDC(realtimeData.principalBuffer)).toLocaleString('en-US') : 0} USDC`}
+                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.principalBuffer ? Number(fromStablecoin(realtimeData.principalBuffer)).toLocaleString('en-US') : 0} ${TOKEN_CONFIG.symbol}`}
                         </span>
                       </div>
                       {realtimeData?.principalBuffer && realtimeData?.userBalance && realtimeData.principalBuffer > 0n && (
@@ -1089,7 +1089,7 @@ const ProjectDetails = () => {
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Claimable Revenue</span>
                         <span className="font-semibold">
-                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.claimableRevenue ? Number(fromUSDC(realtimeData.claimableRevenue)).toLocaleString('en-US') : 0} USDC`}
+                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.claimableRevenue ? Number(fromStablecoin(realtimeData.claimableRevenue)).toLocaleString('en-US') : 0} ${TOKEN_CONFIG.symbol}`}
                         </span>
                       </div>
                       <Button variant="outline" className="w-full mt-1" disabled={isClaimingRevenue} onClick={async ()=>{
@@ -1128,7 +1128,7 @@ const ProjectDetails = () => {
                     </div>
                     <div className="grid gap-2">
                       <div className="grid gap-1">
-                        <Label htmlFor="reserveAmount">Amount (USDC)</Label>
+                        <Label htmlFor="reserveAmount">Amount ({TOKEN_CONFIG.symbol})</Label>
                         <Input
                           id="reserveAmount"
                           inputMode="decimal"
@@ -1140,13 +1140,13 @@ const ProjectDetails = () => {
                       {!approvedReserve ? (
                         <Button size="sm" className="justify-start" disabled={isApprovingReserve} onClick={async ()=>{
                           try {
-                            if (!projectAddress || !staticConfig?.usdc) { toast.error('Addresses not loaded'); return; }
+                            if (!projectAddress || !staticConfig?.stablecoin) { toast.error('Addresses not loaded'); return; }
                             const amt = reserveAmount.trim();
                             if (!amt || Number(amt) <= 0) { toast.error('Enter amount'); return; }
                             setIsApprovingReserve(true);
                             const signer = await getSigner();
-                            const t = erc20At(staticConfig.usdc, signer);
-                            const tx = await t.approve(projectAddress, toUSDC(amt));
+                            const t = erc20At(staticConfig.stablecoin, signer);
+                            const tx = await t.approve(projectAddress, toStablecoin(amt));
                             await tx.wait();
                             setApprovedReserve(true);
                             toast.success('Approved');
@@ -1162,7 +1162,7 @@ const ProjectDetails = () => {
                             setIsFundingReserve(true);
                             const signer = await getSigner();
                             const proj = projectAt(projectAddress, signer);
-                            const tx = await proj.fundReserve(toUSDC(reserveAmount));
+                            const tx = await proj.fundReserve(toStablecoin(reserveAmount));
                             await tx.wait();
                             toast.success('Reserve funded');
                             setApprovedReserve(false);
@@ -1251,11 +1251,11 @@ const ProjectDetails = () => {
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">Withdrawable Now</span>
                         <span className="font-medium">
-                          {loading ? <Skeleton className="inline-block h-4 w-24" /> : `${withdrawableNow.toLocaleString('en-US')} USDC`}
+                          {loading ? <Skeleton className="inline-block h-4 w-24" /> : `${withdrawableNow.toLocaleString('en-US')} ${TOKEN_CONFIG.symbol}`}
                         </span>
                       </div>
                       <div className="grid gap-1">
-                        <Label htmlFor="withdrawAmount">Amount (USDC)</Label>
+                        <Label htmlFor="withdrawAmount">Amount ({TOKEN_CONFIG.symbol})</Label>
                         <Input id="withdrawAmount" inputMode="decimal" placeholder="e.g. 10000" value={withdrawAmount} onChange={(e)=>setWithdrawAmount(e.target.value)} />
                       </div>
                       <Button size="sm" variant="outline" className="justify-start" disabled={isWithdrawingFunds} onClick={async ()=>{
@@ -1267,7 +1267,7 @@ const ProjectDetails = () => {
                           setIsWithdrawingFunds(true);
                           const signer = await getSigner();
                           const proj = projectAt(projectAddress, signer);
-                          const tx = await proj.withdrawPhaseFunds(toUSDC(amt.toString()));
+                          const tx = await proj.withdrawPhaseFunds(toStablecoin(amt.toString()));
                           await tx.wait();
                           toast.success('Withdrawn');
                           setWithdrawAmount('');
@@ -1288,19 +1288,19 @@ const ProjectDetails = () => {
                     </div>
                     <div className="grid gap-2">
                       <div className="grid gap-1">
-                        <Label htmlFor="proceedsAmount">Amount (USDC)</Label>
+                        <Label htmlFor="proceedsAmount">Amount ({TOKEN_CONFIG.symbol})</Label>
                         <Input id="proceedsAmount" inputMode="decimal" placeholder="e.g. 25000" value={proceedsAmount} onChange={(e)=>{ setProceedsAmount(e.target.value); setApprovedProceeds(false); }} />
                       </div>
                       {!approvedProceeds ? (
                         <Button size="sm" className="justify-start" disabled={isApprovingProceeds} onClick={async ()=>{
                           try {
-                            if (!projectAddress || !staticConfig?.usdc) { toast.error('Addresses not loaded'); return; }
+                            if (!projectAddress || !staticConfig?.stablecoin) { toast.error('Addresses not loaded'); return; }
                             const amt = proceedsAmount.trim();
                             if (!amt || Number(amt) <= 0) { toast.error('Enter amount'); return; }
                             setIsApprovingProceeds(true);
                             const signer = await getSigner();
-                            const t = erc20At(staticConfig.usdc, signer);
-                            const tx = await t.approve(projectAddress, toUSDC(amt));
+                            const t = erc20At(staticConfig.stablecoin, signer);
+                            const tx = await t.approve(projectAddress, toStablecoin(amt));
                             await tx.wait();
                             setApprovedProceeds(true);
                             toast.success('Approved');
@@ -1316,7 +1316,7 @@ const ProjectDetails = () => {
                             setIsSubmittingProceeds(true);
                             const signer = await getSigner();
                             const proj = projectAt(projectAddress, signer);
-                            const tx = await proj.submitSalesProceeds(toUSDC(proceedsAmount));
+                            const tx = await proj.submitSalesProceeds(toStablecoin(proceedsAmount));
                             await tx.wait();
                             toast.success('Proceeds submitted');
                             setApprovedProceeds(false);
@@ -1349,7 +1349,7 @@ const ProjectDetails = () => {
                 <div>
                   <p className="text-muted-foreground">Interest Reserve</p>
                   <p className="font-semibold">
-                    {loading ? <Skeleton className="h-4 w-24" /> : `${project.escrow} USDC`}
+                    {loading ? <Skeleton className="h-4 w-24" /> : `${project.escrow} ${TOKEN_CONFIG.symbol}`}
                   </p>
                 </div>
                 <div>

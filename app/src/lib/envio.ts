@@ -65,7 +65,7 @@ export type DepositorMetrics = {
 export type DepositEvent = {
   id: string;
   projectAddress: string;
-  amountUSDC: string;
+  amountUSDC: string; // Amount in stablecoin (field name from Envio schema)
   sharesMinted: string;
   blockNumber: string;
   blockTimestamp: string;

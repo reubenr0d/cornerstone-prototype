@@ -155,7 +155,7 @@ const CreateProject = () => {
         // eslint-disable-next-line no-console
         console.log('[CreateProject] setup', {
           registry: contractsConfig.registry,
-          usdc: contractsConfig.usdc,
+          stablecoin: contractsConfig.stablecoin,
           acct,
           signerChainId,
           metamaskChainId: mmChainId,
@@ -204,9 +204,9 @@ const CreateProject = () => {
         phaseCaps,
         sumCaps,
       });
-      // Preflight simulation (allows state changes during simulation; staticCall fails on CREATE)
+      // Preflight simulation using staticCall
       try {
-        const sim = await (reg as any).simulate.createProjectWithTokenMeta(
+        const sim = await reg.createProjectWithTokenMeta.staticCall(
           tokenName,
           tokenSymbol,
           BigInt(Math.round(parseFloat(minRaise) * 1e6)),
@@ -217,7 +217,7 @@ const CreateProject = () => {
           phaseCaps,
         );
         // eslint-disable-next-line no-console
-        console.log('[CreateProject] simulate ok (project, token)', sim?.result ?? sim);
+        console.log('[CreateProject] simulate ok (project, token)', sim);
       } catch (err) {
         // If simulation fails, surface reason but do not block sending in case of node quirks
         // eslint-disable-next-line no-console
@@ -230,7 +230,7 @@ const CreateProject = () => {
       // Important: estimate with signer-bound contract so msg.sender context is correct
       let est: bigint = 0n;
       try {
-        est = await (reg as any).createProjectWithTokenMeta.estimateGas(
+        est = await reg.createProjectWithTokenMeta.estimateGas(
           tokenName,
           tokenSymbol,
           BigInt(Math.round(parseFloat(minRaise) * 1e6)),
@@ -270,7 +270,10 @@ const CreateProject = () => {
       // Parse logs for ProjectCreated
       for (const log of receipt.logs) {
         try {
-          const parsed = (reg as any).interface.parseLog(log);
+          const parsed = reg.interface.parseLog({
+            topics: [...log.topics],
+            data: log.data
+          });
           if (parsed?.name === 'ProjectCreated') {
             projectAddr = parsed.args?.project as string;
             tokenAddr = parsed.args?.token as string;
