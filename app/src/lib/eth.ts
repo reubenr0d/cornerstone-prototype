@@ -75,15 +75,15 @@ export function getRpcProvider(): ethers.JsonRpcProvider {
 }
 
 export function erc20At(address: Address, signerOrProvider: ethers.Signer | ethers.Provider) {
-  return new ethers.Contract(address, ERC20ABI, signerOrProvider);
+  return new ethers.Contract(address, ERC20ABI as ethers.InterfaceAbi, signerOrProvider);
 }
 
 export function registryAt(address: Address, signerOrProvider: ethers.Signer | ethers.Provider) {
-  return new ethers.Contract(address, ProjectRegistryABI, signerOrProvider);
+  return new ethers.Contract(address, ProjectRegistryABI as ethers.InterfaceAbi, signerOrProvider);
 }
 
 export function projectAt(address: Address, signerOrProvider: ethers.Signer | ethers.Provider) {
-  return new ethers.Contract(address, CornerstoneProjectABI, signerOrProvider);
+  return new ethers.Contract(address, CornerstoneProjectABI as ethers.InterfaceAbi, signerOrProvider);
 }
 
 export function toUSDC(amount: string | number): bigint {
@@ -118,71 +118,119 @@ export async function getAccount(): Promise<Address | null> {
   return (addr ? (addr as Address) : null);
 }
 
-// ---- DRY helpers for project state ----
-export type ProjectCoreState = {
+// ============================================================================
+// Contract Data Fetching - Split into Real-time vs Static
+// ============================================================================
+
+/**
+ * Real-time calculated values that change frequently
+ * These should always be fetched directly from the contract
+ */
+export type ProjectRealtimeState = {
+  reserveBalance: bigint;
+  poolBalance: bigint;
+  principalBuffer: bigint;
+  withdrawableDevFunds: bigint;
+  paused: boolean;
+  fundraiseClosed: boolean;
+  fundraiseSuccessful: boolean;
+  claimableInterest?: bigint;
+  claimableRevenue?: bigint;
+  userBalance?: bigint;
+};
+
+/**
+ * Static configuration that rarely or never changes
+ * Can be cached or fetched from Envio
+ */
+export type ProjectStaticConfig = {
   token: Address;
   usdc: Address;
   owner: Address;
   projectName: string;
-  totalRaised: bigint;
   minRaise: bigint;
   maxRaise: bigint;
-  reserveBalance: bigint;
-  totalDevWithdrawn: bigint;
-  poolBalance: bigint;
-  currentPhase: number;
-  lastClosedPhase: number;
-  phase5PercentComplete: number;
-  principalBuffer: bigint;
-  withdrawableDevFunds: bigint;
-  perPhaseCaps: bigint[];
-  perPhaseWithdrawn: bigint[];
+  fundraiseDeadline: bigint;
   perPhaseAprBps: number[];
 };
 
-export type ProjectUserState = {
-  claimableInterest: bigint;
-  claimableRevenue: bigint;
-  userBalance: bigint;
-};
-
-export async function fetchProjectCoreState(
+/**
+ * Fetch real-time calculated values from contract
+ * These values change with every transaction and accrual
+ */
+export async function fetchProjectRealtimeState(
   projectAddress: Address,
   provider: ethers.Provider | ethers.Signer,
-): Promise<ProjectCoreState> {
+  account?: Address
+): Promise<ProjectRealtimeState> {
   const proj = projectAt(projectAddress, provider);
-  const [token, owner, totalRaised, maxRaise, minRaise, reserveBalance, totalDevWithdrawn, poolBalance, currentPhase, lastClosedPhase, phase5PercentComplete, principalBuffer, usdc, withdrawableDevFunds] = await Promise.all([
-    proj.token(),
-    proj.owner(),
-    proj.totalRaised(),
-    proj.maxRaise(),
-    proj.minRaise(),
+  
+  const [
+    reserveBalance,
+    poolBalance,
+    principalBuffer,
+    withdrawableDevFunds,
+    paused,
+    fundraiseClosed,
+    fundraiseSuccessful,
+  ] = await Promise.all([
     proj.reserveBalance(),
-    proj.totalDevWithdrawn(),
     proj.poolBalance(),
-    proj.currentPhase(),
-    proj.lastClosedPhase(),
-    proj.phase5PercentComplete(),
     proj.principalBuffer(),
-    proj.usdc(),
     proj.withdrawableDevFunds(),
+    proj.paused(),
+    proj.fundraiseClosed(),
+    proj.fundraiseSuccessful(),
   ]);
-  // Return UI-friendly arrays for 6 phases numbered 0..5.
-  const caps: bigint[] = [];
-  const withdrawn: bigint[] = [];
-  for (let p = 0; p <= 5; p++) {
-    const [cap, withdrawnForPhase] = await Promise.all([
-      proj.getPhaseCap(p),
-      proj.getPhaseWithdrawn(p),
+  
+  let claimableInterest, claimableRevenue, userBalance;
+  if (account) {
+    const tokenAddr: Address = await proj.token();
+    const tokenC = erc20At(tokenAddr, provider);
+    [claimableInterest, claimableRevenue, userBalance] = await Promise.all([
+      proj.claimableInterest(account),
+      proj.claimableRevenue(account),
+      tokenC.balanceOf(account),
     ]);
-    caps.push(cap);
-    withdrawn.push(withdrawnForPhase);
   }
+  
+  return {
+    reserveBalance,
+    poolBalance,
+    principalBuffer,
+    withdrawableDevFunds,
+    paused,
+    fundraiseClosed,
+    fundraiseSuccessful,
+    ...(account && { claimableInterest, claimableRevenue, userBalance }),
+  };
+}
+
+/**
+ * Fetch static configuration that rarely changes
+ * This data can be cached or supplemented from Envio
+ */
+export async function fetchProjectStaticConfig(
+  projectAddress: Address,
+  provider: ethers.Provider
+): Promise<ProjectStaticConfig> {
+  const proj = projectAt(projectAddress, provider);
+  
+  const [token, usdc, owner, minRaise, maxRaise, fundraiseDeadline] = await Promise.all([
+    proj.token(),
+    proj.usdc(),
+    proj.owner(),
+    proj.minRaise(),
+    proj.maxRaise(),
+    proj.fundraiseDeadline(),
+  ]);
+  
   const aprBps: number[] = [];
   for (let i = 0; i <= 5; i++) {
     const bps = await proj.phaseAPRsBps(i);
     aprBps.push(Number(bps));
   }
+  
   let projectName = '';
   try {
     const tokenContract = erc20At(token as Address, provider);
@@ -190,59 +238,16 @@ export async function fetchProjectCoreState(
   } catch {
     projectName = '';
   }
+  
   return {
     token: token as Address,
     usdc: usdc as Address,
     owner: owner as Address,
     projectName,
-    totalRaised,
     minRaise,
     maxRaise,
-    reserveBalance,
-    totalDevWithdrawn,
-    poolBalance,
-    currentPhase: Number(currentPhase),
-    lastClosedPhase: Number(lastClosedPhase),
-    phase5PercentComplete: Number(phase5PercentComplete),
-    principalBuffer,
-    withdrawableDevFunds,
-    perPhaseCaps: caps,
-    perPhaseWithdrawn: withdrawn,
+    fundraiseDeadline,
     perPhaseAprBps: aprBps,
   };
 }
 
-export async function fetchProjectUserState(
-  projectAddress: Address,
-  provider: ethers.Provider,
-  account: Address,
-): Promise<ProjectUserState> {
-  const proj = projectAt(projectAddress, provider);
-  const tokenAddr: Address = await proj.token();
-  const tokenC = erc20At(tokenAddr, provider);
-  const [claimableInterest, claimableRevenue, userBalance] = await Promise.all([
-    proj.claimableInterest(account),
-    proj.claimableRevenue(account),
-    tokenC.balanceOf(account),
-  ]);
-  return { claimableInterest, claimableRevenue, userBalance };
-}
-
-export async function fetchSupportersCount(
-  projectAddress: Address,
-  provider: ethers.Provider,
-): Promise<number> {
-  try {
-    const proj = projectAt(projectAddress, provider);
-    const latest = await provider.getBlockNumber();
-    const logs = await proj.queryFilter((proj as any).filters.Deposit(), 0, latest);
-    const uniq = new Set<string>();
-    for (const log of logs) {
-      const user = (log as any).args?.[0] ?? (log as any).args?.user;
-      if (user) uniq.add(String(user));
-    }
-    return uniq.size;
-  } catch {
-    return 0;
-  }
-}
