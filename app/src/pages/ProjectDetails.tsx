@@ -10,10 +10,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/components/ui/sonner';
+import { Skeleton } from '@/components/ui/skeleton';
 import { ExternalLink, Plus, Edit, Upload, DollarSign, AlertTriangle, MessageSquare, Banknote, DoorClosed, Wallet, FileText, Target, Users, ShieldCheck } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@/components/ui/drawer';
-import { Address, erc20At, fromUSDC, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toUSDC, fetchProjectCoreState, fetchProjectUserState, fetchSupportersCount, getWindowEthereum } from '@/lib/eth';
-import { contractsConfig } from '@/config/contracts';
+import { Address, erc20At, fromStablecoin, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toStablecoin, fetchProjectRealtimeState, fetchProjectStaticConfig, getWindowEthereum } from '@/lib/eth';
+import { getCompleteProjectData } from '@/lib/envio';
+import { contractsConfig, TOKEN_CONFIG } from '@/config/contracts';
 import { ipfsUpload } from '@/lib/ipfs';
 import { ethers } from 'ethers';
 
@@ -31,6 +33,19 @@ const ProjectDetails = () => {
   const [approvedSupport, setApprovedSupport] = useState(false);
   const [approvedReserve, setApprovedReserve] = useState(false);
   const [approvedProceeds, setApprovedProceeds] = useState(false);
+  
+  // Loading states for transactions
+  const [isApprovingSupport, setIsApprovingSupport] = useState(false);
+  const [isDepositing, setIsDepositing] = useState(false);
+  const [isClaimingInterest, setIsClaimingInterest] = useState(false);
+  const [isRedeemingPrincipal, setIsRedeemingPrincipal] = useState(false);
+  const [isClaimingRevenue, setIsClaimingRevenue] = useState(false);
+  const [isApprovingReserve, setIsApprovingReserve] = useState(false);
+  const [isFundingReserve, setIsFundingReserve] = useState(false);
+  const [isClosingPhase, setIsClosingPhase] = useState(false);
+  const [isWithdrawingFunds, setIsWithdrawingFunds] = useState(false);
+  const [isApprovingProceeds, setIsApprovingProceeds] = useState(false);
+  const [isSubmittingProceeds, setIsSubmittingProceeds] = useState(false);
 
   const projectAddress = useMemo<Address | null>(() => {
     const p = id as string | undefined;
@@ -39,31 +54,12 @@ const ProjectDetails = () => {
   const [account, setAccount] = useState<Address | null>(null);
   const [connected, setConnected] = useState(false);
 
-  // On-chain state
-  const [chain, setChain] = useState<{
-    token?: Address;
-    usdc?: Address;
-    owner?: Address;
-    projectName?: string;
-    totalRaised?: bigint;
-    minRaise?: bigint;
-    maxRaise?: bigint;
-    reserveBalance?: bigint;
-    totalDevWithdrawn?: bigint;
-    poolBalance?: bigint;
-    currentPhase?: number;
-    lastClosedPhase?: number;
-    phase5PercentComplete?: number;
-    claimableInterest?: bigint;
-    claimableRevenue?: bigint;
-    principalBuffer?: bigint;
-    userBalance?: bigint;
-    withdrawableDevFunds?: bigint;
-    perPhaseCaps?: bigint[];
-    perPhaseWithdrawn?: bigint[];
-    perPhaseAprBps?: number[];
-    supporters?: number;
-  }>({});
+  // Separate data sources: Envio (historical) + Contract (real-time)
+  const [envioData, setEnvioData] = useState<any>(null);
+  const [realtimeData, setRealtimeData] = useState<any>(null);
+  const [staticConfig, setStaticConfig] = useState<any>(null);
+  const [supporters, setSupporters] = useState<number>(0);
+  const [loading, setLoading] = useState(true);
 
   async function connectWallet() {
     try {
@@ -94,57 +90,46 @@ const ProjectDetails = () => {
   async function refresh() {
     try {
       if (!projectAddress) return;
+      
+      setLoading(true);
+      
       // Try injected provider first; fall back to RPC on failure
       let provider = getWindowEthereum() ? await getProvider() : getRpcProvider();
-      let core;
+      
       try {
         // Ensure contract exists on current network before reading
         const code = await provider.getCode(projectAddress);
         if (!code || code === '0x') {
           toast.error('No contract at this address on current network. Check RPC/network.');
+          setLoading(false);
           return;
         }
-        core = await fetchProjectCoreState(projectAddress, provider);
       } catch {
         provider = getRpcProvider();
         const code2 = await provider.getCode(projectAddress);
         if (!code2 || code2 === '0x') {
           toast.error('No contract at this address on configured RPC. Set VITE_RPC_URL or switch network.');
+          setLoading(false);
           return;
         }
-        core = await fetchProjectCoreState(projectAddress, provider);
       }
-      const supporters = await fetchSupportersCount(projectAddress, provider);
-      let user = { claimableInterest: 0n, claimableRevenue: 0n, userBalance: 0n };
-      if (account) {
-        user = await fetchProjectUserState(projectAddress, provider, account);
-      }
-      setChain({
-        token: core.token,
-        usdc: core.usdc,
-        owner: core.owner,
-        projectName: core.projectName,
-        totalRaised: core.totalRaised,
-        minRaise: core.minRaise,
-        maxRaise: core.maxRaise,
-        reserveBalance: core.reserveBalance,
-        totalDevWithdrawn: core.totalDevWithdrawn,
-        poolBalance: core.poolBalance,
-        currentPhase: core.currentPhase,
-        lastClosedPhase: core.lastClosedPhase,
-        phase5PercentComplete: core.phase5PercentComplete,
-        claimableInterest: user.claimableInterest,
-        claimableRevenue: user.claimableRevenue,
-        principalBuffer: core.principalBuffer,
-        userBalance: user.userBalance,
-        withdrawableDevFunds: core.withdrawableDevFunds,
-        perPhaseCaps: core.perPhaseCaps,
-        perPhaseWithdrawn: core.perPhaseWithdrawn,
-        perPhaseAprBps: core.perPhaseAprBps,
-        supporters,
-      });
+
+      // Fetch data in parallel: Single Envio query + Contract queries
+      const [envioResult, realtimeResult, staticResult] = await Promise.all([
+        getCompleteProjectData(projectAddress, account || undefined),
+        fetchProjectRealtimeState(projectAddress, provider, account || undefined),
+        fetchProjectStaticConfig(projectAddress, provider),
+      ]);
+      
+      setEnvioData(envioResult.project);
+      setRealtimeData(realtimeResult);
+      setStaticConfig(staticResult);
+      setSupporters(envioResult.supportersCount);
     } catch (e) {
-      console.error(e);
+      console.error('Error refreshing project data:', e);
+      toast.error('Failed to load project data');
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -186,23 +171,27 @@ const ProjectDetails = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectAddress]);
 
-  const withdrawableNow = Number(fromUSDC(chain.withdrawableDevFunds ?? 0n));
+  const withdrawableNow = Number(fromStablecoin(realtimeData?.withdrawableDevFunds ?? 0n));
 
   const project = {
-    name: chain.projectName?.trim() || 'Cornerstone Residences',
+    name: staticConfig?.projectName?.trim() || 'Cornerstone Residences',
     status: 'Active',
     contractAddress: projectAddress ?? '0x',
-    tokenAddress: chain.token ?? '0x',
-    owner: chain.owner ?? '0x',
-    raised: Number(chain.totalRaised ? fromUSDC(chain.totalRaised) : '0'),
-    target: Number(chain.maxRaise ? fromUSDC(chain.maxRaise) : '0'),
-    minTarget: Number(chain.minRaise ? fromUSDC(chain.minRaise) : '0'),
-    escrow: Number(chain.reserveBalance ? fromUSDC(chain.reserveBalance) : '0'),
-    withdrawn: Number(chain.totalDevWithdrawn ? fromUSDC(chain.totalDevWithdrawn) : '0'),
+    tokenAddress: envioData?.tokenAddress ?? staticConfig?.token ?? '0x',
+    owner: staticConfig?.owner ?? '0x',
+    // From Envio (historical data)
+    raised: Number(envioData?.projectState?.totalRaised ? fromStablecoin(BigInt(envioData.projectState.totalRaised)) : '0'),
+    withdrawn: Number(envioData?.projectState?.totalDevWithdrawn ? fromStablecoin(BigInt(envioData.projectState.totalDevWithdrawn)) : '0'),
+    // From static config
+    target: Number(staticConfig?.maxRaise ? fromStablecoin(staticConfig.maxRaise) : '0'),
+    minTarget: Number(staticConfig?.minRaise ? fromStablecoin(staticConfig.minRaise) : '0'),
+    // From real-time contract
+    escrow: Number(realtimeData?.reserveBalance ? fromStablecoin(realtimeData.reserveBalance) : '0'),
     withdrawable: withdrawableNow,
-    currentPhase: phaseName(chain.currentPhase ?? 0),
+    // Current phase from Envio or fallback
+    currentPhase: phaseName(envioData?.projectState?.currentPhase ?? 0),
     milestones: 0,
-    supporters: chain.supporters ?? 0,
+    supporters: supporters ?? 0,
     description:
       'Redevelopment of a 120k sq. ft. mixed-use tower with ground floor retail, 140 market-rate apartments, and a rooftop amenity deck overlooking the South Lakefront Greenway.',
   };
@@ -222,10 +211,11 @@ const ProjectDetails = () => {
     'Revenue and Sales',
   ] as const;
 
-  // Compute cumulative withdraw limits (caps) per phase
-  const perPhaseCapAmounts = (chain.perPhaseCaps || []).map((c)=> Number(fromUSDC(c)));
+  // Get phase data from Envio
+  const envioPhases = envioData?.projectState?.phases || [];
+  const perPhaseCapAmounts = envioPhases.map((p: any) => Number(fromStablecoin(BigInt(p.phaseCap || '0'))));
   const cumulativeCapAmounts: number[] = [];
-  for (let i = 0; i < (perPhaseCapAmounts.length || 0); i++) {
+  for (let i = 0; i < 6; i++) {
     const prev = i > 0 ? cumulativeCapAmounts[i-1] : 0;
     cumulativeCapAmounts[i] = prev + (perPhaseCapAmounts[i] || 0);
   }
@@ -236,12 +226,12 @@ const ProjectDetails = () => {
   const capBps = Array.from({ length: 6 }, (_, i) => capBpsRaw[i] ?? 0);
   const cumulativeCapAmountsFilled = Array.from({ length: 6 }, (_, i) => cumulativeCapAmounts[i] ?? 0);
   // Convert APRs from bps to percent for display
-  const aprs = (chain.perPhaseAprBps || [0,0,0,0,0,0]).map((bps)=> bps / 100);
-  const currentPhaseIndex = Math.max(0, chain.currentPhase ?? 0);
+  const aprs = (staticConfig?.perPhaseAprBps || [0,0,0,0,0,0]).map((bps: number)=> bps / 100);
+  const currentPhaseIndex = Math.max(0, envioData?.projectState?.currentPhase ?? 0);
   const nextPhaseName = currentPhaseIndex + 1 < phaseNames.length
     ? phaseNames[currentPhaseIndex + 1]
     : 'All phases complete';
-  const perPhaseWithdrawn = (chain.perPhaseWithdrawn || []).map((w)=> Number(fromUSDC(w)));
+  const perPhaseWithdrawn = envioPhases.map((p: any) => Number(fromStablecoin(BigInt(p.phaseWithdrawn || '0'))));
   const phaseCloseDates: (string | null)[] = [
     '2025-01-15', // Fundraising and Acquisition
     '2025-03-15', // Design and Architectural
@@ -257,7 +247,7 @@ const ProjectDetails = () => {
     const raisedAt = i === 0 ? project.raised : 0; // fundraising phase shows raised amount
     const status = i < currentPhaseIndex ? 'Past' : i === currentPhaseIndex ? 'Current' : 'Upcoming';
     const withdrawnPctOfCap = capAmount > 0 ? Math.min(100, (withdrawn / capAmount) * 100) : 0;
-    const showWithdrawn = (i + 1) <= (chain.lastClosedPhase ?? 0);
+    const showWithdrawn = (i + 1) <= (envioData?.projectState?.lastClosedPhase ?? 0);
     let closingDisplay = 'TBD';
     if (i === currentPhaseIndex) {
       closingDisplay = 'In Progress';
@@ -288,8 +278,8 @@ const ProjectDetails = () => {
     {
       id: 'reserve',
       label: 'Interest Reserve',
-      value: `${format(project.escrow)} USDC`,
-      helper: `${format(project.withdrawn)} USDC withdrawn`,
+      value: `${format(project.escrow)} ${TOKEN_CONFIG.symbol}`,
+      helper: `${format(project.withdrawn)} ${TOKEN_CONFIG.symbol} withdrawn`,
       icon: ShieldCheck,
       tone: 'from-emerald-400/80 via-accent/60 to-primary/30',
     },
@@ -305,7 +295,7 @@ const ProjectDetails = () => {
       id: 'supporters',
       label: 'Supporters',
       value: format(project.supporters),
-      helper: `${format(Number(fromUSDC(chain.claimableInterest ?? 0n)))} USDC interest paid out`,
+      helper: `${format(Number(fromStablecoin(BigInt(envioData?.projectState?.accrualBase || '0'))))} ${TOKEN_CONFIG.symbol} interest accrued`,
       icon: Users,
       tone: 'from-indigo-400/80 via-primary/60 to-accent/40',
     },
@@ -363,7 +353,7 @@ const ProjectDetails = () => {
       id: 'reserve-funded',
       type: 'payout',
       title: 'Reserve Funded',
-      meta: '40 days ago • Developer added 100,000 USDC',
+      meta: `40 days ago • Developer added 100,000 ${TOKEN_CONFIG.symbol}`,
       description: 'Interest reserve topped up to enable on-chain APR accrual.',
     },
     {
@@ -377,7 +367,7 @@ const ProjectDetails = () => {
       id: 'developer-withdrawal',
       type: 'payout',
       title: 'Developer Withdrawal',
-      meta: '29 days ago • 50,000 USDC withdrawn under caps',
+      meta: `29 days ago • 50,000 ${TOKEN_CONFIG.symbol} withdrawn under caps`,
       description: 'Funds transferred to developer wallet within cumulative unlocked limits.',
       actions: (
         <a
@@ -399,7 +389,7 @@ const ProjectDetails = () => {
       id: 'sales-proceeds',
       type: 'payout',
       title: 'Sales Proceeds Submitted',
-      meta: '10 days ago • 25,000 USDC added to pool',
+      meta: `10 days ago • 25,000 ${TOKEN_CONFIG.symbol} added to pool`,
       description: 'Proceeds deposited; principal buffer updated and excess will distribute pro-rata when applicable.',
       actions: (
         <a
@@ -436,65 +426,50 @@ const ProjectDetails = () => {
   type Doc = { id: string; name: string; type: 'image' | 'pdf'; url: string; hash: string };
   const [phaseDocuments, setPhaseDocuments] = useState<Doc[][]>([[], [], [], [], [], []]);
 
-  // Fetch phase documents from contract events
+  // Process phase documents from already-loaded Envio data
   useEffect(() => {
-    async function fetchPhaseDocs() {
-      try {
-        if (!projectAddress) return;
-        const provider = getRpcProvider();
-        const proj = projectAt(projectAddress, provider);
-        console.info('[docs] fetching phase docs', { projectAddress });
-
-        // Query PhaseClosed events (explicit fromBlock to catch earlier logs)
-        const latest = await provider.getBlockNumber();
-        const filter = proj.filters.PhaseClosed();
-        const events = await proj.queryFilter(filter, 0n, BigInt(latest));
-        console.info('[docs] fetched PhaseClosed events', { count: events.length });
-
-        const docsByPhase: Doc[][] = [[], [], [], [], [], []];
-
-        for (const event of events) {
-          const phaseId = Number(event.args?.phaseId || 0);
-          if (phaseId < 0 || phaseId > 5) continue;
-
-          const docTypes = Array.from(event.args?.docTypes || [], (t) => (typeof t === 'string' ? t : String(t)));
-          const docHashes = Array.from(event.args?.docHashes || [], (h) => (typeof h === 'string' ? h : String(h)));
-          const metadataURIs = Array.from(event.args?.metadataURIs || [], (u) => (typeof u === 'string' ? u : String(u)));
-          console.info('[docs] processing PhaseClosed', { phaseId, docCount: docTypes.length, docTypes, metadataURIs });
-
-          const phaseDocs: Doc[] = [];
-          for (let i = 0; i < docTypes.length; i++) {
-            const docType = docTypes[i] || 'unknown';
-            const hash = docHashes[i] || '0x';
-            const uri = metadataURIs[i] || '';
-            
-            // Determine if it's an image or PDF based on type/URI
-            const isImage = docType.includes('image') || uri.includes('image') || 
-                           ['jpg', 'jpeg', 'png', 'gif', 'webp'].some(ext => uri.toLowerCase().includes(ext));
-            
-            phaseDocs.push({
-              id: `phase${phaseId}-doc${i}-${hash.slice(0, 10)}`,
-              name: uri.split('/').at(-1),
-              type: isImage ? 'image' : 'pdf',
-              url: uri.startsWith('ipfs://') 
-                ? `https://ipfs.io/ipfs/${uri.replace('ipfs://', '')}` 
-                : uri || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-              hash: hash,
-            });
-          }
-
-          docsByPhase[phaseId] = phaseDocs;
-        }
-
-        setPhaseDocuments(docsByPhase);
-        console.info('[docs] updated phaseDocuments state', { phaseDocuments: docsByPhase });
-      } catch (e) {
-        console.error('Failed to fetch phase documents:', e);
-      }
-    }
+    if (!envioData?.phasesClosed) return;
     
-    fetchPhaseDocs();
-  }, [projectAddress]);
+    const phaseClosedEvents = envioData.phasesClosed || [];
+    console.info('[docs] processing PhaseClosed events from loaded data', { count: phaseClosedEvents.length });
+
+    const docsByPhase: Doc[][] = [[], [], [], [], [], []];
+
+    for (const event of phaseClosedEvents) {
+      const phaseId = Number(event.phaseId);
+      if (phaseId < 0 || phaseId > 5) continue;
+
+      const docTypes = event.docTypes || [];
+      const docHashes = event.docHashes || [];
+      const metadataURIs = event.metadataURIs || [];
+
+      const phaseDocs: Doc[] = [];
+      for (let i = 0; i < docTypes.length; i++) {
+        const docType = docTypes[i] || 'unknown';
+        const hash = docHashes[i] || '0x';
+        const uri = metadataURIs[i] || '';
+        
+        // Determine if it's an image or PDF based on type/URI
+        const isImage = docType.includes('image') || uri.includes('image') || 
+                       ['jpg', 'jpeg', 'png', 'gif', 'webp'].some(ext => uri.toLowerCase().includes(ext));
+        
+        phaseDocs.push({
+          id: `phase${phaseId}-doc${i}-${hash.slice(0, 10)}`,
+          name: uri.split('/').at(-1),
+          type: isImage ? 'image' : 'pdf',
+          url: uri.startsWith('ipfs://') 
+            ? `https://ipfs.io/ipfs/${uri.replace('ipfs://', '')}` 
+            : uri || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+          hash: hash,
+        });
+      }
+
+      docsByPhase[phaseId] = phaseDocs;
+    }
+
+    setPhaseDocuments(docsByPhase);
+    console.info('[docs] updated phaseDocuments state', { phaseDocuments: docsByPhase });
+  }, [envioData]);
 
   const [activeDocPhase, setActiveDocPhase] = useState(0);
   const [docViewer, setDocViewer] = useState<Doc | null>(null);
@@ -527,55 +502,64 @@ const ProjectDetails = () => {
                       className="gap-2 bg-primary/90 text-primary-foreground hover:bg-primary"
                       onClick={connectWallet}
                     >
-                      {connected ? 'Wallet Connected' : 'Connect Wallet'}
+                      <Wallet className="w-4 h-4" />
+                      {connected && account ? `${account.slice(0, 6)}...${account.slice(-4)}` : 'Connect Wallet'}
                     </Button>
                   </div>
 
                   <div className="flex items-start gap-5">
-                    <div className="relative h-28 w-28 flex-shrink-0 overflow-hidden rounded-3xl border border-white/40 shadow-soft dark:border-white/10">
-                      <img
-                        src="https://images.unsplash.com/photo-1501183638710-841dd1904471?w=600&q=60&auto=format&fit=crop"
-                        alt="Project visual"
-                        className="h-full w-full object-cover"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-br from-primary/45 via-transparent to-transparent mix-blend-multiply" />
-                    </div>
-                    <div className="min-w-0 space-y-3">
-                      <div className="flex flex-wrap items-center gap-3">
-                        <h1 className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">
-                          {project.name}
-                        </h1>
-                        <Badge className="rounded-full bg-success/90 px-3 py-1 text-xs font-semibold text-success-foreground shadow-sm">
-                          {project.status}
-                        </Badge>
+                      <div className="relative h-28 w-28 flex-shrink-0 overflow-hidden rounded-3xl border border-white/40 shadow-soft dark:border-white/10">
+                        <img
+                          src="https://images.unsplash.com/photo-1501183638710-841dd1904471?w=600&q=60&auto=format&fit=crop"
+                          alt="Project visual"
+                          className="h-full w-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-br from-primary/45 via-transparent to-transparent mix-blend-multiply" />
                       </div>
-                      <p className="text-sm text-slate-600 dark:text-slate-300">
-                        Project:{' '}
-                        <a
-                          href={`https://sepolia.etherscan.io/address/${project.contractAddress}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="font-mono text-xs underline decoration-dotted underline-offset-4 hover:text-primary"
-                        >
-                          {project.contractAddress}
-                        </a>
-                      </p>
-                      <p className="text-sm text-slate-600 dark:text-slate-300">
-                        Token:{' '}
-                        <a
-                          href={`https://sepolia.etherscan.io/address/${project.tokenAddress}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="font-mono text-xs underline decoration-dotted underline-offset-4 hover:text-primary"
-                        >
-                          {project.tokenAddress}
-                        </a>
-                      </p>
-                      <p className="text-sm text-slate-700 dark:text-slate-200/80">
-                        {project.description}
-                      </p>
+                      <div className="min-w-0 space-y-3">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <h1 className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">
+                            {loading ? <Skeleton className="h-9 w-64" /> : project.name}
+                          </h1>
+                          <Badge className="rounded-full bg-success/90 px-3 py-1 text-xs font-semibold text-success-foreground shadow-sm">
+                            {project.status}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-slate-600 dark:text-slate-300">
+                          Project:{' '}
+                          {loading ? (
+                            <Skeleton className="inline-block h-4 w-48" />
+                          ) : (
+                            <a
+                              href={`https://sepolia.etherscan.io/address/${project.contractAddress}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-mono text-xs underline decoration-dotted underline-offset-4 hover:text-primary"
+                            >
+                              {project.contractAddress}
+                            </a>
+                          )}
+                        </p>
+                        <p className="text-sm text-slate-600 dark:text-slate-300">
+                          Token:{' '}
+                          {loading ? (
+                            <Skeleton className="inline-block h-4 w-48" />
+                          ) : (
+                            <a
+                              href={`https://sepolia.etherscan.io/address/${project.tokenAddress}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-mono text-xs underline decoration-dotted underline-offset-4 hover:text-primary"
+                            >
+                              {project.tokenAddress}
+                            </a>
+                          )}
+                        </p>
+                        <p className="text-sm text-slate-700 dark:text-slate-200/80">
+                          {project.description}
+                        </p>
+                      </div>
                     </div>
-                  </div>
                 </div>
 
                 {/* Role-aware action bar */}
@@ -626,8 +610,8 @@ const ProjectDetails = () => {
               <CardContent className="space-y-6 pt-6">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-[0.7rem] font-semibold uppercase tracking-[0.35em] text-slate-600 dark:text-slate-300">
-                    <span>{format(project.raised)} USDC Raised</span>
-                    <span>{format(project.target)} USDC Target</span>
+                    <span>{loading ? <Skeleton className="inline-block h-3 w-24" /> : `${format(project.raised)} ${TOKEN_CONFIG.symbol} Raised`}</span>
+                    <span>{loading ? <Skeleton className="inline-block h-3 w-24" /> : `${format(project.target)} ${TOKEN_CONFIG.symbol} Target`}</span>
                   </div>
                   <div className="relative h-3 w-full overflow-hidden rounded-full bg-slate-200/70 dark:bg-slate-800">
                     <div
@@ -650,17 +634,17 @@ const ProjectDetails = () => {
                   <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-slate-300">
                     <span className="inline-flex items-center gap-1 rounded-full bg-white/60 px-2 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.25em] text-slate-600 dark:bg-slate-800/70 dark:text-slate-200">
                       <Banknote className="h-3 w-3" />
-                      {format(project.withdrawn)} Withdrawn
+                      {loading ? <Skeleton className="inline-block h-3 w-20" /> : `${format(project.withdrawn)} Withdrawn`}
                     </span>
-                    {project.minTarget > 0 && (
+                    {(loading || project.minTarget > 0) && (
                       <span className="inline-flex items-center gap-1 rounded-full bg-white/60 px-2 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.25em] text-slate-600 dark:bg-slate-800/70 dark:text-slate-200">
                         <Target className="h-3 w-3" />
-                        Min Raise {format(project.minTarget)}
+                        {loading ? <Skeleton className="inline-block h-3 w-20" /> : `Min Raise ${format(project.minTarget)}`}
                       </span>
                     )}
                     <span className="inline-flex items-center gap-1 rounded-full bg-white/60 px-2 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.25em] text-slate-600 dark:bg-slate-800/70 dark:text-slate-200">
                       <ShieldCheck className="h-3 w-3" />
-                      {format(project.withdrawable)} USDC Unlockable
+                      {loading ? <Skeleton className="inline-block h-3 w-24" /> : `${format(project.withdrawable)} ${TOKEN_CONFIG.symbol} Unlockable`}
                     </span>
                   </div>
                 </div>
@@ -685,11 +669,13 @@ const ProjectDetails = () => {
                             <p className="text-[0.7rem] font-semibold uppercase tracking-[0.35em] text-slate-600 dark:text-slate-300">
                               {stat.label}
                             </p>
-                            <p className="text-lg font-semibold text-slate-900 dark:text-white">{stat.value}</p>
+                            <p className="text-lg font-semibold text-slate-900 dark:text-white">
+                              {loading ? <Skeleton className="h-6 w-32" /> : stat.value}
+                            </p>
                           </div>
                         </div>
                         <p className="relative z-10 mt-auto pt-4 text-xs text-slate-600 dark:text-slate-300">
-                          {stat.helper}
+                          {loading ? <Skeleton className="h-3 w-full" /> : stat.helper}
                         </p>
                       </div>
                     );
@@ -766,14 +752,14 @@ const ProjectDetails = () => {
                         p.showCumulativeCap
                           ? {
                               label: 'Cumulative Cap',
-                              value: `${(p.capBps / 100).toFixed(1)}% (${format(Math.round(p.capAmount))} USDC)`,
+                              value: `${(p.capBps / 100).toFixed(1)}% (${format(Math.round(p.capAmount))} ${TOKEN_CONFIG.symbol})`,
                             }
                           : {
                               label: 'Raised in Phase',
-                              value: `${format(p.raisedAt)} USDC`,
+                              value: `${format(p.raisedAt)} ${TOKEN_CONFIG.symbol}`,
                             },
                         p.showWithdrawn
-                          ? { label: 'Withdrawn', value: `${format(Math.round(p.withdrawn))} USDC` }
+                          ? { label: 'Withdrawn', value: `${format(Math.round(p.withdrawn))} ${TOKEN_CONFIG.symbol}` }
                           : null,
                         { label: 'Closing', value: p.closingDisplay },
                       ].filter(Boolean) as Array<{ label: string; value: string }>;
@@ -806,7 +792,9 @@ const ProjectDetails = () => {
                                   <p className="text-[0.65rem] font-semibold uppercase tracking-[0.3em] text-slate-500 dark:text-slate-300">
                                     {block.label}
                                   </p>
-                                  <p className="text-sm font-semibold text-slate-900 dark:text-white">{block.value}</p>
+                                  <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                                    {loading ? <Skeleton className="h-4 w-20" /> : block.value}
+                                  </p>
                                 </div>
                               ))}
                             </div>
@@ -951,124 +939,178 @@ const ProjectDetails = () => {
 
           {/* Right rail */}
           <div className="space-y-6">
-            {/* Support card (investor/holder only) */}
-            <RoleGate currentRole={currentRole} allowedRoles={['holder']}>
-              <Card>
+            {!connected ? (
+              // Placeholder when wallet not connected
+              <Card className="border-dashed">
                 <CardHeader>
-                  <CardTitle>Support This Project</CardTitle>
-                  <CardDescription>Invest in this project using USDC</CardDescription>
+                  <CardTitle className="text-center">Connect Your Wallet</CardTitle>
+                  <CardDescription className="text-center">
+                    Connect your wallet to invest in this project and view your portfolio
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium" htmlFor="support-amount">Amount (USDC)</label>
-                    <Input id="support-amount" type="number" inputMode="decimal" placeholder="0.00" value={supportAmount} onChange={(e)=>{ setSupportAmount(e.target.value); setApprovedSupport(false); }} />
+                  <div className="flex flex-col items-center justify-center py-6 text-center">
+                    <Wallet className="h-16 w-16 text-muted-foreground mb-4" />
+                    <p className="text-sm text-muted-foreground mb-4">
+                      You need to connect your wallet to support this project and manage your investments.
+                    </p>
+                    <Button onClick={connectWallet} size="lg" className="w-full">
+                      <Wallet className="w-4 h-4 mr-2" />
+                      Connect Wallet
+                    </Button>
                   </div>
-                  {!approvedSupport ? (
-                    <Button className="w-full" size="lg" onClick={async ()=>{
-                      try {
-                        if (!projectAddress || !chain.usdc) { toast.error('Addresses not loaded'); return; }
-                        if (!supportAmount || Number(supportAmount) <= 0) { toast.error('Enter amount'); return; }
-                        const signer = await getSigner();
-                        const owner = await signer.getAddress();
-                        const amt = toUSDC(supportAmount);
-                        const t = erc20At(chain.usdc, signer);
-                        const tx = await t.approve(projectAddress, amt);
-                        await tx.wait();
-                        setApprovedSupport(true);
-                        toast.success('Approved');
-                      } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Approve failed'); }
-                    }}>
-                      <Wallet className="w-4 h-4 mr-2" /> Approve
-                    </Button>
-                  ) : (
-                    <Button className="w-full" size="lg" onClick={async ()=>{
-                      try {
-                        if (!projectAddress) return;
-                        const signer = await getSigner();
-                        const proj = projectAt(projectAddress, signer);
-                        const amt = toUSDC(supportAmount);
-                        const tx = await proj.deposit(amt);
-                        await tx.wait();
-                        toast.success('Deposited');
-                        setApprovedSupport(false);
-                        setSupportAmount('');
-                        refresh();
-                      } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Deposit failed'); }
-                    }}>
-                      <DollarSign className="w-4 h-4 mr-2" /> Deposit
-                    </Button>
-                  )}
                 </CardContent>
               </Card>
-            </RoleGate>
+            ) : (
+              <>
+                {/* Support card (investor/holder only) */}
+                <RoleGate currentRole={currentRole} allowedRoles={['holder']}>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Support This Project</CardTitle>
+                      <CardDescription>Invest in this project using {TOKEN_CONFIG.symbol}</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium" htmlFor="support-amount">Amount ({TOKEN_CONFIG.symbol})</label>
+                        <Input id="support-amount" type="number" inputMode="decimal" placeholder="0.00" value={supportAmount} onChange={(e)=>{ setSupportAmount(e.target.value); setApprovedSupport(false); }} />
+                      </div>
+                      {!approvedSupport ? (
+                        <Button className="w-full" size="lg" disabled={isApprovingSupport} onClick={async ()=>{
+                          try {
+                            if (!projectAddress || !staticConfig?.stablecoin) { toast.error('Addresses not loaded'); return; }
+                            if (!supportAmount || Number(supportAmount) <= 0) { toast.error('Enter amount'); return; }
+                            setIsApprovingSupport(true);
+                            const signer = await getSigner();
+                            const owner = await signer.getAddress();
+                            const amt = toStablecoin(supportAmount);
+                            const t = erc20At(staticConfig.stablecoin, signer);
+                            const tx = await t.approve(projectAddress, amt);
+                            await tx.wait();
+                            setApprovedSupport(true);
+                            toast.success('Approved');
+                          } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Approve failed'); }
+                          finally { setIsApprovingSupport(false); }
+                        }}>
+                          <Wallet className="w-4 h-4 mr-2" /> {isApprovingSupport ? 'Approving...' : 'Approve'}
+                        </Button>
+                      ) : (
+                        <Button className="w-full" size="lg" disabled={isDepositing} onClick={async ()=>{
+                          try {
+                            if (!projectAddress) return;
+                            setIsDepositing(true);
+                            const signer = await getSigner();
+                            const proj = projectAt(projectAddress, signer);
+                            const amt = toStablecoin(supportAmount);
+                            
+                            // Check if this is user's first deposit to increment supporters count
+                            const isFirstDeposit = !realtimeData?.userBalance || realtimeData.userBalance === 0n;
+                            
+                            const tx = await proj.deposit(amt);
+                            await tx.wait();
+                            toast.success('Deposited');
+                            setApprovedSupport(false);
+                            setSupportAmount('');
+                            
+                            // Optimistically increment supporters count if first deposit
+                            if (isFirstDeposit) {
+                              setSupporters(prev => prev + 1);
+                            }
+                            
+                            refresh();
+                          } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Deposit failed'); }
+                          finally { setIsDepositing(false); }
+                        }}>
+                          <DollarSign className="w-4 h-4 mr-2" /> {isDepositing ? 'Depositing...' : 'Deposit'}
+                        </Button>
+                      )}
+                    </CardContent>
+                  </Card>
+                </RoleGate>
 
-            {/* Holder investment overview */}
-            <RoleGate currentRole={currentRole} allowedRoles={['holder']}>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Your Investment</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Your Balance</span>
-                    <span className="font-semibold">{chain.userBalance ? Number(fromUSDC(chain.userBalance)).toLocaleString('en-US') : 0} USDC</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Claimable Interest</span>
-                    <span className="font-semibold">{chain.claimableInterest ? Number(fromUSDC(chain.claimableInterest)).toLocaleString('en-US') : 0} USDC</span>
-                  </div>
-                  <Button variant="outline" className="w-full mt-1" onClick={async ()=>{
-                    try {
-                      if (!projectAddress || !chain.claimableInterest || chain.claimableInterest === 0n) { toast.error('Nothing to claim'); return; }
-                      const signer = await getSigner();
-                      const proj = projectAt(projectAddress, signer);
-                      const tx = await proj.claimInterest(chain.claimableInterest);
-                      await tx.wait();
-                      toast.success('Interest claimed');
-                      refresh();
-                    } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Claim failed'); }
-                  }}>Withdraw Interest</Button>
+                {/* Holder investment overview */}
+                <RoleGate currentRole={currentRole} allowedRoles={['holder']}>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Your Investment</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Your Balance</span>
+                        <span className="font-semibold">
+                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.userBalance ? Number(fromStablecoin(realtimeData.userBalance)).toLocaleString('en-US') : 0} ${TOKEN_CONFIG.symbol}`}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Claimable Interest</span>
+                        <span className="font-semibold">
+                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.claimableInterest ? Number(fromStablecoin(realtimeData.claimableInterest)).toLocaleString('en-US') : 0} ${TOKEN_CONFIG.symbol}`}
+                        </span>
+                      </div>
+                      <Button variant="outline" className="w-full mt-1" disabled={isClaimingInterest} onClick={async ()=>{
+                        try {
+                          if (!projectAddress || !realtimeData?.claimableInterest || realtimeData.claimableInterest === 0n) { toast.error('Nothing to claim'); return; }
+                          setIsClaimingInterest(true);
+                          const signer = await getSigner();
+                          const proj = projectAt(projectAddress, signer);
+                          const tx = await proj.claimInterest(realtimeData.claimableInterest);
+                          await tx.wait();
+                          toast.success('Interest claimed');
+                          refresh();
+                        } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Claim failed'); }
+                        finally { setIsClaimingInterest(false); }
+                      }}>{isClaimingInterest ? 'Claiming...' : 'Withdraw Interest'}</Button>
 
-                  {/* Principal Redemption */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Principal Buffer</span>
-                    <span className="font-semibold">{chain.principalBuffer ? Number(fromUSDC(chain.principalBuffer)).toLocaleString('en-US') : 0} USDC</span>
-                  </div>
-                  {chain.principalBuffer && chain.userBalance && chain.principalBuffer > 0n && (
-                    <Button variant="outline" className="w-full mt-1" onClick={async ()=>{
-                      try {
-                        if (!projectAddress) return;
-                        const shares = chain.userBalance! < chain.principalBuffer! ? chain.userBalance! : chain.principalBuffer!;
-                        if (shares === 0n) { toast.error('No redeemable principal yet'); return; }
-                        const signer = await getSigner();
-                        const proj = projectAt(projectAddress, signer);
-                        const tx = await proj.withdrawPrincipal(shares);
-                        await tx.wait();
-                        toast.success('Principal redeemed');
-                        refresh();
-                      } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Redeem failed'); }
-                    }}>Redeem Principal</Button>
-                  )}
-                  {/* Revenue Claim */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Claimable Revenue</span>
-                    <span className="font-semibold">{chain.claimableRevenue ? Number(fromUSDC(chain.claimableRevenue)).toLocaleString('en-US') : 0} USDC</span>
-                  </div>
-                  <Button variant="outline" className="w-full mt-1" onClick={async ()=>{
-                    try {
-                      if (!projectAddress || !account) return;
-                      if (!chain.claimableRevenue || chain.claimableRevenue === 0n) { toast.error('No revenue to claim'); return; }
-                      const signer = await getSigner();
-                      const proj = projectAt(projectAddress, signer);
-                      const tx = await proj.claimRevenue(account);
-                      await tx.wait();
-                      toast.success('Revenue claimed');
-                      refresh();
-                    } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Claim failed'); }
-                  }}>Claim Revenue</Button>
-                </CardContent>
-              </Card>
-            </RoleGate>
+                      {/* Principal Redemption */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Principal Buffer</span>
+                        <span className="font-semibold">
+                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.principalBuffer ? Number(fromStablecoin(realtimeData.principalBuffer)).toLocaleString('en-US') : 0} ${TOKEN_CONFIG.symbol}`}
+                        </span>
+                      </div>
+                      {realtimeData?.principalBuffer && realtimeData?.userBalance && realtimeData.principalBuffer > 0n && (
+                        <Button variant="outline" className="w-full mt-1" disabled={isRedeemingPrincipal} onClick={async ()=>{
+                          try {
+                            if (!projectAddress) return;
+                            const shares = realtimeData.userBalance! < realtimeData.principalBuffer! ? realtimeData.userBalance! : realtimeData.principalBuffer!;
+                            if (shares === 0n) { toast.error('No redeemable principal yet'); return; }
+                            setIsRedeemingPrincipal(true);
+                            const signer = await getSigner();
+                            const proj = projectAt(projectAddress, signer);
+                            const tx = await proj.withdrawPrincipal(shares);
+                            await tx.wait();
+                            toast.success('Principal redeemed');
+                            refresh();
+                          } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Redeem failed'); }
+                          finally { setIsRedeemingPrincipal(false); }
+                        }}>{isRedeemingPrincipal ? 'Redeeming...' : 'Redeem Principal'}</Button>
+                      )}
+                      {/* Revenue Claim */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Claimable Revenue</span>
+                        <span className="font-semibold">
+                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.claimableRevenue ? Number(fromStablecoin(realtimeData.claimableRevenue)).toLocaleString('en-US') : 0} ${TOKEN_CONFIG.symbol}`}
+                        </span>
+                      </div>
+                      <Button variant="outline" className="w-full mt-1" disabled={isClaimingRevenue} onClick={async ()=>{
+                        try {
+                          if (!projectAddress || !account) return;
+                          if (!realtimeData?.claimableRevenue || realtimeData.claimableRevenue === 0n) { toast.error('No revenue to claim'); return; }
+                          setIsClaimingRevenue(true);
+                          const signer = await getSigner();
+                          const proj = projectAt(projectAddress, signer);
+                          const tx = await proj.claimRevenue(account);
+                          await tx.wait();
+                          toast.success('Revenue claimed');
+                          refresh();
+                        } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Claim failed'); }
+                        finally { setIsClaimingRevenue(false); }
+                      }}>{isClaimingRevenue ? 'Claiming...' : 'Claim Revenue'}</Button>
+                    </CardContent>
+                  </Card>
+                </RoleGate>
+              </>
+            )}
 
             {/* Developer actions */}
             <RoleGate currentRole={currentRole} allowedRoles={['developer']}>
@@ -1086,7 +1128,7 @@ const ProjectDetails = () => {
                     </div>
                     <div className="grid gap-2">
                       <div className="grid gap-1">
-                        <Label htmlFor="reserveAmount">Amount (USDC)</Label>
+                        <Label htmlFor="reserveAmount">Amount ({TOKEN_CONFIG.symbol})</Label>
                         <Input
                           id="reserveAmount"
                           inputMode="decimal"
@@ -1096,36 +1138,40 @@ const ProjectDetails = () => {
                         />
                       </div>
                       {!approvedReserve ? (
-                        <Button size="sm" className="justify-start" onClick={async ()=>{
+                        <Button size="sm" className="justify-start" disabled={isApprovingReserve} onClick={async ()=>{
                           try {
-                            if (!projectAddress || !chain.usdc) { toast.error('Addresses not loaded'); return; }
+                            if (!projectAddress || !staticConfig?.stablecoin) { toast.error('Addresses not loaded'); return; }
                             const amt = reserveAmount.trim();
                             if (!amt || Number(amt) <= 0) { toast.error('Enter amount'); return; }
+                            setIsApprovingReserve(true);
                             const signer = await getSigner();
-                            const t = erc20At(chain.usdc, signer);
-                            const tx = await t.approve(projectAddress, toUSDC(amt));
+                            const t = erc20At(staticConfig.stablecoin, signer);
+                            const tx = await t.approve(projectAddress, toStablecoin(amt));
                             await tx.wait();
                             setApprovedReserve(true);
                             toast.success('Approved');
                           } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Approve failed'); }
+                          finally { setIsApprovingReserve(false); }
                         }}>
-                          <Wallet className="w-4 h-4 mr-2" /> Approve
+                          <Wallet className="w-4 h-4 mr-2" /> {isApprovingReserve ? 'Approving...' : 'Approve'}
                         </Button>
                       ) : (
-                        <Button size="sm" className="justify-start" onClick={async ()=>{
+                        <Button size="sm" className="justify-start" disabled={isFundingReserve} onClick={async ()=>{
                           try {
                             if (!projectAddress) return;
+                            setIsFundingReserve(true);
                             const signer = await getSigner();
                             const proj = projectAt(projectAddress, signer);
-                            const tx = await proj.fundReserve(toUSDC(reserveAmount));
+                            const tx = await proj.fundReserve(toStablecoin(reserveAmount));
                             await tx.wait();
                             toast.success('Reserve funded');
                             setApprovedReserve(false);
                             setReserveAmount('');
                             refresh();
                           } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Fund failed'); }
+                          finally { setIsFundingReserve(false); }
                         }}>
-                          <Banknote className="w-4 h-4 mr-2" /> Fund Reserve
+                          <Banknote className="w-4 h-4 mr-2" /> {isFundingReserve ? 'Funding...' : 'Fund Reserve'}
                         </Button>
                       )}
                     </div>
@@ -1140,11 +1186,15 @@ const ProjectDetails = () => {
                     <div className="grid gap-2">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">Current Phase</span>
-                        <span className="font-medium">{project.currentPhase}</span>
+                        <span className="font-medium">
+                          {loading ? <Skeleton className="inline-block h-4 w-32" /> : project.currentPhase}
+                        </span>
                       </div>
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">Next Phase</span>
-                        <span className="font-medium">{nextPhaseName}</span>
+                        <span className="font-medium">
+                          {loading ? <Skeleton className="inline-block h-4 w-32" /> : nextPhaseName}
+                        </span>
                       </div>
                       <div className="grid gap-1">
                         <Label htmlFor="phaseDocs">Upload Documents</Label>
@@ -1156,13 +1206,14 @@ const ProjectDetails = () => {
                         />
                         <p className="text-xs text-muted-foreground">Attach evidence to close the current phase.</p>
                       </div>
-                      <Button size="sm" variant="secondary" className="justify-start" onClick={async ()=>{
+                      <Button size="sm" variant="secondary" className="justify-start" disabled={isClosingPhase} onClick={async ()=>{
                         try {
                           if (!projectAddress) return;
                           if (!uploadedDocs.length) { toast.error('Please upload at least one document'); return; }
+                          setIsClosingPhase(true);
                           const signer = await getSigner();
                           const proj = projectAt(projectAddress, signer);
-                          const phaseId: number = (chain.currentPhase ?? 0);
+                          const phaseId: number = (envioData?.projectState?.currentPhase ?? 0);
                           // Upload to IPFS
                           const uploaded = await ipfsUpload(uploadedDocs);
                           const nameByPath = Object.fromEntries(uploaded.map(u=>[u.path,u]));
@@ -1183,8 +1234,9 @@ const ProjectDetails = () => {
                           setUploadedDocs([]);
                           refresh();
                         } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Close failed'); }
+                        finally { setIsClosingPhase(false); }
                       }}>
-                        <DoorClosed className="w-4 h-4 mr-2" /> Close Phase
+                        <DoorClosed className="w-4 h-4 mr-2" /> {isClosingPhase ? 'Closing...' : 'Close Phase'}
                       </Button>
                     </div>
                   </div>
@@ -1198,28 +1250,32 @@ const ProjectDetails = () => {
                     <div className="grid gap-2">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">Withdrawable Now</span>
-                        <span className="font-medium">{withdrawableNow.toLocaleString('en-US')} USDC</span>
+                        <span className="font-medium">
+                          {loading ? <Skeleton className="inline-block h-4 w-24" /> : `${withdrawableNow.toLocaleString('en-US')} ${TOKEN_CONFIG.symbol}`}
+                        </span>
                       </div>
                       <div className="grid gap-1">
-                        <Label htmlFor="withdrawAmount">Amount (USDC)</Label>
+                        <Label htmlFor="withdrawAmount">Amount ({TOKEN_CONFIG.symbol})</Label>
                         <Input id="withdrawAmount" inputMode="decimal" placeholder="e.g. 10000" value={withdrawAmount} onChange={(e)=>setWithdrawAmount(e.target.value)} />
                       </div>
-                      <Button size="sm" variant="outline" className="justify-start" onClick={async ()=>{
+                      <Button size="sm" variant="outline" className="justify-start" disabled={isWithdrawingFunds} onClick={async ()=>{
                         try {
                           if (!projectAddress) return;
                           const amt = Number(withdrawAmount || '0');
                           if (!amt || amt <= 0) { toast.error('Enter amount'); return; }
                           if (amt > withdrawableNow) { toast.error('Exceeds withdrawable'); return; }
+                          setIsWithdrawingFunds(true);
                           const signer = await getSigner();
                           const proj = projectAt(projectAddress, signer);
-                          const tx = await proj.withdrawPhaseFunds(toUSDC(amt.toString()));
+                          const tx = await proj.withdrawPhaseFunds(toStablecoin(amt.toString()));
                           await tx.wait();
                           toast.success('Withdrawn');
                           setWithdrawAmount('');
                           refresh();
                         } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Withdraw failed'); }
+                        finally { setIsWithdrawingFunds(false); }
                       }}>
-                        <DollarSign className="w-4 h-4 mr-2" /> Withdraw Funds
+                        <DollarSign className="w-4 h-4 mr-2" /> {isWithdrawingFunds ? 'Withdrawing...' : 'Withdraw Funds'}
                       </Button>
                     </div>
                   </div>
@@ -1232,40 +1288,44 @@ const ProjectDetails = () => {
                     </div>
                     <div className="grid gap-2">
                       <div className="grid gap-1">
-                        <Label htmlFor="proceedsAmount">Amount (USDC)</Label>
+                        <Label htmlFor="proceedsAmount">Amount ({TOKEN_CONFIG.symbol})</Label>
                         <Input id="proceedsAmount" inputMode="decimal" placeholder="e.g. 25000" value={proceedsAmount} onChange={(e)=>{ setProceedsAmount(e.target.value); setApprovedProceeds(false); }} />
                       </div>
                       {!approvedProceeds ? (
-                        <Button size="sm" className="justify-start" onClick={async ()=>{
+                        <Button size="sm" className="justify-start" disabled={isApprovingProceeds} onClick={async ()=>{
                           try {
-                            if (!projectAddress || !chain.usdc) { toast.error('Addresses not loaded'); return; }
+                            if (!projectAddress || !staticConfig?.stablecoin) { toast.error('Addresses not loaded'); return; }
                             const amt = proceedsAmount.trim();
                             if (!amt || Number(amt) <= 0) { toast.error('Enter amount'); return; }
+                            setIsApprovingProceeds(true);
                             const signer = await getSigner();
-                            const t = erc20At(chain.usdc, signer);
-                            const tx = await t.approve(projectAddress, toUSDC(amt));
+                            const t = erc20At(staticConfig.stablecoin, signer);
+                            const tx = await t.approve(projectAddress, toStablecoin(amt));
                             await tx.wait();
                             setApprovedProceeds(true);
                             toast.success('Approved');
                           } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Approve failed'); }
+                          finally { setIsApprovingProceeds(false); }
                         }}>
-                          <Wallet className="w-4 h-4 mr-2" /> Approve
+                          <Wallet className="w-4 h-4 mr-2" /> {isApprovingProceeds ? 'Approving...' : 'Approve'}
                         </Button>
                       ) : (
-                        <Button size="sm" className="justify-start" onClick={async ()=>{
+                        <Button size="sm" className="justify-start" disabled={isSubmittingProceeds} onClick={async ()=>{
                           try {
                             if (!projectAddress) return;
+                            setIsSubmittingProceeds(true);
                             const signer = await getSigner();
                             const proj = projectAt(projectAddress, signer);
-                            const tx = await proj.submitSalesProceeds(toUSDC(proceedsAmount));
+                            const tx = await proj.submitSalesProceeds(toStablecoin(proceedsAmount));
                             await tx.wait();
                             toast.success('Proceeds submitted');
                             setApprovedProceeds(false);
                             setProceedsAmount('');
                             refresh();
                           } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Submit failed'); }
+                          finally { setIsSubmittingProceeds(false); }
                         }}>
-                          <DollarSign className="w-4 h-4 mr-2" /> Submit
+                          <DollarSign className="w-4 h-4 mr-2" /> {isSubmittingProceeds ? 'Submitting...' : 'Submit'}
                         </Button>
                       )}
                     </div>
@@ -1282,19 +1342,27 @@ const ProjectDetails = () => {
               <CardContent className="space-y-3 text-sm">
                 <div>
                   <p className="text-muted-foreground">Owner</p>
-                  <p className="font-mono">{project.owner}</p>
+                  <p className="font-mono">
+                    {loading ? <Skeleton className="h-4 w-full" /> : project.owner}
+                  </p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Interest Reserve</p>
-                  <p className="font-semibold">{project.escrow} USDC</p>
+                  <p className="font-semibold">
+                    {loading ? <Skeleton className="h-4 w-24" /> : `${project.escrow} ${TOKEN_CONFIG.symbol}`}
+                  </p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Current Phase</p>
-                  <p className="font-semibold">{project.currentPhase}</p>
+                  <p className="font-semibold">
+                    {loading ? <Skeleton className="h-4 w-32" /> : project.currentPhase}
+                  </p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Supporters</p>
-                  <p className="font-semibold">{project.supporters}</p>
+                  <p className="font-semibold">
+                    {loading ? <Skeleton className="h-4 w-16" /> : project.supporters}
+                  </p>
                 </div>
               </CardContent>
             </Card>
