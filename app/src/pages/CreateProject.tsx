@@ -95,6 +95,7 @@ const CreateProject = () => {
   const [minRaise, setMinRaise] = useState('');
   const [maxRaise, setMaxRaise] = useState('');
   const [fundingDurationDays, setFundingDurationDays] = useState('30');
+  const [selectedToken, setSelectedToken] = useState<'USDC' | 'PYUSD'>('USDC');
 
   const tokenName = useMemo(() => `Cornerstone-${name || 'Project'}`, [name]);
   const tokenSymbol = useMemo(() => {
@@ -134,6 +135,15 @@ const CreateProject = () => {
         setIsPublishing(false);
         return;
       }
+      const tokenAddress = selectedToken === 'USDC' 
+        ? (import.meta.env.VITE_USDC_ADDRESS as Address)
+        : (import.meta.env.VITE_PYUSD_ADDRESS as Address);
+
+      if (!tokenAddress) {
+        toast.error(`${selectedToken} address not configured`);
+        setIsPublishing(false);
+        return;
+      }
       if (!name || !minRaise || !maxRaise) {
         toast.error('Fill in name, min and max raise');
         setIsPublishing(false);
@@ -155,7 +165,7 @@ const CreateProject = () => {
         // eslint-disable-next-line no-console
         console.log('[CreateProject] setup', {
           registry: contractsConfig.registry,
-          stablecoin: contractsConfig.stablecoin,
+          stablecoin: tokenAddress,
           acct,
           signerChainId,
           metamaskChainId: mmChainId,
@@ -207,6 +217,7 @@ const CreateProject = () => {
       // Preflight simulation using staticCall
       try {
         const sim = await reg.createProjectWithTokenMeta.staticCall(
+          tokenAddress,
           tokenName,
           tokenSymbol,
           BigInt(Math.round(parseFloat(minRaise) * 1e6)),
@@ -231,6 +242,7 @@ const CreateProject = () => {
       let est: bigint = 0n;
       try {
         est = await reg.createProjectWithTokenMeta.estimateGas(
+          tokenAddress,
           tokenName,
           tokenSymbol,
           BigInt(Math.round(parseFloat(minRaise) * 1e6)),
@@ -250,6 +262,7 @@ const CreateProject = () => {
       const fallbackGas = 6_500_000n;
       const gasLimit = est && est > 0n ? (est + (est / 5n) + 500_000n) : fallbackGas; // +20% + 500k buffer
       const tx = await reg.createProjectWithTokenMeta(
+        tokenAddress,
         tokenName,
         tokenSymbol,
         BigInt(Math.round(parseFloat(minRaise) * 1e6)),
@@ -400,13 +413,28 @@ const CreateProject = () => {
             {/* Step 1: Funding */}
             {currentStep === 1 && (
               <div className="space-y-4">
+                <div>
+                  <Label htmlFor="tokenSelect">Investment Token</Label>
+                  <Select value={selectedToken} onValueChange={(v) => setSelectedToken(v as 'USDC' | 'PYUSD')}>
+                    <SelectTrigger id="tokenSelect">
+                      <SelectValue placeholder="Select token" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="USDC">USDC</SelectItem>
+                      <SelectItem value="PYUSD">PYUSD</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Choose the stablecoin investors will use to fund this project
+                  </p>
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="minRaise">Minimum Raise</Label>
+                    <Label htmlFor="minRaise">Minimum Raise ({selectedToken})</Label>
                     <Input id="minRaise" type="number" placeholder="1000000" value={minRaise} onChange={(e)=>setMinRaise(e.target.value)} />
                   </div>
                   <div>
-                    <Label htmlFor="maxRaise">Maximum Raise</Label>
+                    <Label htmlFor="maxRaise">Maximum Raise ({selectedToken})</Label>
                     <Input id="maxRaise" type="number" placeholder="5000000" value={maxRaise} onChange={(e)=>setMaxRaise(e.target.value)} />
                   </div>
                 </div>

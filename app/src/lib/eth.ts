@@ -219,7 +219,7 @@ export async function fetchProjectStaticConfig(
   
   const [token, stablecoin, owner, minRaise, maxRaise, fundraiseDeadline] = await Promise.all([
     proj.token(),
-    proj.pyusd(),
+    proj.stablecoin(),
     proj.owner(),
     proj.minRaise(),
     proj.maxRaise(),

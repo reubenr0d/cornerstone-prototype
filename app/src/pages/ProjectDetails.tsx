@@ -15,7 +15,7 @@ import { ExternalLink, Plus, Edit, Upload, DollarSign, AlertTriangle, MessageSqu
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@/components/ui/drawer';
 import { Address, erc20At, fromStablecoin, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toStablecoin, fetchProjectRealtimeState, fetchProjectStaticConfig, getWindowEthereum } from '@/lib/eth';
 import { getCompleteProjectData } from '@/lib/envio';
-import { contractsConfig, TOKEN_CONFIG } from '@/config/contracts';
+import { contractsConfig, TOKEN_CONFIG, getTokenConfigByAddress } from '@/config/contracts';
 import { ipfsUpload } from '@/lib/ipfs';
 import { ethers } from 'ethers';
 
@@ -60,6 +60,14 @@ const ProjectDetails = () => {
   const [staticConfig, setStaticConfig] = useState<any>(null);
   const [supporters, setSupporters] = useState<number>(0);
   const [loading, setLoading] = useState(true);
+
+  // Dynamically determine which token this project uses
+  const projectTokenConfig = useMemo(() => {
+    if (staticConfig?.stablecoin) {
+      return getTokenConfigByAddress(staticConfig.stablecoin) ?? TOKEN_CONFIG;
+    }
+    return TOKEN_CONFIG;
+  }, [staticConfig]);
 
   async function connectWallet() {
     try {
@@ -278,8 +286,8 @@ const ProjectDetails = () => {
     {
       id: 'reserve',
       label: 'Interest Reserve',
-      value: `${format(project.escrow)} ${TOKEN_CONFIG.symbol}`,
-      helper: `${format(project.withdrawn)} ${TOKEN_CONFIG.symbol} withdrawn`,
+      value: `${format(project.escrow)} ${projectTokenConfig.symbol}`,
+      helper: `${format(project.withdrawn)} ${projectTokenConfig.symbol} withdrawn`,
       icon: ShieldCheck,
       tone: 'from-emerald-400/80 via-accent/60 to-primary/30',
     },
@@ -295,7 +303,7 @@ const ProjectDetails = () => {
       id: 'supporters',
       label: 'Supporters',
       value: format(project.supporters),
-      helper: `${format(Number(fromStablecoin(BigInt(envioData?.projectState?.accrualBase || '0'))))} ${TOKEN_CONFIG.symbol} interest accrued`,
+      helper: `${format(Number(fromStablecoin(BigInt(envioData?.projectState?.accrualBase || '0'))))} ${projectTokenConfig.symbol} interest accrued`,
       icon: Users,
       tone: 'from-indigo-400/80 via-primary/60 to-accent/40',
     },
@@ -353,7 +361,7 @@ const ProjectDetails = () => {
       id: 'reserve-funded',
       type: 'payout',
       title: 'Reserve Funded',
-      meta: `40 days ago • Developer added 100,000 ${TOKEN_CONFIG.symbol}`,
+      meta: `40 days ago • Developer added 100,000 ${projectTokenConfig.symbol}`,
       description: 'Interest reserve topped up to enable on-chain APR accrual.',
     },
     {
@@ -367,7 +375,7 @@ const ProjectDetails = () => {
       id: 'developer-withdrawal',
       type: 'payout',
       title: 'Developer Withdrawal',
-      meta: `29 days ago • 50,000 ${TOKEN_CONFIG.symbol} withdrawn under caps`,
+      meta: `29 days ago • 50,000 ${projectTokenConfig.symbol} withdrawn under caps`,
       description: 'Funds transferred to developer wallet within cumulative unlocked limits.',
       actions: (
         <a
@@ -389,7 +397,7 @@ const ProjectDetails = () => {
       id: 'sales-proceeds',
       type: 'payout',
       title: 'Sales Proceeds Submitted',
-      meta: `10 days ago • 25,000 ${TOKEN_CONFIG.symbol} added to pool`,
+      meta: `10 days ago • 25,000 ${projectTokenConfig.symbol} added to pool`,
       description: 'Proceeds deposited; principal buffer updated and excess will distribute pro-rata when applicable.',
       actions: (
         <a
@@ -610,8 +618,8 @@ const ProjectDetails = () => {
               <CardContent className="space-y-6 pt-6">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-[0.7rem] font-semibold uppercase tracking-[0.35em] text-slate-600 dark:text-slate-300">
-                    <span>{loading ? <Skeleton className="inline-block h-3 w-24" /> : `${format(project.raised)} ${TOKEN_CONFIG.symbol} Raised`}</span>
-                    <span>{loading ? <Skeleton className="inline-block h-3 w-24" /> : `${format(project.target)} ${TOKEN_CONFIG.symbol} Target`}</span>
+                    <span>{loading ? <Skeleton className="inline-block h-3 w-24" /> : `${format(project.raised)} ${projectTokenConfig.symbol} Raised`}</span>
+                    <span>{loading ? <Skeleton className="inline-block h-3 w-24" /> : `${format(project.target)} ${projectTokenConfig.symbol} Target`}</span>
                   </div>
                   <div className="relative h-3 w-full overflow-hidden rounded-full bg-slate-200/70 dark:bg-slate-800">
                     <div
@@ -644,7 +652,7 @@ const ProjectDetails = () => {
                     )}
                     <span className="inline-flex items-center gap-1 rounded-full bg-white/60 px-2 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.25em] text-slate-600 dark:bg-slate-800/70 dark:text-slate-200">
                       <ShieldCheck className="h-3 w-3" />
-                      {loading ? <Skeleton className="inline-block h-3 w-24" /> : `${format(project.withdrawable)} ${TOKEN_CONFIG.symbol} Unlockable`}
+                      {loading ? <Skeleton className="inline-block h-3 w-24" /> : `${format(project.withdrawable)} ${projectTokenConfig.symbol} Unlockable`}
                     </span>
                   </div>
                 </div>
@@ -752,14 +760,14 @@ const ProjectDetails = () => {
                         p.showCumulativeCap
                           ? {
                               label: 'Cumulative Cap',
-                              value: `${(p.capBps / 100).toFixed(1)}% (${format(Math.round(p.capAmount))} ${TOKEN_CONFIG.symbol})`,
+                              value: `${(p.capBps / 100).toFixed(1)}% (${format(Math.round(p.capAmount))} ${projectTokenConfig.symbol})`,
                             }
                           : {
                               label: 'Raised in Phase',
-                              value: `${format(p.raisedAt)} ${TOKEN_CONFIG.symbol}`,
+                              value: `${format(p.raisedAt)} ${projectTokenConfig.symbol}`,
                             },
                         p.showWithdrawn
-                          ? { label: 'Withdrawn', value: `${format(Math.round(p.withdrawn))} ${TOKEN_CONFIG.symbol}` }
+                          ? { label: 'Withdrawn', value: `${format(Math.round(p.withdrawn))} ${projectTokenConfig.symbol}` }
                           : null,
                         { label: 'Closing', value: p.closingDisplay },
                       ].filter(Boolean) as Array<{ label: string; value: string }>;
@@ -968,11 +976,11 @@ const ProjectDetails = () => {
                   <Card>
                     <CardHeader>
                       <CardTitle>Support This Project</CardTitle>
-                      <CardDescription>Invest in this project using {TOKEN_CONFIG.symbol}</CardDescription>
+                      <CardDescription>Invest in this project using {projectTokenConfig.symbol}</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="space-y-2">
-                        <label className="text-sm font-medium" htmlFor="support-amount">Amount ({TOKEN_CONFIG.symbol})</label>
+                        <label className="text-sm font-medium" htmlFor="support-amount">Amount ({projectTokenConfig.symbol})</label>
                         <Input id="support-amount" type="number" inputMode="decimal" placeholder="0.00" value={supportAmount} onChange={(e)=>{ setSupportAmount(e.target.value); setApprovedSupport(false); }} />
                       </div>
                       {!approvedSupport ? (
@@ -1038,13 +1046,13 @@ const ProjectDetails = () => {
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Your Balance</span>
                         <span className="font-semibold">
-                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.userBalance ? Number(fromStablecoin(realtimeData.userBalance)).toLocaleString('en-US') : 0} ${TOKEN_CONFIG.symbol}`}
+                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.userBalance ? Number(fromStablecoin(realtimeData.userBalance)).toLocaleString('en-US') : 0} ${projectTokenConfig.symbol}`}
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Claimable Interest</span>
                         <span className="font-semibold">
-                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.claimableInterest ? Number(fromStablecoin(realtimeData.claimableInterest)).toLocaleString('en-US') : 0} ${TOKEN_CONFIG.symbol}`}
+                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.claimableInterest ? Number(fromStablecoin(realtimeData.claimableInterest)).toLocaleString('en-US') : 0} ${projectTokenConfig.symbol}`}
                         </span>
                       </div>
                       <Button variant="outline" className="w-full mt-1" disabled={isClaimingInterest} onClick={async ()=>{
@@ -1065,7 +1073,7 @@ const ProjectDetails = () => {
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Principal Buffer</span>
                         <span className="font-semibold">
-                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.principalBuffer ? Number(fromStablecoin(realtimeData.principalBuffer)).toLocaleString('en-US') : 0} ${TOKEN_CONFIG.symbol}`}
+                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.principalBuffer ? Number(fromStablecoin(realtimeData.principalBuffer)).toLocaleString('en-US') : 0} ${projectTokenConfig.symbol}`}
                         </span>
                       </div>
                       {realtimeData?.principalBuffer && realtimeData?.userBalance && realtimeData.principalBuffer > 0n && (
@@ -1089,7 +1097,7 @@ const ProjectDetails = () => {
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Claimable Revenue</span>
                         <span className="font-semibold">
-                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.claimableRevenue ? Number(fromStablecoin(realtimeData.claimableRevenue)).toLocaleString('en-US') : 0} ${TOKEN_CONFIG.symbol}`}
+                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.claimableRevenue ? Number(fromStablecoin(realtimeData.claimableRevenue)).toLocaleString('en-US') : 0} ${projectTokenConfig.symbol}`}
                         </span>
                       </div>
                       <Button variant="outline" className="w-full mt-1" disabled={isClaimingRevenue} onClick={async ()=>{
@@ -1128,7 +1136,7 @@ const ProjectDetails = () => {
                     </div>
                     <div className="grid gap-2">
                       <div className="grid gap-1">
-                        <Label htmlFor="reserveAmount">Amount ({TOKEN_CONFIG.symbol})</Label>
+                        <Label htmlFor="reserveAmount">Amount ({projectTokenConfig.symbol})</Label>
                         <Input
                           id="reserveAmount"
                           inputMode="decimal"
@@ -1251,11 +1259,11 @@ const ProjectDetails = () => {
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">Withdrawable Now</span>
                         <span className="font-medium">
-                          {loading ? <Skeleton className="inline-block h-4 w-24" /> : `${withdrawableNow.toLocaleString('en-US')} ${TOKEN_CONFIG.symbol}`}
+                          {loading ? <Skeleton className="inline-block h-4 w-24" /> : `${withdrawableNow.toLocaleString('en-US')} ${projectTokenConfig.symbol}`}
                         </span>
                       </div>
                       <div className="grid gap-1">
-                        <Label htmlFor="withdrawAmount">Amount ({TOKEN_CONFIG.symbol})</Label>
+                        <Label htmlFor="withdrawAmount">Amount ({projectTokenConfig.symbol})</Label>
                         <Input id="withdrawAmount" inputMode="decimal" placeholder="e.g. 10000" value={withdrawAmount} onChange={(e)=>setWithdrawAmount(e.target.value)} />
                       </div>
                       <Button size="sm" variant="outline" className="justify-start" disabled={isWithdrawingFunds} onClick={async ()=>{
@@ -1288,7 +1296,7 @@ const ProjectDetails = () => {
                     </div>
                     <div className="grid gap-2">
                       <div className="grid gap-1">
-                        <Label htmlFor="proceedsAmount">Amount ({TOKEN_CONFIG.symbol})</Label>
+                        <Label htmlFor="proceedsAmount">Amount ({projectTokenConfig.symbol})</Label>
                         <Input id="proceedsAmount" inputMode="decimal" placeholder="e.g. 25000" value={proceedsAmount} onChange={(e)=>{ setProceedsAmount(e.target.value); setApprovedProceeds(false); }} />
                       </div>
                       {!approvedProceeds ? (
@@ -1349,7 +1357,7 @@ const ProjectDetails = () => {
                 <div>
                   <p className="text-muted-foreground">Interest Reserve</p>
                   <p className="font-semibold">
-                    {loading ? <Skeleton className="h-4 w-24" /> : `${project.escrow} ${TOKEN_CONFIG.symbol}`}
+                    {loading ? <Skeleton className="h-4 w-24" /> : `${project.escrow} ${projectTokenConfig.symbol}`}
                   </p>
                 </div>
                 <div>

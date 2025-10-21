@@ -5,6 +5,7 @@ import {CornerstoneProject} from "./CornerstoneProject.sol";
 
 interface IProjectRegistry {
     function createProject(
+        address stablecoin,
         uint256 minRaise,
         uint256 maxRaise,
         uint256 fundraiseDeadline,
@@ -14,6 +15,7 @@ interface IProjectRegistry {
     ) external returns (address projectAddress, address tokenAddress);
 
     function createProjectWithTokenMeta(
+        address stablecoin,
         string calldata tokenName,
         string calldata tokenSymbol,
         uint256 minRaise,
@@ -26,17 +28,14 @@ interface IProjectRegistry {
 }
 
 contract ProjectRegistry is IProjectRegistry {
-    address public immutable pyusd; // stablecoin used across projects
     uint256 public projectCount;
 
     event ProjectCreated(address indexed project, address indexed token, address indexed creator);
 
-    constructor(address _pyusd) {
-        require(_pyusd != address(0), "pyusd addr required");
-        pyusd = _pyusd;
-    }
+    constructor() {}
 
     function createProject(
+        address stablecoin,
         uint256 minRaise,
         uint256 maxRaise,
         uint256 fundraiseDeadline,
@@ -44,6 +43,7 @@ contract ProjectRegistry is IProjectRegistry {
         uint256[6] calldata phaseDurations,
         uint256[6] calldata phaseWithdrawCaps
     ) external returns (address projectAddress, address tokenAddress) {
+        require(stablecoin != address(0), "stablecoin addr required");
         require(minRaise > 0 && maxRaise >= minRaise, "bad raise bounds");
         require(fundraiseDeadline > block.timestamp, "deadline in past");
 
@@ -53,7 +53,7 @@ contract ProjectRegistry is IProjectRegistry {
 
         CornerstoneProject project = new CornerstoneProject(
             msg.sender,
-            pyusd,
+            stablecoin,
             tName,
             tSym,
             minRaise,
@@ -71,6 +71,7 @@ contract ProjectRegistry is IProjectRegistry {
     }
 
     function createProjectWithTokenMeta(
+        address stablecoin,
         string calldata tokenName,
         string calldata tokenSymbol,
         uint256 minRaise,
@@ -80,6 +81,7 @@ contract ProjectRegistry is IProjectRegistry {
         uint256[6] calldata phaseDurations,
         uint256[6] calldata phaseWithdrawCaps
     ) external returns (address projectAddress, address tokenAddress) {
+        require(stablecoin != address(0), "stablecoin addr required");
         require(bytes(tokenName).length > 0 && bytes(tokenSymbol).length > 0, "name/symbol req");
         require(minRaise > 0 && maxRaise >= minRaise, "bad raise bounds");
         require(fundraiseDeadline > block.timestamp, "deadline in past");
@@ -87,7 +89,7 @@ contract ProjectRegistry is IProjectRegistry {
         projectCount += 1;
         CornerstoneProject project = new CornerstoneProject(
             msg.sender,
-            pyusd,
+            stablecoin,
             tokenName,
             tokenSymbol,
             minRaise,

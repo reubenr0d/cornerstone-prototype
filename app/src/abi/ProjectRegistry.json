@@ -1,12 +1,6 @@
 [
   {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "_pyusd",
-        "type": "address"
-      }
-    ],
+    "inputs": [],
     "stateMutability": "nonpayable",
     "type": "constructor"
   },
@@ -37,6 +31,11 @@
   },
   {
     "inputs": [
+      {
+        "internalType": "address",
+        "name": "stablecoin",
+        "type": "address"
+      },
       {
         "internalType": "uint256",
         "name": "minRaise",
@@ -86,6 +85,11 @@
   },
   {
     "inputs": [
+      {
+        "internalType": "address",
+        "name": "stablecoin",
+        "type": "address"
+      },
       {
         "internalType": "string",
         "name": "tokenName",
@@ -151,19 +155,6 @@
         "internalType": "uint256",
         "name": "",
         "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "pyusd",
-    "outputs": [
-      {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
       }
     ],
     "stateMutability": "view",

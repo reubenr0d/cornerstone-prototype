@@ -3,32 +3,23 @@ const hre = require('hardhat');
 // Env:
 // - SEPOLIA_RPC_URL: RPC endpoint
 // - PRIVATE_KEY: deployer private key (no 0x prefix or with, either works via Hardhat)
-// - PYUSD_ADDRESS: optional pre-existing PYUSD token address; if omitted, deploy MockPYUSD
-// - CREATE_SAMPLE_PROJECT=true: optionally create an example project
+// - PYUSD_ADDRESS: pre-existing PYUSD token address
+// - USDC_ADDRESS: pre-existing USDC token address
 
 async function main() {
   const [deployer] = await hre.ethers.getSigners();
   console.log('Deployer:', deployer.address);
 
-  let pyusd = process.env.PYUSD_ADDRESS;
-  let deployedMock = false;
-  if (!pyusd) {
-    console.log('PYUSD_ADDRESS not set; deploying MockPYUSD on Sepolia...');
-    const Mock = await hre.ethers.getContractFactory('MockPYUSD');
-    const mock = await Mock.deploy();
-    await mock.waitForDeployment();
-    pyusd = await mock.getAddress();
-    deployedMock = true;
-    console.log('MockPYUSD:', pyusd);
-    // Mint deployer some balance for testing
-    await (await mock.mint(deployer.address, 1_000_000n * 10n ** 6n)).wait();
+  let stablecoin = process.env.stablecoin_ADDRESS;
+  if (!stablecoin) {
+    console.log('TOKEN_ADDRESS not set; deploying Stablecoin on Sepolia...');
   } else {
-    console.log('Using existing pyusd at:', pyusd);
+    console.log('Using existing stablecoin at:', stablecoin);
   }
 
   // Deploy ProjectRegistry
   const Reg = await hre.ethers.getContractFactory('ProjectRegistry');
-  const reg = await Reg.deploy(pyusd);
+  const reg = await Reg.deploy();
   await reg.waitForDeployment();
   const registry = await reg.getAddress();
   console.log('ProjectRegistry:', registry);
@@ -54,11 +45,8 @@ async function main() {
 
   console.log('\n--- paste into app/.env.local ---');
   console.log(`VITE_RPC_URL=${process.env.SEPOLIA_RPC_URL || ''}`);
-  console.log(`VITE_PYUSD_ADDRESS=${pyusd}`);
+  console.log(`VITE_STABLECOIN_ADDRESS=${stablecoin}`);
   console.log(`VITE_REGISTRY_ADDRESS=${registry}`);
-  if (deployedMock) {
-    console.log('\nNote: Deployed MockPYUSD on Sepolia for testing.');
-  }
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
