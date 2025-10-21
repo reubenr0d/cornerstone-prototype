@@ -3,62 +3,41 @@ const hre = require('hardhat');
 // Env:
 // - SEPOLIA_RPC_URL: RPC endpoint
 // - PRIVATE_KEY: deployer private key (no 0x prefix or with, either works via Hardhat)
-// - PYUSD_ADDRESS: optional pre-existing PYUSD token address; if omitted, deploy MockPYUSD
-// - CREATE_SAMPLE_PROJECT=true: optionally create an example project
+// - PYUSD_ADDRESS: pre-existing PYUSD token address
+// - USDC_ADDRESS: pre-existing USDC token address
 
 async function main() {
   const [deployer] = await hre.ethers.getSigners();
   console.log('Deployer:', deployer.address);
 
-  let pyusd = process.env.PYUSD_ADDRESS;
-  let deployedMock = false;
+  const pyusd = process.env.PYUSD_ADDRESS;
+  const usdc = process.env.USDC_ADDRESS;
+
   if (!pyusd) {
-    console.log('PYUSD_ADDRESS not set; deploying MockPYUSD on Sepolia...');
-    const Mock = await hre.ethers.getContractFactory('MockPYUSD');
-    const mock = await Mock.deploy();
-    await mock.waitForDeployment();
-    pyusd = await mock.getAddress();
-    deployedMock = true;
-    console.log('MockPYUSD:', pyusd);
-    // Mint deployer some balance for testing
-    await (await mock.mint(deployer.address, 1_000_000n * 10n ** 6n)).wait();
+    console.warn('Warning: PYUSD_ADDRESS not set');
   } else {
-    console.log('Using existing pyusd at:', pyusd);
+    console.log('PYUSD Address:', pyusd);
   }
 
-  // Deploy ProjectRegistry
+  if (!usdc) {
+    console.warn('Warning: USDC_ADDRESS not set');
+  } else {
+    console.log('USDC Address:', usdc);
+  }
+
+  // Deploy ProjectRegistry (no constructor arguments)
+  console.log('\nDeploying ProjectRegistry...');
   const Reg = await hre.ethers.getContractFactory('ProjectRegistry');
-  const reg = await Reg.deploy(pyusd);
+  const reg = await Reg.deploy();
   await reg.waitForDeployment();
   const registry = await reg.getAddress();
-  console.log('ProjectRegistry:', registry);
-
-  if (String(process.env.CREATE_SAMPLE_PROJECT || '').toLowerCase() === 'true') {
-    console.log('CREATE_SAMPLE_PROJECT=true → creating example Cornerstone project...');
-    const name = 'Cornerstone-Demo';
-    const sym = 'CST-DEMO';
-    const minRaise = 100_000n * 10n ** 6n;
-    const maxRaise = 500_000n * 10n ** 6n;
-    const deadline = BigInt(Math.floor(Date.now() / 1000) + 14 * 86400);
-    const aprs = [0, 800, 1000, 1200, 1000, 0];
-    const durations = [0, 0, 0, 0, 0, 0];
-    const caps = [0, 1500, 1500, 2000, 3000, 2000];
-    const tx = await reg.createProjectWithTokenMeta(name, sym, minRaise, maxRaise, deadline, aprs, durations, caps);
-    const rc = await tx.wait();
-    const evt = rc.logs.find(l => l.fragment && l.fragment.name === 'ProjectCreated');
-    const project = evt?.args?.project || '0x';
-    const token = evt?.args?.token || '0x';
-    console.log('Sample Project:', project);
-    console.log('Sample Token:', token);
-  }
+  console.log('ProjectRegistry deployed at:', registry);
 
   console.log('\n--- paste into app/.env.local ---');
   console.log(`VITE_RPC_URL=${process.env.SEPOLIA_RPC_URL || ''}`);
-  console.log(`VITE_PYUSD_ADDRESS=${pyusd}`);
+  console.log(`VITE_PYUSD_ADDRESS=${pyusd || ''}`);
+  console.log(`VITE_USDC_ADDRESS=${usdc || ''}`);
   console.log(`VITE_REGISTRY_ADDRESS=${registry}`);
-  if (deployedMock) {
-    console.log('\nNote: Deployed MockPYUSD on Sepolia for testing.');
-  }
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
