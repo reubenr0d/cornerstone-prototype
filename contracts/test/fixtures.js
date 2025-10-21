@@ -78,7 +78,7 @@ async function deployRegistryFixture() {
     "ProjectRegistry",
     deployer
   );
-  const registry = await ProjectRegistry.deploy(await pyusd.getAddress());
+  const registry = await ProjectRegistry.deploy();
   await registry.waitForDeployment();
   return { deployer, pyusd, registry };
 }

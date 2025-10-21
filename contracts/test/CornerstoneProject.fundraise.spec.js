@@ -41,7 +41,7 @@ describe("CornerstoneProject - Fundraise", function () {
         [0, 0, 0, 0, 0, 0],
         [0, 0, 0, 0, 0, 0]
       )
-    ).to.be.revertedWith("pyusd required");
+    ).to.be.revertedWith("stablecoin required");
   });
 
   it("deposit in phase 0 mints 1:1 shares and moves PYUSD", async function () {
