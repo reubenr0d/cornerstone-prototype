@@ -1,32 +1,76 @@
+
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, TrendingUp, Users, Shield } from 'lucide-react';
+import { Plus, TrendingUp, Shield, Lock } from 'lucide-react';
 
 const Index = () => {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-gradient-to-b from-[#8B4513] via-[#A0826D] to-[#D2B48C]">
+      
       {/* Hero Section */}
-      <section className="border-b bg-gradient-to-br from-primary/5 via-background to-accent/5">
-        <div className="container mx-auto px-4 py-20">
-          <div className="max-w-3xl mx-auto text-center space-y-6">
-            <h1 className="text-5xl md:text-6xl font-bold tracking-tight">
-              Build, Fund, and Deliver
-              <span className="block text-primary mt-2">Milestone by Milestone</span>
-            </h1>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Transparent project funding with escrow protection, on-chain document verification, and milestone-based payouts.
-            </p>
-            <div className="flex flex-wrap gap-4 justify-center pt-4">
-              <Button asChild size="lg" className="h-12 px-8">
-                <Link to="/projects/new">
+      <section className="relative border-b overflow-hidden bg-cover bg-center" style={{ backgroundImage: 'url(/flipped.webp)' }}>
+        
+        <div className="container relative mx-auto px-4 py-16 md:py-24">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+            {/* Left: Text Content */}
+            <div className="space-y-8 max-w-2xl">
+              
+              
+              <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight leading-tight ">
+                Build, Fund, and Deliver
+                <span className="block text-gray-700 mt-2">
+                  Milestone by Milestone
+                </span>
+              </h1>
+              
+                <p className="text-lg md:text-xl text-white leading-relaxed">
+                Transparent project funding with escrow protection, on-chain document verification, and milestone-based payouts.
+                </p>
+              
+                <div className="flex flex-wrap gap-4 pt-4 lg:justify-start justify-center">
+                <Button
+                  asChild
+                  size="lg"
+                  className="h-14 px-10 text-base shadow-lg hover:shadow-xl transition-shadow"
+                  style={{ backgroundColor: '#ff9600', color: '#ffffff' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2e3138')}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#ff9600')}
+                >
+                  <Link to="/projects/new">
                   <Plus className="w-5 h-5 mr-2" />
                   Create Project
-                </Link>
-              </Button>
-              <Button asChild variant="outline" size="lg" className="h-12 px-8">
-                <Link to="/projects/1">View Demo Project</Link>
-              </Button>
+                  </Link>
+                </Button>
+                {/* <Button asChild variant="outline" size="lg" className="h-14 px-10 text-base border-2">
+                  <Link to="/projects/1">View Demo Project</Link>
+                </Button> */}
+                </div>
+              
+              {/* Stats */}
+              <div className="grid grid-cols-3 gap-8 pt-8">
+                <div className="space-y-1">
+                  <div className="text-3xl font-bold">$2.5M+</div>
+                  <div className="text-sm text-muted-foreground">Funds Secured</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-3xl font-bold">150+</div>
+                  <div className="text-sm text-muted-foreground">Projects Funded</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-3xl font-bold">98%</div>
+                  <div className="text-sm text-muted-foreground">Success Rate</div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Right: Illustration */}
+            <div className="hidden lg:flex justify-center items-center ml-6">
+              <img 
+              src="/3-minecraft.webp" 
+              alt="Project funding illustration" 
+              className="w-full max-w-xl drop-shadow-2xl animate-float"
+              />
             </div>
           </div>
         </div>
