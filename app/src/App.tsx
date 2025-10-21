@@ -8,6 +8,7 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import ProjectDetails from "./pages/ProjectDetails";
 import CreateProject from "./pages/CreateProject";
+import AllProjects from "./pages/AllProjects";
 
 const queryClient = new QueryClient();
 
@@ -20,6 +21,7 @@ const App = () => (
         <Navbar />
         <Routes>
           <Route path="/" element={<Index />} />
+          <Route path="/projects" element={<AllProjects />} />
           <Route path="/projects/:id" element={<ProjectDetails />} />
           <Route path="/project/:id" element={<ProjectDetails />} />
           <Route path="/projects/new" element={<CreateProject />} />

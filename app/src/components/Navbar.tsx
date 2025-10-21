@@ -20,7 +20,9 @@ const Navbar = () => {
 
   const navLinks = [
     { path: '/', label: 'Home' },
-    { path: '/projects/1', label: 'Projects' },
+    { path: '/projects', label: 'Projects' },
+    { path: '/dashboard', label: 'Dashboard' },
+    { path: '/about', label: 'About' },
   ];
 
   const handleClaim = useCallback(async () => {
