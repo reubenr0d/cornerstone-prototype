@@ -1,13 +1,18 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useWallet } from '@/hooks/use-wallet';
 import { Wallet, LogOut } from 'lucide-react';
+import { toast } from '@/components/ui/sonner';
+import { contractsConfig } from '@/config/contracts';
+import { faucetAt, getSigner } from '@/lib/eth';
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isClaiming, setIsClaiming] = useState(false);
   const location = useLocation();
   const { account, isConnected, isConnecting, connect, disconnect, formatAddress } = useWallet();
+  const faucetAddress = contractsConfig.faucet;
 
   const isActive = (path: string) => {
     return location.pathname === path;
@@ -15,11 +20,37 @@ const Navbar = () => {
 
   const navLinks = [
     { path: '/', label: 'Home' },
-    { path: '/dashboard', label: 'Dashboard' },
     { path: '/projects/1', label: 'Projects' },
-    { path: '/about', label: 'About' },
-    
   ];
+
+  const handleClaim = useCallback(async () => {
+    if (!faucetAddress) {
+      toast.error('Faucet address not configured. Set VITE_FAUCET_ADDRESS.');
+      return;
+    }
+    if (!isConnected) {
+      toast.error('Connect your wallet to claim tokens.');
+      return;
+    }
+    try {
+      setIsClaiming(true);
+      const signer = await getSigner();
+      const faucet = faucetAt(faucetAddress, signer);
+      const tx = await faucet.claim();
+      toast.success('Faucet claim submitted...');
+      await tx.wait();
+      toast.success('10,000 tokens transferred to your wallet.');
+    } catch (err: any) {
+      const message: string = err?.shortMessage || err?.message || 'Failed to claim from faucet.';
+      if (message.includes('Faucet: claim too soon')) {
+        toast.error('You can only claim once every 24 hours.');
+      } else {
+        toast.error(message);
+      }
+    } finally {
+      setIsClaiming(false);
+    }
+  }, [faucetAddress, isConnected]);
 
   return (
     <header className="sticky top-0 z-50 w-full transition-all duration-300 bg-[#8B7355] border-b-4 border-[#654321] shadow-lg">
@@ -68,6 +99,21 @@ const Navbar = () => {
 
         {/* Desktop CTA Buttons */}
         <div className="hidden md:flex items-center space-x-4" style={{ opacity: 1, transform: 'none' }}>
+          {faucetAddress && (
+            <Button
+              variant="outline"
+              onClick={() => void handleClaim()}
+              disabled={isClaiming || !isConnected}
+              className="minecraft-button h-10 px-4 py-2 bg-[#1E90FF] hover:bg-[#1C6DD0] text-white border-4 border-[#104E96] font-bold"
+            >
+              {isClaiming ? 'Claiming...' : 'Claim 10,000'}
+            </Button>
+          )}
+          <Link to="/projects/new">
+            <Button className="minecraft-button h-10 px-4 py-2 bg-[#ff9600] hover:bg-[#ff7700] text-white border-4 border-[#cc7700] font-bold">
+              Create Project
+            </Button>
+          </Link>
           {isConnected ? (
             <div className="flex items-center space-x-2">
               <Button
@@ -98,11 +144,6 @@ const Navbar = () => {
               {isConnecting ? 'Connecting...' : 'Connect Wallet'}
             </Button>
           )}
-          <Link to="/projects/new">
-            <Button className="minecraft-button h-10 px-4 py-2 bg-[#ff9600] hover:bg-[#ff7700] text-white border-4 border-[#cc7700] font-bold">
-              Create Project
-            </Button>
-          </Link>
         </div>
 
         {/* Mobile Menu */}
@@ -124,6 +165,24 @@ const Navbar = () => {
                 </Link>
               ))}
               <div className="flex flex-col space-y-2 pt-4">
+                {faucetAddress && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setIsOpen(false);
+                      void handleClaim();
+                    }}
+                    disabled={isClaiming || !isConnected}
+                    className="minecraft-button w-full text-white bg-[#1E90FF] hover:bg-[#1C6DD0] border-4 border-[#104E96] font-bold"
+                  >
+                    {isClaiming ? 'Claiming...' : 'Claim 10,000'}
+                  </Button>
+                )}
+                <Link to="/projects/new" onClick={() => setIsOpen(false)}>
+                  <Button className="minecraft-button w-full bg-[#ff9600] hover:bg-[#ff7700] text-white border-4 border-[#cc7700] font-bold">
+                    Create Project
+                  </Button>
+                </Link>
                 {isConnected ? (
                   <>
                     <Button
@@ -153,11 +212,6 @@ const Navbar = () => {
                     {isConnecting ? 'Connecting...' : 'Connect Wallet'}
                   </Button>
                 )}
-                <Link to="/projects/new" onClick={() => setIsOpen(false)}>
-                  <Button className="minecraft-button w-full bg-[#ff9600] hover:bg-[#ff7700] text-white border-4 border-[#cc7700] font-bold">
-                    Create Project
-                  </Button>
-                </Link>
               </div>
             </div>
           </div>

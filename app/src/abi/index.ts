@@ -2,6 +2,7 @@
 import CornerstoneProjectArtifact from './CornerstoneProject.json';
 import ProjectRegistryArtifact from './ProjectRegistry.json';
 import IERC20Artifact from './IERC20.json';
+import TokenFaucetArtifact from './TokenFaucet.json';
 
 type ArtifactWithAbi = { abi: unknown };
 
@@ -19,3 +20,4 @@ function extractAbi(artifact: unknown): unknown {
 export const CornerstoneProjectABI = extractAbi(CornerstoneProjectArtifact);
 export const ProjectRegistryABI = extractAbi(ProjectRegistryArtifact);
 export const ERC20ABI = extractAbi(IERC20Artifact);
+export const TokenFaucetABI = extractAbi(TokenFaucetArtifact);

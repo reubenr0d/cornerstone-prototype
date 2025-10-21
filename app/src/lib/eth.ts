@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { CornerstoneProjectABI, ProjectRegistryABI, ERC20ABI } from '@/abi';
+import { CornerstoneProjectABI, ProjectRegistryABI, ERC20ABI, TokenFaucetABI } from '@/abi';
 import { TOKEN_CONFIG } from '@/config/contracts';
 
 export type Address = `0x${string}`;
@@ -85,6 +85,10 @@ export function registryAt(address: Address, signerOrProvider: ethers.Signer | e
 
 export function projectAt(address: Address, signerOrProvider: ethers.Signer | ethers.Provider) {
   return new ethers.Contract(address, CornerstoneProjectABI as ethers.InterfaceAbi, signerOrProvider);
+}
+
+export function faucetAt(address: Address, signerOrProvider: ethers.Signer | ethers.Provider) {
+  return new ethers.Contract(address, TokenFaucetABI as ethers.InterfaceAbi, signerOrProvider);
 }
 
 export function toStablecoin(amount: string | number): bigint {
@@ -251,4 +255,3 @@ export async function fetchProjectStaticConfig(
     perPhaseAprBps: aprBps,
   };
 }
-

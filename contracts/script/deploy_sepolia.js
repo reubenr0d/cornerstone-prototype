@@ -10,11 +10,33 @@ async function main() {
   const [deployer] = await hre.ethers.getSigners();
   console.log('Deployer:', deployer.address);
 
-  let stablecoin = process.env.stablecoin_ADDRESS;
+  let stablecoin = process.env.PYUSD_ADDRESS || process.env.STABLECOIN_ADDRESS || process.env.TOKEN_ADDRESS;
+  let mock;
+
   if (!stablecoin) {
-    console.log('TOKEN_ADDRESS not set; deploying Stablecoin on Sepolia...');
+    console.log('No PYUSD_ADDRESS provided; deploying MockPYUSD on Sepolia...');
+    const Mock = await hre.ethers.getContractFactory('MockPYUSD');
+    mock = await Mock.deploy();
+    await mock.waitForDeployment();
+    stablecoin = await mock.getAddress();
+    console.log('MockPYUSD:', stablecoin);
   } else {
     console.log('Using existing stablecoin at:', stablecoin);
+  }
+
+  // Deploy faucet
+  const Faucet = await hre.ethers.getContractFactory('TokenFaucet');
+  const faucet = await Faucet.deploy(stablecoin);
+  await faucet.waitForDeployment();
+  const faucetAddress = await faucet.getAddress();
+  console.log('TokenFaucet:', faucetAddress);
+
+  if (mock) {
+    const faucetFunding = 1_000_000_000n * 10n ** 6n;
+    await (await mock.mint(faucetAddress, faucetFunding)).wait();
+    console.log('Seeded faucet with', faucetFunding.toString(), 'token units');
+  } else {
+    console.log('Reminder: fund the faucet manually so users can claim on Sepolia.');
   }
 
   // Deploy ProjectRegistry
@@ -34,7 +56,7 @@ async function main() {
     const aprs = [0, 800, 1000, 1200, 1000, 0];
     const durations = [0, 0, 0, 0, 0, 0];
     const caps = [0, 1500, 1500, 2000, 3000, 2000];
-    const tx = await reg.createProjectWithTokenMeta(name, sym, minRaise, maxRaise, deadline, aprs, durations, caps);
+    const tx = await reg.createProjectWithTokenMeta(stablecoin, name, sym, minRaise, maxRaise, deadline, aprs, durations, caps);
     const rc = await tx.wait();
     const evt = rc.logs.find(l => l.fragment && l.fragment.name === 'ProjectCreated');
     const project = evt?.args?.project || '0x';
@@ -45,9 +67,9 @@ async function main() {
 
   console.log('\n--- paste into app/.env.local ---');
   console.log(`VITE_RPC_URL=${process.env.SEPOLIA_RPC_URL || ''}`);
-  console.log(`VITE_STABLECOIN_ADDRESS=${stablecoin}`);
+  console.log(`VITE_PYUSD_ADDRESS=${stablecoin}`);
   console.log(`VITE_REGISTRY_ADDRESS=${registry}`);
+  console.log(`VITE_FAUCET_ADDRESS=${faucetAddress}`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
-
