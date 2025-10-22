@@ -66,40 +66,40 @@ const AllProjects = () => {
   });
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#87CEEB] via-[#B0D9F0] to-[#D4E8F5]">
+    <div className="min-h-screen bg-gradient-to-b from-[#87CEEB] via-[#B0D9F0] to-[#D4E8F5] overflow-x-hidden">
       {/* Minecraft sky background */}
       <div className="absolute inset-0 opacity-10 pointer-events-none">
         <div className="absolute inset-0 bg-[repeating-linear-gradient(0deg,transparent,transparent_16px,rgba(0,0,0,0.1)_16px,rgba(0,0,0,0.1)_18px)]"></div>
         <div className="absolute inset-0 bg-[repeating-linear-gradient(90deg,transparent,transparent_16px,rgba(0,0,0,0.1)_16px,rgba(0,0,0,0.1)_18px)]"></div>
       </div>
 
-      <div className="container mx-auto px-4 py-12 relative z-10">
+      <div className="container mx-auto px-4 py-12 relative z-10 max-w-7xl">
         {/* Header Section */}
         <div className="mb-12">
           {/* Title with Minecraft style */}
-          <div className="bg-gradient-to-b from-[#654321] to-[#3D2817] p-1 mb-4 inline-block">
-            <div className="bg-gradient-to-b from-[#8B4513] to-[#654321] px-8 py-6 border-4 border-[#3D2817]">
-              <h1 className="text-4xl md:text-5xl font-bold text-[#FFD700] mb-2 [text-shadow:_3px_3px_0_rgb(0_0_0_/_40%)]">
+          <div className="bg-gradient-to-b from-[#654321] to-[#3D2817] p-1 mb-4 inline-block w-full max-w-fit">
+            <div className="bg-gradient-to-b from-[#8B4513] to-[#654321] px-4 sm:px-8 py-4 sm:py-6 border-4 border-[#3D2817]">
+              <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-[#FFD700] mb-2 [text-shadow:_3px_3px_0_rgb(0_0_0_/_40%)] break-words">
                 ALL PROJECTS
               </h1>
-              <p className="text-white text-lg font-semibold">
+              <p className="text-white text-base sm:text-lg font-semibold break-words">
                 Explore and support amazing community projects
               </p>
             </div>
           </div>
 
           {/* Info Note */}
-          <div className="mb-6 bg-[#5599FF]/20 border-4 border-[#5599FF] p-4 max-w-2xl">
-            <p className="text-sm text-[#2D1B00] font-semibold">
+          <div className="mb-6 bg-[#5599FF]/20 border-4 border-[#5599FF] p-4 max-w-2xl w-full">
+            <p className="text-sm text-[#2D1B00] font-semibold break-words">
               💡 <strong>Just created a project?</strong> It may take a few moments for the indexer to process. 
               Click the <strong className="text-[#5599FF]">REFRESH</strong> button to check for new projects.
             </p>
           </div>
 
           {/* Action Bar */}
-          <div className="flex flex-col md:flex-row gap-4 items-center justify-between mb-8">
+          <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center justify-between mb-8">
             {/* Search Bar - Minecraft style */}
-            <div className="relative w-full md:w-96">
+            <div className="relative w-full lg:w-96 flex-shrink-0">
               <div className="absolute left-3 top-1/2 -translate-y-1/2 z-10">
                 <Search className="w-5 h-5 text-[#654321]" />
               </div>
@@ -108,12 +108,12 @@ const AllProjects = () => {
                 placeholder="Search by ID, creator address..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 h-12 bg-[#D2B48C] border-4 border-[#654321] text-[#2D1B00] placeholder:text-[#5D4E37] font-semibold shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)] focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,0.3)] transition-shadow"
+                className="pl-10 h-12 bg-[#D2B48C] border-4 border-[#654321] text-[#2D1B00] placeholder:text-[#5D4E37] font-semibold shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)] focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,0.3)] transition-shadow w-full"
               />
             </div>
 
             {/* Action Buttons */}
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-3 flex-shrink-0">
               {/* Refresh Button */}
               <Button
                 onClick={fetchProjects}
@@ -138,7 +138,7 @@ const AllProjects = () => {
           </div>
 
           {/* Filter Buttons */}
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-3 overflow-x-auto pb-2">
             {[
               { label: 'ALL', value: 'all' as const },
               { label: 'FUNDING', value: 'funding' as const },
@@ -148,7 +148,7 @@ const AllProjects = () => {
               <button
                 key={filter.value}
                 onClick={() => setFilterStatus(filter.value)}
-                className={`px-6 py-2 font-bold text-sm border-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)] transition-all hover:translate-y-[-2px] hover:shadow-[3px_3px_0px_0px_rgba(0,0,0,0.3)] active:translate-y-0 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,0.3)] ${
+                className={`px-6 py-2 font-bold text-sm border-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)] transition-all hover:translate-y-[-2px] hover:shadow-[3px_3px_0px_0px_rgba(0,0,0,0.3)] active:translate-y-0 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,0.3)] whitespace-nowrap flex-shrink-0 ${
                   filterStatus === filter.value
                     ? 'bg-[#FFD700] text-[#2D1B00] border-[#AA7700]'
                     : 'bg-[#8B7355] text-white border-[#654321]'
@@ -225,7 +225,7 @@ const AllProjects = () => {
             </div>
 
             {/* Grid of Projects */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 lg:gap-8">
               {filteredProjects.map((project) => (
                 <MinecraftProjectCard
                   key={project.id}

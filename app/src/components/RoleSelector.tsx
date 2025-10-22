@@ -14,7 +14,6 @@ const roles: { value: Role; label: string; icon: string }[] = [
 export const RoleSelector = ({ currentRole, onRoleChange }: RoleSelectorProps) => {
   return (
     <div className="flex items-center gap-2 p-3 bg-muted rounded-lg border border-border">
-      <span className="text-sm text-muted-foreground font-medium">Demo Mode:</span>
       <div className="flex gap-1">
         {roles.map((role) => (
           <Button

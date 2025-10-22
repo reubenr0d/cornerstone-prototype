@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState, ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
-import { RoleSelector } from '@/components/RoleSelector';
 import { RoleGate, Role } from '@/components/RoleGate';
 import { TimelineCard } from '@/components/TimelineCard';
 import ProjectInsightsPanel from '@/components/project/ProjectInsightsPanel';
@@ -12,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/components/ui/sonner';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, Edit, Upload, DollarSign, AlertTriangle, MessageSquare, Banknote, DoorClosed, Wallet, FileText, Target, Users, ShieldCheck } from 'lucide-react';
+import { Plus, Edit, Upload, DollarSign, AlertTriangle, MessageSquare, Banknote, DoorClosed, Wallet, FileText, Target, Users, ShieldCheck, HardHat } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@/components/ui/drawer';
 import { Address, erc20At, fromStablecoin, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toStablecoin, fetchProjectRealtimeState, fetchProjectStaticConfig, getWindowEthereum, ProjectRealtimeState, ProjectStaticConfig } from '@/lib/eth';
 import { getCompleteProjectData, Project } from '@/lib/envio';
@@ -41,7 +40,6 @@ const ProjectDetails = () => {
   const [isDepositing, setIsDepositing] = useState(false);
   const [isClaimingInterest, setIsClaimingInterest] = useState(false);
   const [isRedeemingPrincipal, setIsRedeemingPrincipal] = useState(false);
-  const [isClaimingRevenue, setIsClaimingRevenue] = useState(false);
   const [isApprovingReserve, setIsApprovingReserve] = useState(false);
   const [isFundingReserve, setIsFundingReserve] = useState(false);
   const [isClosingPhase, setIsClosingPhase] = useState(false);
@@ -494,38 +492,35 @@ const ProjectDetails = () => {
       id: 'reserve',
       label: 'Interest Reserve',
       value: `${format(project.escrow)} ${projectTokenConfig.symbol}`,
-      helper: `${format(project.withdrawn)} ${projectTokenConfig.symbol} withdrawn`,
       icon: ShieldCheck,
       tone: 'from-emerald-400/80 via-accent/60 to-primary/30',
     },
     {
-      id: 'phase',
-      label: 'Current Phase',
-      value: project.currentPhase,
-      helper: nextPhaseName ? `Next: ${nextPhaseName}` : 'Awaiting next milestone',
-      icon: Target,
+      id: 'interest',
+      label: 'Interest Accrued',
+      value: `${format(project.interestAccrued)} ${projectTokenConfig.symbol}`,
+      icon: DollarSign,
       tone: 'from-sky-400/80 via-primary/60 to-accent/40',
     },
     {
       id: 'supporters',
       label: 'Supporters',
       value: format(project.supporters),
-      helper: `${format(project.interestAccrued)} ${projectTokenConfig.symbol} interest accrued`,
       icon: Users,
       tone: 'from-indigo-400/80 via-primary/60 to-accent/40',
     },
   ] as const;
 
   const phaseStatusBadge = {
-    Past: 'bg-success/15 text-success',
-    Current: 'bg-primary text-primary-foreground',
-    Upcoming: 'bg-slate-200 text-slate-700 dark:bg-slate-800/80 dark:text-slate-200',
+    Past: 'border-4 border-[#2D572D] bg-[#55AA55] text-white shadow-[2px_2px_0_rgba(0,0,0,0.25)]',
+    Current: 'border-4 border-[#AA7700] bg-[#FFD700] text-[#2D1B00] shadow-[2px_2px_0_rgba(0,0,0,0.25)]',
+    Upcoming: 'border-4 border-[#3D2817] bg-[#8B7355] text-white shadow-[2px_2px_0_rgba(0,0,0,0.25)]',
   } as const;
 
   const phaseStatusDot = {
-    Past: 'bg-success',
-    Current: 'bg-primary',
-    Upcoming: 'bg-slate-300 dark:bg-slate-600',
+    Past: 'bg-[#55AA55]',
+    Current: 'bg-[#FFD700]',
+    Upcoming: 'bg-[#8B7355]',
   } as const;
 
   type Doc = { id: string; name: string; type: 'image' | 'pdf'; url: string; hash: string };
@@ -580,6 +575,26 @@ const ProjectDetails = () => {
   const [docViewer, setDocViewer] = useState<Doc | null>(null);
   const isDeveloper = currentRole === 'developer';
 
+  const minecraftPanelClass =
+    'rounded-lg border-4 border-[#654321] bg-[#F5DEB3] shadow-[6px_6px_0_rgba(0,0,0,0.35)]';
+  const minecraftSubPanelClass =
+    'rounded-lg border-4 border-[#654321] bg-[#EBD8B0] shadow-[4px_4px_0_rgba(0,0,0,0.3)]';
+  const minecraftHeaderClass = 'border-b-4 border-[#654321] bg-[#C4A484] px-6 py-4';
+  const minecraftStatPillClass =
+    'flex flex-1 flex-col gap-2 rounded-lg border-4 border-[#654321] bg-[#F8E3B5] px-4 py-3 text-xs font-bold text-[#2D1B00] shadow-[3px_3px_0_rgba(0,0,0,0.3)] sm:min-w-0 min-w-0';
+  const minecraftTabButtonBase =
+    'px-6 py-3 font-bold text-sm border-4 shadow-[2px_2px_0_rgba(0,0,0,0.3)] transition-all uppercase tracking-[0.2em] rounded-none';
+  const minecraftPrimaryButtonClass =
+    'rounded-none bg-[#5599FF] hover:bg-[#4488EE] border-4 border-[#2D5788] text-white font-bold shadow-[3px_3px_0_rgba(0,0,0,0.3)] hover:shadow-[5px_5px_0_rgba(0,0,0,0.3)] active:translate-y-1 active:shadow-[1px_1px_0_rgba(0,0,0,0.3)] disabled:opacity-60 disabled:cursor-not-allowed';
+  const minecraftSuccessButtonClass =
+    'rounded-none bg-[#55AA55] hover:bg-[#449944] border-4 border-[#2D572D] text-white font-bold shadow-[3px_3px_0_rgba(0,0,0,0.3)] hover:shadow-[5px_5px_0_rgba(0,0,0,0.3)] active:translate-y-1 active:shadow-[1px_1px_0_rgba(0,0,0,0.3)] disabled:opacity-60 disabled:cursor-not-allowed';
+  const minecraftNeutralButtonClass =
+    'rounded-none bg-[#D2B48C] hover:bg-[#C0A479] border-4 border-[#654321] text-[#2D1B00] font-bold shadow-[3px_3px_0_rgba(0,0,0,0.3)] hover:shadow-[5px_5px_0_rgba(0,0,0,0.3)] active:translate-y-1 active:shadow-[1px_1px_0_rgba(0,0,0,0.3)] disabled:opacity-60 disabled:cursor-not-allowed';
+  const minecraftLinkClass =
+    'font-mono text-xs text-[#2D1B00] underline decoration-4 decoration-[#FFD700] underline-offset-4 hover:text-[#2D1B00] hover:decoration-[#FFEE99]';
+  const minecraftBadgeClass =
+    'rounded-none border-4 border-[#2D572D] bg-[#55AA55] px-4 py-1 text-xs font-bold uppercase tracking-[0.2em] text-white shadow-[2px_2px_0_rgba(0,0,0,0.25)]';
+
   const tabs = [
     { id: 'milestones', label: 'Phases' },
     { id: 'flow-insights', label: 'Flow Insights' },
@@ -588,203 +603,224 @@ const ProjectDetails = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="relative overflow-hidden border-b border-primary/10 bg-gradient-to-br from-primary/15 via-accent/10 to-secondary/30">
-        <div className="pointer-events-none absolute inset-0 -z-10">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_hsla(226,87%,75%,0.35),_transparent_60%)]" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,_hsla(188,62%,72%,0.3),_transparent_55%)]" />
-        </div>
-        <div className="container mx-auto px-4 py-10">
-          <div className="space-y-8">
-            <div className="rounded-3xl border border-white/30 bg-white/60 p-6 shadow-soft backdrop-blur dark:border-white/10 dark:bg-slate-950/35">
-              <div className="flex flex-col gap-6">
-                <div className="flex flex-col gap-6 xl:min-w-0">
-                  <div className="flex flex-wrap items-center justify-between gap-4">
-                    <RoleSelector currentRole={currentRole} onRoleChange={setCurrentRole} />
-                    <Button
-                      variant={connected ? 'secondary' : 'default'}
-                      size="sm"
-                      className="gap-2 bg-primary/90 text-primary-foreground hover:bg-primary"
-                      onClick={connectWallet}
-                    >
-                      <Wallet className="w-4 h-4" />
-                      {connected && account ? `${account.slice(0, 6)}...${account.slice(-4)}` : 'Connect Wallet'}
-                    </Button>
+    <div className="relative min-h-screen bg-gradient-to-b from-[#87CEEB] via-[#B0D9F0] to-[#D4E8F5]">
+      <div className="absolute inset-0 opacity-10 pointer-events-none">
+        <div className="absolute inset-0 bg-[repeating-linear-gradient(0deg,transparent,transparent_16px,rgba(0,0,0,0.1)_16px,rgba(0,0,0,0.1)_18px)]" />
+        <div className="absolute inset-0 bg-[repeating-linear-gradient(90deg,transparent,transparent_16px,rgba(0,0,0,0.1)_16px,rgba(0,0,0,0.1)_18px)]" />
+      </div>
+      <div className="relative z-10">
+        {/* Header */}
+        <header className="container mx-auto px-4 pt-12">
+          <div className="bg-gradient-to-b from-[#654321] to-[#3D2817] p-1 shadow-[10px_10px_0_rgba(0,0,0,0.45)]">
+            <div className="border-4 border-[#3D2817] bg-gradient-to-b from-[#F1D9A7] via-[#D2B48C] to-[#B08D69] px-6 py-8 text-[#2D1B00]">
+              <div className="flex flex-col gap-8">
+
+                <div className="flex flex-col gap-6 lg:flex-row">
+                  <div className="relative h-32 w-32 flex-shrink-0 overflow-hidden border-4 border-[#3D2817] shadow-[6px_6px_0_rgba(0,0,0,0.4)]">
+                    <img
+                      src="https://images.unsplash.com/photo-1501183638710-841dd1904471?w=600&q=60&auto=format&fit=crop"
+                      alt="Project visual"
+                      className="h-full w-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-[#3D2817]/40" />
                   </div>
-
-                  <div className="flex items-start gap-5">
-                      <div className="relative h-28 w-28 flex-shrink-0 overflow-hidden rounded-3xl border border-white/40 shadow-soft dark:border-white/10">
-                        <img
-                          src="https://images.unsplash.com/photo-1501183638710-841dd1904471?w=600&q=60&auto=format&fit=crop"
-                          alt="Project visual"
-                          className="h-full w-full object-cover"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-br from-primary/45 via-transparent to-transparent mix-blend-multiply" />
-                      </div>
-                      <div className="min-w-0 space-y-3">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <h1 className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">
-                            {loading ? <Skeleton className="h-9 w-64" /> : project.name}
-                          </h1>
-                          <Badge className="rounded-full bg-success/90 px-3 py-1 text-xs font-semibold text-success-foreground shadow-sm">
-                            {project.status}
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-slate-600 dark:text-slate-300">
-                          Project:{' '}
-                          {loading ? (
-                            <Skeleton className="inline-block h-4 w-48" />
-                          ) : (
-                            <a
-                              href={`https://sepolia.etherscan.io/address/${project.contractAddress}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="font-mono text-xs underline decoration-dotted underline-offset-4 hover:text-primary"
-                            >
-                              {project.contractAddress}
-                            </a>
-                          )}
-                        </p>
-                        <p className="text-sm text-slate-600 dark:text-slate-300">
-                          Token:{' '}
-                          {loading ? (
-                            <Skeleton className="inline-block h-4 w-48" />
-                          ) : (
-                            <a
-                              href={`https://sepolia.etherscan.io/address/${project.tokenAddress}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="font-mono text-xs underline decoration-dotted underline-offset-4 hover:text-primary"
-                            >
-                              {project.tokenAddress}
-                            </a>
-                          )}
-                        </p>
-                        <p className="text-sm text-slate-700 dark:text-slate-200/80">
-                          {project.description}
-                        </p>
-                      </div>
+                  <div className="flex-1 min-w-0 space-y-4">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <h1 className="text-3xl font-bold tracking-[0.25em] text-[#FFD700] [text-shadow:_3px_3px_0_rgb(0_0_0_/_40%)]">
+                        {loading ? <Skeleton className="h-9 w-64" /> : project.name.toUpperCase()}
+                      </h1>
+                      <Badge className={`${minecraftBadgeClass}`}>
+                        {project.status}
+                      </Badge>
                     </div>
-
-                    {isDeveloper && (
-                      <div className="rounded-2xl border border-white/30 bg-white/40 p-4 shadow-soft backdrop-blur dark:border-white/10 dark:bg-slate-900/40">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <RoleGate currentRole={currentRole} allowedRoles={['developer']}>
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              className="gap-2 bg-white/60 text-slate-800 hover:bg-white/80 dark:bg-slate-800/70 dark:text-slate-100 dark:hover:bg-slate-700"
-                            >
-                              <MessageSquare className="h-4 w-4" />
-                              Post Update
-                            </Button>
-                          </RoleGate>
-                        </div>
-                      </div>
-                    )}
+                    <p className="text-sm font-semibold text-[#2D1B00]">
+                      Project:{' '}
+                      {loading ? (
+                        <Skeleton className="inline-block h-4 w-48" />
+                      ) : (
+                        <a
+                          href={`https://sepolia.etherscan.io/address/${project.contractAddress}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={minecraftLinkClass}
+                        >
+                          {project.contractAddress}
+                        </a>
+                      )}
+                    </p>
+                    <p className="text-sm font-semibold text-[#2D1B00]">
+                      Token:{' '}
+                      {loading ? (
+                        <Skeleton className="inline-block h-4 w-48" />
+                      ) : (
+                        <a
+                          href={`https://sepolia.etherscan.io/address/${project.tokenAddress}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={minecraftLinkClass}
+                        >
+                          {project.tokenAddress}
+                        </a>
+                      )}
+                    </p>
+                    <p className="text-sm text-[#5D4E37]">
+                      {project.description}
+                    </p>
+                  </div>
                 </div>
+
+                {isDeveloper && (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <RoleGate currentRole={currentRole} allowedRoles={['developer']}>
+                      <Button className={`${minecraftNeutralButtonClass} h-11 px-5 gap-2`}>
+                        <MessageSquare className="h-5 w-5" />
+                        Post Update
+                      </Button>
+                    </RoleGate>
+                  </div>
+                )}
               </div>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      {/* Main content */}
-      <div className="container mx-auto px-4 py-8">
+        {/* Main content */}
+        <div className="container mx-auto px-4 py-12">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main column */}
           <div className="lg:col-span-2 space-y-6">
             {/* Summary */}
-            <Card className="overflow-hidden border-0 bg-gradient-to-br from-white/85 via-white/70 to-white/60 shadow-soft dark:from-slate-900/75 dark:via-slate-900/60 dark:to-slate-900/50">
-              <CardHeader className="border-b border-white/40 pb-4 dark:border-white/10">
+            <Card className={`${minecraftPanelClass} overflow-hidden`}>
+              <CardHeader className={`${minecraftHeaderClass} pb-4`}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <CardTitle className="text-lg font-semibold text-slate-900 dark:text-white">
+                    <CardTitle className="text-lg font-bold text-[#2D1B00] tracking-[0.2em] uppercase">
                       Capital Overview
                     </CardTitle>
-                    <CardDescription className="text-sm text-slate-600 dark:text-slate-300">
+                    <CardDescription className="text-sm font-semibold text-[#5D4E37]">
                       Funding progress across targets, reserves, and developer unlocks.
                     </CardDescription>
                   </div>
-                  <Badge className="rounded-full bg-primary/15 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-primary dark:bg-primary/30">
+                  <Badge className="rounded-none border-4 border-[#AA7700] bg-[#FFD700] px-4 py-1 text-xs font-bold uppercase tracking-[0.25em] text-[#2D1B00] shadow-[2px_2px_0_rgba(0,0,0,0.3)]">
                     {project.target ? `${raisedPercentage.toFixed(1)}% Funded` : 'Open'}
                   </Badge>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-6 pt-6">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between text-[0.7rem] font-semibold uppercase tracking-[0.35em] text-slate-600 dark:text-slate-300">
-                    <span>{loading ? <Skeleton className="inline-block h-3 w-24" /> : `${format(project.raised)} ${projectTokenConfig.symbol} Raised`}</span>
-                    <span>{loading ? <Skeleton className="inline-block h-3 w-24" /> : `${format(project.target)} ${projectTokenConfig.symbol} Target`}</span>
-                  </div>
-                  <div className="relative h-3 w-full overflow-hidden rounded-full bg-slate-200/70 dark:bg-slate-800">
-                    <div
-                      className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-primary via-primary/80 to-primary/60 transition-all"
-                      style={{ width: `${Math.min(100, raisedPercentage)}%` }}
-                    />
-                    <div
-                      className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-amber-400/90 via-amber-400/70 to-amber-300/60 transition-all"
-                      style={{ width: `${Math.min(100, withdrawnPercentage)}%` }}
-                    />
-                    {project.target > 0 && project.minTarget > 0 && (
-                      <div
-                        className="absolute inset-y-0 flex w-0.5 -translate-x-0.5 items-center justify-center"
-                        style={{ left: `${Math.max(0, Math.min(100, minRaisePercentage))}%` }}
-                      >
-                        <span className="h-full w-px bg-rose-500" />
+              <CardContent className="space-y-6 pt-6 text-[#2D1B00]">
+                <div className="space-y-4">
+                  {/* Enhanced Target and Raised Display */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="relative overflow-hidden rounded-lg border-4 border-[#654321] bg-gradient-to-br from-[#FFD700] via-[#FFE55C] to-[#FFD700] p-4 shadow-[4px_4px_0_rgba(0,0,0,0.3)]">
+                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.3)_0%,_transparent_70%)]" />
+                      <div className="relative z-10">
+                        <p className="text-xs font-bold uppercase tracking-[0.3em] text-[#2D1B00] mb-1">Amount Raised</p>
+                        <p className="text-2xl font-bold text-[#2D1B00] [text-shadow:_1px_1px_0_rgb(0_0_0_/_20%)]">
+                          {loading ? <Skeleton className="h-8 w-32" /> : `${format(project.raised)} ${projectTokenConfig.symbol}`}
+                        </p>
                       </div>
-                    )}
+                    </div>
+                    <div className="relative overflow-hidden rounded-lg border-4 border-[#654321] bg-gradient-to-br from-[#5599FF] via-[#6BB6FF] to-[#5599FF] p-4 shadow-[4px_4px_0_rgba(0,0,0,0.3)]">
+                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.3)_0%,_transparent_70%)]" />
+                      <div className="relative z-10">
+                        <p className="text-xs font-bold uppercase tracking-[0.3em] text-white mb-1">Target Goal</p>
+                        <p className="text-2xl font-bold text-white [text-shadow:_1px_1px_0_rgb(0_0_0_/_20%)]">
+                          {loading ? <Skeleton className="h-8 w-32" /> : `${format(project.target)} ${projectTokenConfig.symbol}`}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex w-full flex-col gap-3 text-slate-600 dark:text-slate-300 sm:flex-row">
+                  
+                  {/* Enhanced Progress Bar */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm font-bold text-[#2D1B00]">
+                      <span>Funding Progress</span>
+                      <span className="text-lg">{raisedPercentage.toFixed(1)}%</span>
+                    </div>
+                    <div className="relative h-6 w-full overflow-hidden rounded-none border-4 border-[#654321] bg-[#B08D69] shadow-[2px_2px_0_rgba(0,0,0,0.3)]">
+                      <div
+                        className="absolute inset-y-0 left-0 bg-gradient-to-r from-[#5599FF] to-[#6BB6FF] transition-all duration-500 ease-out shadow-[inset_0_1px_0_rgba(255,255,255,0.3)]"
+                        style={{ width: `${Math.min(100, raisedPercentage)}%` }}
+                      />
+                      <div
+                        className="absolute inset-y-0 left-0 bg-gradient-to-r from-[#55AA55] to-[#66BB66] transition-all duration-500 ease-out shadow-[inset_0_1px_0_rgba(255,255,255,0.3)]"
+                        style={{ width: `${Math.min(100, withdrawnPercentage)}%` }}
+                      />
+                      {project.target > 0 && project.minTarget > 0 && (
+                        <div
+                          className="absolute inset-y-0 flex w-1 -translate-x-0.5 items-center justify-center"
+                          style={{ left: `${Math.max(0, Math.min(100, minRaisePercentage))}%` }}
+                        >
+                          <span className="h-full w-px bg-[#FF4500] shadow-[0_0_4px_rgba(255,69,0,0.8)]" />
+                        </div>
+                      )}
+                      {/* Progress percentage overlay */}
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-xs font-bold text-[#2D1B00] [text-shadow:_1px_1px_0_rgb(255_255_255_/_80%)]">
+                          {raisedPercentage.toFixed(1)}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-3">
                     {capitalSummaryMetrics.map((metric) => {
                       const Icon = metric.icon;
                       return (
                         <div
                           key={metric.id}
-                          className="flex flex-1 items-center justify-between gap-3 rounded-full bg-white/60 px-3 py-2 text-[0.65rem] font-semibold dark:bg-slate-800/70 dark:text-slate-200 sm:min-w-0"
+                          className="group relative flex h-full flex-col overflow-hidden rounded-lg border-4 border-[#654321] bg-gradient-to-br from-[#F8E3B5] via-[#FFF3C4] to-[#F8E3B5] p-5 text-[#2D1B00] shadow-[4px_4px_0_rgba(0,0,0,0.3)] transition-all hover:-translate-y-1 hover:shadow-[6px_6px_0_rgba(0,0,0,0.3)]"
                         >
-                          <span className="flex items-center gap-2 uppercase tracking-[0.25em]">
-                            <Icon className="h-3 w-3" />
-                            {metric.label}
-                          </span>
-                          <span className="flex items-center justify-end whitespace-nowrap text-right text-slate-700 tracking-[0.1em] dark:text-white">
-                            {loading ? <Skeleton className={`h-3 ${metric.skeletonClass}`} /> : metric.value}
-                          </span>
+                          <div
+                            className="absolute inset-0 bg-[radial-gradient(circle,_rgba(255,215,0,0.3)_0%,_transparent_70%)] opacity-70 transition-opacity group-hover:opacity-90"
+                            aria-hidden="true"
+                          />
+                          <div className="relative z-10 flex flex-col items-center text-center gap-4">
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-10 w-10 items-center justify-center rounded-lg border-4 border-[#654321] bg-gradient-to-br from-[#FFD700] to-[#FFE55C] text-[#2D1B00] shadow-[2px_2px_0_rgba(0,0,0,0.25)]">
+                                <Icon className="h-4 w-4" />
+                              </div>
+                              <p className="text-sm font-bold uppercase tracking-[0.2em] text-[#2D1B00]">
+                                {metric.label}
+                              </p>
+                            </div>
+                            <div className="w-full">
+                              <p className="text-xl font-bold text-[#2D1B00] break-words">
+                                {loading ? <Skeleton className={`h-6 ${metric.skeletonClass}`} /> : metric.value}
+                              </p>
+                            </div>
+                          </div>
                         </div>
                       );
                     })}
                   </div>
                 </div>
 
-                <div className="grid gap-4 border-t border-white/30 pt-4 text-sm dark:border-white/10 md:grid-cols-3">
+                <div className="grid gap-4 border-t-4 border-[#654321] pt-6 text-sm md:grid-cols-3">
                   {overviewStats.map((stat) => {
                     const Icon = stat.icon;
                     return (
                       <div
                         key={stat.id}
-                        className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-white/40 bg-white/60 p-5 shadow-soft transition-all hover:-translate-y-1 hover:border-primary/50 dark:border-white/10 dark:bg-slate-900/45"
+                        className="group relative flex h-full flex-col overflow-hidden rounded-lg border-4 border-[#654321] bg-gradient-to-br from-[#F8E3B5] via-[#FFF3C4] to-[#F8E3B5] p-5 text-[#2D1B00] shadow-[4px_4px_0_rgba(0,0,0,0.3)] transition-all hover:-translate-y-1 hover:shadow-[6px_6px_0_rgba(0,0,0,0.3)]"
                       >
                         <div
-                          className={`absolute inset-0 bg-gradient-to-br ${stat.tone} opacity-60 blur-3xl transition-opacity group-hover:opacity-80`}
+                          className="absolute inset-0 bg-[radial-gradient(circle,_rgba(255,215,0,0.3)_0%,_transparent_70%)] opacity-70 transition-opacity group-hover:opacity-90"
                           aria-hidden="true"
                         />
-                        <div className="relative z-10 flex items-center gap-3">
-                          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/40 bg-white/60 text-primary shadow-inner dark:border-white/10 dark:bg-slate-900/50">
-                            <Icon className="h-5 w-5" />
-                          </div>
-                          <div>
-                            <p className="text-[0.7rem] font-semibold uppercase tracking-[0.35em] text-slate-600 dark:text-slate-300">
+                        <div className="relative z-10 flex flex-col items-center text-center gap-4">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-lg border-4 border-[#654321] bg-gradient-to-br from-[#FFD700] to-[#FFE55C] text-[#2D1B00] shadow-[2px_2px_0_rgba(0,0,0,0.25)]">
+                              <Icon className="h-4 w-4" />
+                            </div>
+                            <p className="text-sm font-bold uppercase tracking-[0.2em] text-[#2D1B00] [text-shadow:_1px_1px_0_rgb(255_255_255_/_50%)]">
                               {stat.label}
                             </p>
-                            <p className="text-lg font-semibold text-slate-900 dark:text-white">
+                          </div>
+                          <div className="w-full">
+                            <p className="text-xl font-bold text-[#2D1B00] break-words [text-shadow:_1px_1px_0_rgb(255_255_255_/_30%)]">
                               {loading ? <Skeleton className="h-6 w-32" /> : stat.value}
                             </p>
                           </div>
                         </div>
-                        <p className="relative z-10 mt-auto pt-4 text-xs text-slate-600 dark:text-slate-300">
-                          {loading ? <Skeleton className="h-3 w-full" /> : stat.helper}
-                        </p>
                       </div>
                     );
                   })}
@@ -793,27 +829,24 @@ const ProjectDetails = () => {
             </Card>
 
             {/* Tabs */}
-            <div className="flex flex-wrap items-center gap-2 rounded-full border border-slate-200/70 bg-white/70 p-1 shadow-soft backdrop-blur dark:border-slate-800 dark:bg-slate-900/60">
+            <div className="flex flex-wrap items-center gap-3 rounded-none border-4 border-[#654321] bg-[#C4A484] p-2 shadow-[6px_6px_0_rgba(0,0,0,0.35)]">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`relative overflow-hidden rounded-full px-4 py-2 text-sm font-semibold transition-all ${
+                  className={`${minecraftTabButtonBase} ${
                     activeTab === tab.id
-                      ? 'bg-slate-900 text-white shadow-soft dark:bg-white/90 dark:text-slate-900'
-                      : 'text-slate-600 hover:bg-white/60 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/70 dark:hover:text-white'
+                      ? 'bg-[#FFD700] text-[#2D1B00] border-[#AA7700] shadow-[4px_4px_0_rgba(0,0,0,0.35)]'
+                      : 'bg-[#8B7355] text-white border-[#3D2817] hover:-translate-y-0.5 hover:shadow-[4px_4px_0_rgba(0,0,0,0.35)]'
                   }`}
                 >
-                  <span className="relative z-10">{tab.label}</span>
-                  {activeTab === tab.id && (
-                    <span className="pointer-events-none absolute inset-0 bg-gradient-to-r from-primary/30 via-primary/20 to-accent/30 opacity-90" />
-                  )}
+                  <span className="relative z-10 tracking-[0.25em]">{tab.label}</span>
                 </button>
               ))}
             </div>
 
             {activeTab === 'flow-insights' && (
-              <div className="rounded-3xl border border-slate-200/70 bg-white/70 p-6 shadow-soft dark:border-slate-800 dark:bg-slate-900/60">
+              <div className={`${minecraftPanelClass} p-6`}>
                 <div className="-mx-2 overflow-x-auto px-2 pb-2">
                   <ProjectInsightsPanel
                     loading={loading}
@@ -826,30 +859,30 @@ const ProjectDetails = () => {
             )}
 
             {activeTab === 'timeline' && (
-              <div className="rounded-3xl border border-slate-200/70 bg-white/70 p-6 shadow-soft dark:border-slate-800 dark:bg-slate-900/60">
-                <div className="relative">
+              <div className={`${minecraftPanelClass} p-6`}>
+                <div className="relative text-[#2D1B00]">
                   {timelineEvents.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center gap-2 py-10 text-center text-sm text-slate-500 dark:text-slate-300">
+                    <div className="flex flex-col items-center justify-center gap-2 py-10 text-center text-sm text-[#5D4E37]">
                       <span>No on-chain activity recorded yet.</span>
                       <span>Deployments, withdrawals, and updates will appear here automatically.</span>
                     </div>
                   ) : (
                     <>
-                      <div className="pointer-events-none absolute left-6 top-3 h-[calc(100%-1.5rem)] w-px bg-gradient-to-b from-primary/40 via-slate-300/40 to-transparent dark:from-primary/50 dark:via-slate-700/60 md:left-1/2 md:-translate-x-1/2" />
+                      <div className="pointer-events-none absolute left-6 top-3 h-[calc(100%-1.5rem)] w-px bg-gradient-to-b from-[#3D2817] via-[#8B7355] to-transparent md:left-1/2 md:-translate-x-1/2" />
                       <div className="space-y-10">
                         {timelineEvents.map((event, idx) => (
                           <div
                             key={event.id}
                             className={`relative flex gap-6 pl-12 md:pl-0 ${idx % 2 === 1 ? 'md:justify-end' : 'md:justify-start'}`}
                           >
-                            <div className="absolute left-5 top-4 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white bg-primary shadow-soft ring-4 ring-primary/25 dark:border-slate-900 md:left-1/2 md:-translate-x-1/2" />
+                            <div className="absolute left-5 top-4 flex h-4 w-4 items-center justify-center rounded-full border-4 border-[#3D2817] bg-[#FFD700] shadow-[3px_3px_0_rgba(0,0,0,0.3)] md:left-1/2 md:-translate-x-1/2" />
                             <div
                               className={`relative w-full md:max-w-[45%] ${
                                 idx % 2 === 1 ? 'md:translate-x-6' : 'md:-translate-x-6'
                               }`}
                             >
                               <TimelineCard
-                                className="border border-slate-200/70 bg-white/85 p-5 shadow-soft transition-all hover:-translate-y-1 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900/70"
+                                className="border-4 border-[#654321] bg-[#F8E3B5] p-5 text-[#2D1B00] shadow-[4px_4px_0_rgba(0,0,0,0.3)] transition-all hover:-translate-y-1 hover:shadow-[6px_6px_0_rgba(0,0,0,0.3)]"
                                 type={event.type}
                                 title={event.title}
                                 meta={event.meta}
@@ -868,9 +901,9 @@ const ProjectDetails = () => {
             )}
 
             {activeTab === 'milestones' && (
-              <div className="rounded-3xl border border-slate-200/70 bg-white/70 p-6 shadow-soft dark:border-slate-800 dark:bg-slate-900/60">
-                <div className="relative">
-                  <div className="absolute left-6 top-0 h-full w-px bg-gradient-to-b from-primary/40 via-slate-300/50 to-transparent dark:from-primary/50 dark:via-slate-700/60" />
+              <div className={`${minecraftPanelClass} p-6`}>
+                <div className="relative text-[#2D1B00]">
+                  <div className="absolute left-6 top-0 h-full w-px bg-gradient-to-b from-[#3D2817] via-[#8B7355] to-transparent" />
                   <div className="space-y-8">
                     {phasesDetails.map((p, idx) => {
                       const statusKey = p.status as keyof typeof phaseStatusDot;
@@ -896,22 +929,22 @@ const ProjectDetails = () => {
 
                       return (
                         <div key={p.index} className="relative flex gap-6 pl-12 md:pl-16">
-                          <div className="absolute left-4 top-6 z-10 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white shadow-soft ring-4 ring-primary/20 dark:border-slate-900">
+                          <div className="absolute left-4 top-6 z-10 flex h-4 w-4 items-center justify-center rounded-full border-4 border-[#3D2817] bg-[#F8E3B5] shadow-[3px_3px_0_rgba(0,0,0,0.3)]">
                             <span className={`h-2.5 w-2.5 rounded-full ${dotTone}`} />
                           </div>
                           <div
-                            className={`w-full rounded-2xl border border-slate-200/70 bg-white/80 p-5 shadow-soft transition-all hover:-translate-y-1 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900/70 ${
-                              idx === currentPhaseIndex ? 'ring-2 ring-primary/30' : ''
+                            className={`w-full rounded-lg border-4 border-[#654321] p-5 shadow-[4px_4px_0_rgba(0,0,0,0.3)] transition-all hover:-translate-y-1 hover:shadow-[6px_6px_0_rgba(0,0,0,0.3)] ${
+                              idx === currentPhaseIndex ? 'bg-[#FFDFA6]' : 'bg-[#F8E3B5]'
                             }`}
                           >
                             <div className="flex flex-wrap items-center justify-between gap-3">
                               <div>
-                                <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-500 dark:text-slate-300">
+                                <p className="text-xs font-bold uppercase tracking-[0.35em] text-[#5D4E37]">
                                   Phase {p.index + 1}
                                 </p>
-                                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{p.name}</h3>
+                                <h3 className="text-lg font-bold text-[#2D1B00]">{p.name}</h3>
                               </div>
-                              <Badge className={`rounded-full px-3 py-1 text-xs font-semibold ${badgeTone}`}>
+                              <Badge className={`rounded-none px-4 py-1 text-xs font-bold uppercase tracking-[0.25em] ${badgeTone}`}>
                                 {p.status}
                               </Badge>
                             </div>
@@ -919,10 +952,10 @@ const ProjectDetails = () => {
                             <div className="mt-4 grid gap-4 md:grid-cols-4">
                               {infoBlocks.map((block) => (
                                 <div key={block.label}>
-                                  <p className="text-[0.65rem] font-semibold uppercase tracking-[0.3em] text-slate-500 dark:text-slate-300">
+                                  <p className="text-[0.65rem] font-bold uppercase tracking-[0.3em] text-[#5D4E37]">
                                     {block.label}
                                   </p>
-                                  <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                                  <p className="text-sm font-bold text-[#2D1B00]">
                                     {loading ? <Skeleton className="h-4 w-20" /> : block.value}
                                   </p>
                                 </div>
@@ -930,20 +963,20 @@ const ProjectDetails = () => {
                             </div>
 
                             <div className="mt-5 space-y-2">
-                              <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-300">
+                              <div className="flex items-center justify-between text-xs font-semibold text-[#5D4E37]">
                                 <span>Cap Unlock Progress</span>
                                 <span>{progressWidth}</span>
                               </div>
-                              <div className="relative h-2 w-full overflow-hidden rounded-full bg-slate-200/70 dark:bg-slate-800">
+                              <div className="relative h-2 w-full overflow-hidden rounded-none border-4 border-[#654321] bg-[#B08D69]">
                                 <div
-                                  className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-primary via-primary/80 to-accent/70"
+                                  className="absolute inset-y-0 left-0 bg-[#5599FF]"
                                   style={{ width: progressWidth }}
                                 />
                               </div>
                             </div>
 
                             {p.showWithdrawn && (
-                              <p className="mt-3 text-xs text-slate-600 dark:text-slate-300">
+                              <p className="mt-3 text-xs text-[#5D4E37]">
                                 Phase cap unlocked and included in cumulative developer withdrawals.
                               </p>
                             )}
@@ -957,7 +990,7 @@ const ProjectDetails = () => {
             )}
 
             {activeTab === 'verification' && (
-              <div className="rounded-3xl border border-slate-200/70 bg-white/70 p-6 shadow-soft dark:border-slate-800 dark:bg-slate-900/60">
+              <div className={`${minecraftPanelClass} p-6`}>
                 <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
                   <div className="space-y-3">
                     {phasesDetails.map((p) => {
@@ -968,20 +1001,20 @@ const ProjectDetails = () => {
                           key={`docs-nav-${p.index}`}
                           type="button"
                           onClick={() => setActiveDocPhase(p.index)}
-                          className={`w-full rounded-2xl border px-4 py-3 text-left transition-all hover:-translate-y-1 hover:shadow-lg ${
+                          className={`w-full rounded-lg border-4 px-4 py-3 text-left font-semibold tracking-[0.05em] shadow-[3px_3px_0_rgba(0,0,0,0.25)] transition-all ${
                             activeDocPhase === p.index
-                              ? 'border-primary/40 bg-primary/10 text-slate-900 dark:bg-primary/20 dark:text-white'
-                              : 'border-slate-200/70 bg-white/70 text-slate-700 hover:border-primary/30 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-200'
+                              ? 'border-[#AA7700] bg-[#FFDFA6] text-[#2D1B00]'
+                              : 'border-[#654321] bg-[#EBD8B0] text-[#5D4E37] hover:-translate-y-1 hover:shadow-[5px_5px_0_rgba(0,0,0,0.3)]'
                           }`}
                         >
                           <div className="flex items-center justify-between gap-2">
                             <p className="text-sm font-semibold">Phase {p.index + 1}</p>
-                            <Badge className={`rounded-full px-2 py-0.5 text-xs font-semibold ${phaseStatusBadge[statusKey] ?? ''}`}>
+                            <Badge className={`rounded-none px-3 py-1 text-[0.65rem] font-bold uppercase tracking-[0.2em] ${phaseStatusBadge[statusKey] ?? ''}`}>
                               {p.status}
                             </Badge>
                           </div>
-                          <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{p.name}</p>
-                          <div className="mt-3 flex items-center justify-between text-[0.65rem] font-semibold uppercase tracking-[0.25em] text-slate-500 dark:text-slate-300">
+                          <p className="mt-1 text-xs text-[#5D4E37]">{p.name}</p>
+                          <div className="mt-3 flex items-center justify-between text-[0.65rem] font-semibold uppercase tracking-[0.25em] text-[#5D4E37]">
                             <span>{docs.length} docs</span>
                             <span>{p.closingDisplay}</span>
                           </div>
@@ -990,7 +1023,7 @@ const ProjectDetails = () => {
                     })}
                   </div>
 
-                  <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-5 shadow-soft dark:border-slate-800 dark:bg-slate-900/70">
+                  <div className={`${minecraftSubPanelClass} p-5 text-[#2D1B00]`}>
                     {(() => {
                       const activePhase = phasesDetails[activeDocPhase];
                       const docs = phaseDocuments[activeDocPhase] || [];
@@ -998,14 +1031,14 @@ const ProjectDetails = () => {
                         <>
                           <div className="flex flex-wrap items-center justify-between gap-3">
                             <div>
-                              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.3em] text-slate-500 dark:text-slate-300">
+                              <p className="text-[0.65rem] font-bold uppercase tracking-[0.3em] text-[#5D4E37]">
                                 Phase {activePhase.index + 1}
                               </p>
-                              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                              <h3 className="text-lg font-bold text-[#2D1B00]">
                                 {activePhase.name}
                               </h3>
                             </div>
-                            <Badge className="rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-secondary-foreground dark:bg-slate-800/80 dark:text-slate-100">
+                            <Badge className="rounded-none border-4 border-[#654321] bg-[#FFD700] px-4 py-1 text-xs font-bold uppercase tracking-[0.2em] text-[#2D1B00] shadow-[2px_2px_0_rgba(0,0,0,0.25)]">
                               {activePhase.closingDisplay}
                             </Badge>
                           </div>
@@ -1015,11 +1048,11 @@ const ProjectDetails = () => {
                               docs.map((d) => (
                                 <button
                                   key={d.id}
-                                  className="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-gradient-to-br from-white/80 via-white/70 to-white/60 text-left shadow-soft transition-all hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg focus:outline-none dark:border-slate-800 dark:from-slate-900/80 dark:via-slate-900/60 dark:to-slate-900/50"
+                                  className="group flex h-full flex-col overflow-hidden rounded-lg border-4 border-[#654321] bg-[#F8E3B5] text-left shadow-[4px_4px_0_rgba(0,0,0,0.3)] transition-all hover:-translate-y-1 hover:shadow-[6px_6px_0_rgba(0,0,0,0.3)] focus:outline-none"
                                   onClick={() => setDocViewer(d)}
                                   title={d.name ?? 'Document'}
                                 >
-                                  <div className="relative aspect-video w-full overflow-hidden bg-slate-200/60 dark:bg-slate-800/60">
+                                  <div className="relative aspect-video w-full overflow-hidden border-b-4 border-[#654321] bg-[#EBD8B0]">
                                     {d.type === 'image' ? (
                                       <img
                                         src={d.url}
@@ -1027,32 +1060,32 @@ const ProjectDetails = () => {
                                         className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                                       />
                                     ) : (
-                                      <div className="flex h-full w-full items-center justify-center text-slate-500 dark:text-slate-300">
+                                      <div className="flex h-full w-full items-center justify-center text-[#5D4E37]">
                                         <FileText className="h-8 w-8" />
                                       </div>
                                     )}
-                                    <span className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-900/30 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-80" />
+                                    <span className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#3D2817]/40 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-80" />
                                   </div>
                                   <div className="flex flex-1 flex-col justify-between p-3">
                                     <div>
-                                      <p className="truncate text-sm font-semibold text-slate-900 dark:text-white">
+                                      <p className="truncate text-sm font-bold text-[#2D1B00]">
                                         {d.name ?? 'Document'}
                                       </p>
-                                      <p className="mt-1 text-[0.65rem] font-semibold uppercase tracking-[0.3em] text-slate-500 dark:text-slate-300">
+                                      <p className="mt-1 text-[0.65rem] font-bold uppercase tracking-[0.3em] text-[#5D4E37]">
                                         {d.type.toUpperCase()}
                                       </p>
                                     </div>
-                                    <p className="mt-2 text-[0.65rem] text-slate-500 dark:text-slate-300">
+                                    <p className="mt-2 text-[0.65rem] text-[#5D4E37]">
                                       Hash {d.hash.slice(0, 10)}…
                                     </p>
                                   </div>
                                 </button>
                               ))
                             ) : (
-                              <div className="col-span-full flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300/60 bg-white/50 p-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
-                                <FileText className="mb-3 h-10 w-10 text-slate-400 dark:text-slate-500" />
+                              <div className="col-span-full flex flex-col items-center justify-center rounded-lg border-4 border-dashed border-[#654321] bg-[#F8E3B5] p-8 text-center text-sm text-[#5D4E37] shadow-[4px_4px_0_rgba(0,0,0,0.25)]">
+                                <FileText className="mb-3 h-10 w-10 text-[#3D2817]" />
                                 <p>No documents uploaded for this phase yet.</p>
-                                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                                <p className="mt-1 text-xs text-[#3D2817]">
                                   Developer submissions will appear here once the phase closes.
                                 </p>
                               </div>
@@ -1069,23 +1102,68 @@ const ProjectDetails = () => {
 
           {/* Right rail */}
           <div className="space-y-6">
+            {/* Role Selector */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setCurrentRole('holder')}
+                className={`flex-1 rounded-lg border-4 px-4 py-3 text-center font-bold shadow-[3px_3px_0_rgba(0,0,0,0.3)] transition-all hover:-translate-y-1 hover:shadow-[5px_5px_0_rgba(0,0,0,0.3)] ${
+                  currentRole === 'holder'
+                    ? 'border-[#55AA55] bg-[#66BB66] text-white'
+                    : 'border-[#654321] bg-[#EBD8B0] text-[#2D1B00] hover:bg-[#F8E3B5]'
+                }`}
+              >
+                <div className="flex flex-col items-center gap-2">
+                  <div className={`flex h-8 w-8 items-center justify-center rounded-lg border-4 ${
+                    currentRole === 'holder'
+                      ? 'border-[#2D572D] bg-[#55AA55]'
+                      : 'border-[#654321] bg-[#FFD700]'
+                  }`}>
+                    <Users className="h-4 w-4" />
+                  </div>
+                  <p className="text-sm font-bold uppercase tracking-[0.2em]">Investor</p>
+                </div>
+              </button>
+              
+              <button
+                onClick={() => setCurrentRole('developer')}
+                className={`flex-1 rounded-lg border-4 px-4 py-3 text-center font-bold shadow-[3px_3px_0_rgba(0,0,0,0.3)] transition-all hover:-translate-y-1 hover:shadow-[5px_5px_0_rgba(0,0,0,0.3)] ${
+                  currentRole === 'developer'
+                    ? 'border-[#5599FF] bg-[#66AAFF] text-white'
+                    : 'border-[#654321] bg-[#EBD8B0] text-[#2D1B00] hover:bg-[#F8E3B5]'
+                }`}
+              >
+                <div className="flex flex-col items-center gap-2">
+                  <div className={`flex h-8 w-8 items-center justify-center rounded-lg border-4 ${
+                    currentRole === 'developer'
+                      ? 'border-[#2D5788] bg-[#5599FF]'
+                      : 'border-[#654321] bg-[#FFD700]'
+                  }`}>
+                    <HardHat className="h-4 w-4" />
+                  </div>
+                  <p className="text-sm font-bold uppercase tracking-[0.2em]">Builder</p>
+                </div>
+              </button>
+            </div>
+
             {!connected ? (
               // Placeholder when wallet not connected
-              <Card className="border-dashed">
-                <CardHeader>
-                  <CardTitle className="text-center">Connect Your Wallet</CardTitle>
-                  <CardDescription className="text-center">
+              <Card className={`${minecraftPanelClass} border-dashed`}>
+                <CardHeader className={`${minecraftHeaderClass} text-center`}>
+                  <CardTitle className="text-lg font-bold uppercase tracking-[0.2em] text-[#2D1B00]">
+                    Connect Your Wallet
+                  </CardTitle>
+                  <CardDescription className="text-sm font-semibold text-[#5D4E37]">
                     Connect your wallet to invest in this project and view your portfolio
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-4 text-[#2D1B00]">
                   <div className="flex flex-col items-center justify-center py-6 text-center">
-                    <Wallet className="h-16 w-16 text-muted-foreground mb-4" />
-                    <p className="text-sm text-muted-foreground mb-4">
+                    <Wallet className="mb-4 h-16 w-16 text-[#3D2817]" />
+                    <p className="mb-4 text-sm text-[#5D4E37]">
                       You need to connect your wallet to support this project and manage your investments.
                     </p>
-                    <Button onClick={connectWallet} size="lg" className="w-full">
-                      <Wallet className="w-4 h-4 mr-2" />
+                    <Button onClick={connectWallet} size="lg" className={`${minecraftPrimaryButtonClass} w-full`}>
+                      <Wallet className="mr-2 h-4 w-4" />
                       Connect Wallet
                     </Button>
                   </div>
@@ -1095,18 +1173,26 @@ const ProjectDetails = () => {
               <>
                 {/* Support card (investor/holder only) */}
                 <RoleGate currentRole={currentRole} allowedRoles={['holder']}>
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Support This Project</CardTitle>
-                      <CardDescription>Invest in this project using {projectTokenConfig.symbol}</CardDescription>
+                  <Card className={minecraftPanelClass}>
+                    <CardHeader className={minecraftHeaderClass}>
+                      <CardTitle className="text-lg font-bold uppercase tracking-[0.2em] text-[#2D1B00]">Support This Project</CardTitle>
+                      <CardDescription className="text-sm font-semibold text-[#5D4E37]">Invest in this project using {projectTokenConfig.symbol}</CardDescription>
                     </CardHeader>
-                    <CardContent className="space-y-4">
+                    <CardContent className="space-y-4 text-[#2D1B00]">
                       <div className="space-y-2">
-                        <label className="text-sm font-medium" htmlFor="support-amount">Amount ({projectTokenConfig.symbol})</label>
-                        <Input id="support-amount" type="number" inputMode="decimal" placeholder="0.00" value={supportAmount} onChange={(e)=>{ setSupportAmount(e.target.value); setApprovedSupport(false); }} />
+                        <label className="text-sm font-bold text-[#2D1B00]" htmlFor="support-amount">Amount ({projectTokenConfig.symbol})</label>
+                        <Input
+                          id="support-amount"
+                          type="number"
+                          inputMode="decimal"
+                          placeholder="0.00"
+                          value={supportAmount}
+                          onChange={(e)=>{ setSupportAmount(e.target.value); setApprovedSupport(false); }}
+                          className="h-11 rounded-none border-4 border-[#654321] bg-[#FFF3C4] font-semibold text-[#2D1B00] placeholder:text-[#5D4E37] focus-visible:ring-[#FFD700]"
+                        />
                       </div>
                       {!approvedSupport ? (
-                        <Button className="w-full" size="lg" disabled={isApprovingSupport} onClick={async ()=>{
+                        <Button className={`${minecraftPrimaryButtonClass} w-full h-12`} size="lg" disabled={isApprovingSupport} onClick={async ()=>{
                           try {
                             if (!projectAddress || !staticConfig?.stablecoin) { toast.error('Addresses not loaded'); return; }
                             if (!supportAmount || Number(supportAmount) <= 0) { toast.error('Enter amount'); return; }
@@ -1122,10 +1208,10 @@ const ProjectDetails = () => {
                           } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Approve failed'); }
                           finally { setIsApprovingSupport(false); }
                         }}>
-                          <Wallet className="w-4 h-4 mr-2" /> {isApprovingSupport ? 'Approving...' : 'Approve'}
+                          <Wallet className="mr-2 h-4 w-4" /> {isApprovingSupport ? 'Approving...' : 'Approve'}
                         </Button>
                       ) : (
-                        <Button className="w-full" size="lg" disabled={isDepositing} onClick={async ()=>{
+                        <Button className={`${minecraftSuccessButtonClass} w-full h-12`} size="lg" disabled={isDepositing} onClick={async ()=>{
                           try {
                             if (!projectAddress) return;
                             setIsDepositing(true);
@@ -1151,7 +1237,7 @@ const ProjectDetails = () => {
                           } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Deposit failed'); }
                           finally { setIsDepositing(false); }
                         }}>
-                          <DollarSign className="w-4 h-4 mr-2" /> {isDepositing ? 'Depositing...' : 'Deposit'}
+                          <DollarSign className="mr-2 h-4 w-4" /> {isDepositing ? 'Depositing...' : 'Deposit'}
                         </Button>
                       )}
                     </CardContent>
@@ -1160,24 +1246,24 @@ const ProjectDetails = () => {
 
                 {/* Holder investment overview */}
                 <RoleGate currentRole={currentRole} allowedRoles={['holder']}>
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Your Investment</CardTitle>
+                  <Card className={minecraftPanelClass}>
+                    <CardHeader className={minecraftHeaderClass}>
+                      <CardTitle className="text-lg font-bold uppercase tracking-[0.2em] text-[#2D1B00]">Your Investment</CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-3 text-sm">
+                    <CardContent className="space-y-3 text-sm text-[#2D1B00] p-6">
                       <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Your Balance</span>
-                        <span className="font-semibold">
+                        <span className="font-semibold text-[#5D4E37]">Your Balance</span>
+                        <span className="font-bold">
                           {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.userBalance ? Number(fromStablecoin(realtimeData.userBalance)).toLocaleString('en-US') : 0} ${projectTokenConfig.symbol}`}
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Claimable Interest</span>
-                        <span className="font-semibold">
+                        <span className="font-semibold text-[#5D4E37]">Claimable Interest</span>
+                        <span className="font-bold">
                           {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.claimableInterest ? Number(fromStablecoin(realtimeData.claimableInterest)).toLocaleString('en-US') : 0} ${projectTokenConfig.symbol}`}
                         </span>
                       </div>
-                      <Button variant="outline" className="w-full mt-1" disabled={isClaimingInterest} onClick={async ()=>{
+                      <Button variant="outline" className={`${minecraftNeutralButtonClass} w-full mt-1`} disabled={isClaimingInterest} onClick={async ()=>{
                         try {
                           if (!projectAddress || !realtimeData?.claimableInterest || realtimeData.claimableInterest === 0n) { toast.error('Nothing to claim'); return; }
                           setIsClaimingInterest(true);
@@ -1193,13 +1279,13 @@ const ProjectDetails = () => {
 
                       {/* Principal Redemption */}
                       <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Principal Buffer</span>
-                        <span className="font-semibold">
+                        <span className="font-semibold text-[#5D4E37]">Principal Withdrawable</span>
+                        <span className="font-bold">
                           {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.principalBuffer ? Number(fromStablecoin(realtimeData.principalBuffer)).toLocaleString('en-US') : 0} ${projectTokenConfig.symbol}`}
                         </span>
                       </div>
                       {realtimeData?.principalBuffer && realtimeData?.userBalance && realtimeData.principalBuffer > 0n && (
-                        <Button variant="outline" className="w-full mt-1" disabled={isRedeemingPrincipal} onClick={async ()=>{
+                        <Button variant="outline" className={`${minecraftNeutralButtonClass} w-full mt-1`} disabled={isRedeemingPrincipal} onClick={async ()=>{
                           try {
                             if (!projectAddress) return;
                             const shares = realtimeData.userBalance! < realtimeData.principalBuffer! ? realtimeData.userBalance! : realtimeData.principalBuffer!;
@@ -1215,27 +1301,6 @@ const ProjectDetails = () => {
                           finally { setIsRedeemingPrincipal(false); }
                         }}>{isRedeemingPrincipal ? 'Redeeming...' : 'Redeem Principal'}</Button>
                       )}
-                      {/* Revenue Claim */}
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Claimable Revenue</span>
-                        <span className="font-semibold">
-                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.claimableRevenue ? Number(fromStablecoin(realtimeData.claimableRevenue)).toLocaleString('en-US') : 0} ${projectTokenConfig.symbol}`}
-                        </span>
-                      </div>
-                      <Button variant="outline" className="w-full mt-1" disabled={isClaimingRevenue} onClick={async ()=>{
-                        try {
-                          if (!projectAddress || !account) return;
-                          if (!realtimeData?.claimableRevenue || realtimeData.claimableRevenue === 0n) { toast.error('No revenue to claim'); return; }
-                          setIsClaimingRevenue(true);
-                          const signer = await getSigner();
-                          const proj = projectAt(projectAddress, signer);
-                          const tx = await proj.claimRevenue(account);
-                          await tx.wait();
-                          toast.success('Revenue claimed');
-                          refresh();
-                        } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Claim failed'); }
-                        finally { setIsClaimingRevenue(false); }
-                      }}>{isClaimingRevenue ? 'Claiming...' : 'Claim Revenue'}</Button>
                     </CardContent>
                   </Card>
                 </RoleGate>
@@ -1244,31 +1309,32 @@ const ProjectDetails = () => {
 
             {/* Developer actions */}
             <RoleGate currentRole={currentRole} allowedRoles={['developer']}>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Developer Actions</CardTitle>
-                  <CardDescription>Fund reserve, close phase, withdraw</CardDescription>
+              <Card className={minecraftPanelClass}>
+                <CardHeader className={minecraftHeaderClass}>
+                  <CardTitle className="text-lg font-bold uppercase tracking-[0.2em] text-[#2D1B00]">Developer Actions</CardTitle>
+                  <CardDescription className="text-sm font-semibold text-[#5D4E37]">Fund reserve, close phase, withdraw</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-6">
+                <CardContent className="space-y-6 text-[#2D1B00]">
                   {/* Fund Reserve */}
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
-                      <Banknote className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-sm font-medium">Fund Reserve</span>
+                      <Banknote className="h-4 w-4 text-[#3D2817]" />
+                      <span className="text-sm font-bold text-[#2D1B00]">Fund Reserve</span>
                     </div>
                     <div className="grid gap-2">
                       <div className="grid gap-1">
-                        <Label htmlFor="reserveAmount">Amount ({projectTokenConfig.symbol})</Label>
+                        <Label htmlFor="reserveAmount" className="text-sm font-bold text-[#2D1B00]">Amount ({projectTokenConfig.symbol})</Label>
                         <Input
                           id="reserveAmount"
                           inputMode="decimal"
                           placeholder="e.g. 50000"
                           value={reserveAmount}
                           onChange={(e) => setReserveAmount(e.target.value)}
+                          className="h-11 rounded-none border-4 border-[#654321] bg-[#FFF3C4] font-semibold text-[#2D1B00] placeholder:text-[#5D4E37] focus-visible:ring-[#FFD700]"
                         />
                       </div>
                       {!approvedReserve ? (
-                        <Button size="sm" className="justify-start" disabled={isApprovingReserve} onClick={async ()=>{
+                        <Button size="sm" className={`${minecraftPrimaryButtonClass} justify-start px-4 h-10`} disabled={isApprovingReserve} onClick={async ()=>{
                           try {
                             if (!projectAddress || !staticConfig?.stablecoin) { toast.error('Addresses not loaded'); return; }
                             const amt = reserveAmount.trim();
@@ -1283,10 +1349,10 @@ const ProjectDetails = () => {
                           } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Approve failed'); }
                           finally { setIsApprovingReserve(false); }
                         }}>
-                          <Wallet className="w-4 h-4 mr-2" /> {isApprovingReserve ? 'Approving...' : 'Approve'}
+                          <Wallet className="mr-2 h-4 w-4" /> {isApprovingReserve ? 'Approving...' : 'Approve'}
                         </Button>
                       ) : (
-                        <Button size="sm" className="justify-start" disabled={isFundingReserve} onClick={async ()=>{
+                        <Button size="sm" className={`${minecraftSuccessButtonClass} justify-start px-4 h-10`} disabled={isFundingReserve} onClick={async ()=>{
                           try {
                             if (!projectAddress) return;
                             setIsFundingReserve(true);
@@ -1301,7 +1367,7 @@ const ProjectDetails = () => {
                           } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Fund failed'); }
                           finally { setIsFundingReserve(false); }
                         }}>
-                          <Banknote className="w-4 h-4 mr-2" /> {isFundingReserve ? 'Funding...' : 'Fund Reserve'}
+                          <Banknote className="mr-2 h-4 w-4" /> {isFundingReserve ? 'Funding...' : 'Fund Reserve'}
                         </Button>
                       )}
                     </div>
@@ -1310,33 +1376,34 @@ const ProjectDetails = () => {
                   {/* Close Phase */}
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
-                      <DoorClosed className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-sm font-medium">Close Phase</span>
+                      <DoorClosed className="h-4 w-4 text-[#3D2817]" />
+                      <span className="text-sm font-bold text-[#2D1B00]">Close Phase</span>
                     </div>
                     <div className="grid gap-2">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">Current Phase</span>
-                        <span className="font-medium">
+                        <span className="font-semibold text-[#5D4E37]">Current Phase</span>
+                        <span className="font-bold">
                           {loading ? <Skeleton className="inline-block h-4 w-32" /> : project.currentPhase}
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">Next Phase</span>
-                        <span className="font-medium">
+                        <span className="font-semibold text-[#5D4E37]">Next Phase</span>
+                        <span className="font-bold">
                           {loading ? <Skeleton className="inline-block h-4 w-32" /> : nextPhaseName}
                         </span>
                       </div>
                       <div className="grid gap-1">
-                        <Label htmlFor="phaseDocs">Upload Documents</Label>
+                        <Label htmlFor="phaseDocs" className="text-sm font-bold text-[#2D1B00]">Upload Documents</Label>
                         <Input
                           id="phaseDocs"
                           type="file"
                           multiple
                           onChange={(e) => setUploadedDocs(Array.from(e.target.files || []))}
+                          className="rounded-none border-4 border-dashed border-[#654321] bg-[#FFF3C4] text-[#2D1B00] file:mr-4 file:rounded-none file:border-0 file:bg-[#8B7355] file:px-4 file:py-2 file:font-bold file:uppercase file:text-white hover:file:bg-[#715b3f]"
                         />
-                        <p className="text-xs text-muted-foreground">Attach evidence to close the current phase.</p>
+                        <p className="text-xs text-[#5D4E37]">Attach evidence to close the current phase.</p>
                       </div>
-                      <Button size="sm" variant="secondary" className="justify-start" disabled={isClosingPhase} onClick={async ()=>{
+                      <Button size="sm" className={`${minecraftPrimaryButtonClass} justify-start px-4 h-10`} disabled={isClosingPhase} onClick={async ()=>{
                         try {
                           if (!projectAddress) return;
                           if (!uploadedDocs.length) { toast.error('Please upload at least one document'); return; }
@@ -1366,7 +1433,7 @@ const ProjectDetails = () => {
                         } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Close failed'); }
                         finally { setIsClosingPhase(false); }
                       }}>
-                        <DoorClosed className="w-4 h-4 mr-2" /> {isClosingPhase ? 'Closing...' : 'Close Phase'}
+                        <DoorClosed className="mr-2 h-4 w-4" /> {isClosingPhase ? 'Closing...' : 'Close Phase'}
                       </Button>
                     </div>
                   </div>
@@ -1374,21 +1441,28 @@ const ProjectDetails = () => {
                   {/* Withdraw Funds */}
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
-                      <DollarSign className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-sm font-medium">Withdraw Phase Funds</span>
+                      <DollarSign className="h-4 w-4 text-[#3D2817]" />
+                      <span className="text-sm font-bold text-[#2D1B00]">Withdraw Phase Funds</span>
                     </div>
                     <div className="grid gap-2">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">Withdrawable Now</span>
-                        <span className="font-medium">
+                        <span className="font-semibold text-[#5D4E37]">Withdrawable Now</span>
+                        <span className="font-bold">
                           {loading ? <Skeleton className="inline-block h-4 w-24" /> : `${withdrawableNow.toLocaleString('en-US')} ${projectTokenConfig.symbol}`}
                         </span>
                       </div>
                       <div className="grid gap-1">
-                        <Label htmlFor="withdrawAmount">Amount ({projectTokenConfig.symbol})</Label>
-                        <Input id="withdrawAmount" inputMode="decimal" placeholder="e.g. 10000" value={withdrawAmount} onChange={(e)=>setWithdrawAmount(e.target.value)} />
+                        <Label htmlFor="withdrawAmount" className="text-sm font-bold text-[#2D1B00]">Amount ({projectTokenConfig.symbol})</Label>
+                        <Input
+                          id="withdrawAmount"
+                          inputMode="decimal"
+                          placeholder="e.g. 10000"
+                          value={withdrawAmount}
+                          onChange={(e)=>setWithdrawAmount(e.target.value)}
+                          className="h-11 rounded-none border-4 border-[#654321] bg-[#FFF3C4] font-semibold text-[#2D1B00] placeholder:text-[#5D4E37] focus-visible:ring-[#FFD700]"
+                        />
                       </div>
-                      <Button size="sm" variant="outline" className="justify-start" disabled={isWithdrawingFunds} onClick={async ()=>{
+                      <Button size="sm" className={`${minecraftSuccessButtonClass} justify-start px-4 h-10`} disabled={isWithdrawingFunds} onClick={async ()=>{
                         try {
                           if (!projectAddress) return;
                           const amt = Number(withdrawAmount || '0');
@@ -1405,7 +1479,7 @@ const ProjectDetails = () => {
                         } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Withdraw failed'); }
                         finally { setIsWithdrawingFunds(false); }
                       }}>
-                        <DollarSign className="w-4 h-4 mr-2" /> {isWithdrawingFunds ? 'Withdrawing...' : 'Withdraw Funds'}
+                        <DollarSign className="mr-2 h-4 w-4" /> {isWithdrawingFunds ? 'Withdrawing...' : 'Withdraw Funds'}
                       </Button>
                     </div>
                   </div>
@@ -1413,16 +1487,23 @@ const ProjectDetails = () => {
                   {/* Sales Proceeds */}
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
-                      <DollarSign className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-sm font-medium">Submit Sales Proceeds</span>
+                      <DollarSign className="h-4 w-4 text-[#3D2817]" />
+                      <span className="text-sm font-bold text-[#2D1B00]">Submit Sales Proceeds</span>
                     </div>
                     <div className="grid gap-2">
                       <div className="grid gap-1">
-                        <Label htmlFor="proceedsAmount">Amount ({projectTokenConfig.symbol})</Label>
-                        <Input id="proceedsAmount" inputMode="decimal" placeholder="e.g. 25000" value={proceedsAmount} onChange={(e)=>{ setProceedsAmount(e.target.value); setApprovedProceeds(false); }} />
+                        <Label htmlFor="proceedsAmount" className="text-sm font-bold text-[#2D1B00]">Amount ({projectTokenConfig.symbol})</Label>
+                        <Input
+                          id="proceedsAmount"
+                          inputMode="decimal"
+                          placeholder="e.g. 25000"
+                          value={proceedsAmount}
+                          onChange={(e)=>{ setProceedsAmount(e.target.value); setApprovedProceeds(false); }}
+                          className="h-11 rounded-none border-4 border-[#654321] bg-[#FFF3C4] font-semibold text-[#2D1B00] placeholder:text-[#5D4E37] focus-visible:ring-[#FFD700]"
+                        />
                       </div>
                       {!approvedProceeds ? (
-                        <Button size="sm" className="justify-start" disabled={isApprovingProceeds} onClick={async ()=>{
+                        <Button size="sm" className={`${minecraftPrimaryButtonClass} justify-start px-4 h-10`} disabled={isApprovingProceeds} onClick={async ()=>{
                           try {
                             if (!projectAddress || !staticConfig?.stablecoin) { toast.error('Addresses not loaded'); return; }
                             const amt = proceedsAmount.trim();
@@ -1437,10 +1518,10 @@ const ProjectDetails = () => {
                           } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Approve failed'); }
                           finally { setIsApprovingProceeds(false); }
                         }}>
-                          <Wallet className="w-4 h-4 mr-2" /> {isApprovingProceeds ? 'Approving...' : 'Approve'}
+                          <Wallet className="mr-2 h-4 w-4" /> {isApprovingProceeds ? 'Approving...' : 'Approve'}
                         </Button>
                       ) : (
-                        <Button size="sm" className="justify-start" disabled={isSubmittingProceeds} onClick={async ()=>{
+                        <Button size="sm" className={`${minecraftSuccessButtonClass} justify-start px-4 h-10`} disabled={isSubmittingProceeds} onClick={async ()=>{
                           try {
                             if (!projectAddress) return;
                             setIsSubmittingProceeds(true);
@@ -1455,7 +1536,7 @@ const ProjectDetails = () => {
                           } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Submit failed'); }
                           finally { setIsSubmittingProceeds(false); }
                         }}>
-                          <DollarSign className="w-4 h-4 mr-2" /> {isSubmittingProceeds ? 'Submitting...' : 'Submit'}
+                          <DollarSign className="mr-2 h-4 w-4" /> {isSubmittingProceeds ? 'Submitting...' : 'Submit Proceeds'}
                         </Button>
                       )}
                     </div>
@@ -1465,32 +1546,32 @@ const ProjectDetails = () => {
             </RoleGate>
 
             {/* Project facts */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Project Details</CardTitle>
+            <Card className={minecraftPanelClass}>
+              <CardHeader className={minecraftHeaderClass}>
+                <CardTitle className="text-lg font-bold uppercase tracking-[0.2em] text-[#2D1B00]">Project Details</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3 text-sm">
+              <CardContent className="space-y-3 text-sm text-[#2D1B00] p-6">
                 <div>
-                  <p className="text-muted-foreground">Owner</p>
-                  <p className="font-mono">
+                  <p className="font-semibold text-[#5D4E37]">Owner</p>
+                  <p className="font-mono text-[#2D1B00]">
                     {loading ? <Skeleton className="h-4 w-full" /> : project.owner}
                   </p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Interest Reserve</p>
-                  <p className="font-semibold">
+                  <p className="font-semibold text-[#5D4E37]">Interest Reserve</p>
+                  <p className="font-bold">
                     {loading ? <Skeleton className="h-4 w-24" /> : `${project.escrow} ${projectTokenConfig.symbol}`}
                   </p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Current Phase</p>
-                  <p className="font-semibold">
+                  <p className="font-semibold text-[#5D4E37]">Current Phase</p>
+                  <p className="font-bold">
                     {loading ? <Skeleton className="h-4 w-32" /> : project.currentPhase}
                   </p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Supporters</p>
-                  <p className="font-semibold">
+                  <p className="font-semibold text-[#5D4E37]">Supporters</p>
+                  <p className="font-bold">
                     {loading ? <Skeleton className="h-4 w-16" /> : project.supporters}
                   </p>
                 </div>
@@ -1516,20 +1597,21 @@ const ProjectDetails = () => {
             </RoleGate> */}
           </div>
         </div>
-        {/* Documents Viewer */}
+      </div>
+      {/* Documents Viewer */}
         <Drawer open={!!docViewer} onOpenChange={(o) => !o && setDocViewer(null)}>
-          <DrawerContent className="h-[90vh]">
-            <DrawerHeader className="flex items-center justify-between">
+          <DrawerContent className="h-[90vh] border-4 border-[#654321] bg-[#F8E3B5] shadow-[8px_8px_0_rgba(0,0,0,0.35)]">
+            <DrawerHeader className={`${minecraftHeaderClass} flex items-center justify-between`}>
               <DrawerTitle>{docViewer?.name ?? 'Document'}</DrawerTitle>
               <DrawerClose asChild>
-                <Button variant="ghost" size="sm">Close</Button>
+                <Button size="sm" className={`${minecraftPrimaryButtonClass} h-10 px-4`}>Close</Button>
               </DrawerClose>
             </DrawerHeader>
-            <div className="px-4 pb-4 h-[80vh]">
+            <div className="h-[80vh] overflow-y-auto bg-[#FFF3C4] px-4 pb-4 text-[#2D1B00]">
               {docViewer?.type === 'image' ? (
-                <img src={docViewer.url} alt={docViewer.name} className="h-full w-full object-contain rounded" />
+                <img src={docViewer.url} alt={docViewer.name} className="h-full w-full rounded border-4 border-[#654321] object-contain" />
               ) : docViewer?.type === 'pdf' ? (
-                <iframe src={docViewer.url} className="h-full w-full rounded" title={docViewer.name} />
+                <iframe src={docViewer.url} className="h-full w-full rounded border-4 border-[#654321] bg-white" title={docViewer.name} />
               ) : null}
             </div>
           </DrawerContent>
