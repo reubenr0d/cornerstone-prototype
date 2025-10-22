@@ -126,6 +126,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     event SalesProceedsSubmitted(uint256 amount);
     event PrincipalClaimed(address indexed user, uint256 amount);
     event RevenueClaimed(address indexed user, uint256 amount);
+    event PhaseConfiguration(uint256[6] aprBps, uint256[6] durations, uint256[6] capBps, uint256[6] phaseCaps);
 
     modifier onlyDev() {
         require(msg.sender == owner(), "dev only");
@@ -172,6 +173,13 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
 
         // Deploy token with provided per-project name/symbol
         _token = new CornerstoneToken(name_, symbol_, address(this));
+
+        // Emit consolidated phase configuration for indexer
+        uint256[6] memory phaseCaps;
+        for (uint8 i = 0; i <= NUM_PHASES; i++) {
+            phaseCaps[i] = (maxRaise * phaseCapsBps_[i]) / BPS_DENOM;
+        }
+        emit PhaseConfiguration(phaseAPRs_, phaseDurations_, phaseCapsBps_, phaseCaps);
     }
 
     // ---- View helpers ----

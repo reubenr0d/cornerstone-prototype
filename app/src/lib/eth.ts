@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { CornerstoneProjectABI, ProjectRegistryABI, ERC20ABI, TokenFaucetABI } from '@/abi';
+import { CornerstoneProjectABI, ProjectRegistryABI, ERC20ABI } from '@/abi';
 import { TOKEN_CONFIG } from '@/config/contracts';
 
 export type Address = `0x${string}`;
@@ -87,8 +87,10 @@ export function projectAt(address: Address, signerOrProvider: ethers.Signer | et
   return new ethers.Contract(address, CornerstoneProjectABI as ethers.InterfaceAbi, signerOrProvider);
 }
 
-export function faucetAt(address: Address, signerOrProvider: ethers.Signer | ethers.Provider) {
-  return new ethers.Contract(address, TokenFaucetABI as ethers.InterfaceAbi, signerOrProvider);
+const MINTABLE_ERC20_ABI = ['function mint(address to, uint256 amount)'];
+
+export function mintableTokenAt(address: Address, signerOrProvider: ethers.Signer | ethers.Provider) {
+  return new ethers.Contract(address, MINTABLE_ERC20_ABI, signerOrProvider);
 }
 
 export function toStablecoin(amount: string | number): bigint {
@@ -254,4 +256,25 @@ export async function fetchProjectStaticConfig(
     fundraiseDeadline,
     perPhaseAprBps: aprBps,
   };
+}
+
+export async function fetchProjectPhaseCaps(
+  projectAddress: Address,
+  provider: ethers.Provider
+): Promise<bigint[]> {
+  try {
+    const project = projectAt(projectAddress, provider);
+    const phaseCaps: bigint[] = [];
+    
+    // Get phase caps for each phase (0-5)
+    for (let i = 0; i <= 5; i++) {
+      const cap = await project.getPhaseCap(i);
+      phaseCaps.push(cap);
+    }
+    
+    return phaseCaps;
+  } catch (error) {
+    console.error('Error fetching project phase caps:', error);
+    return Array(6).fill(0n);
+  }
 }

@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { RoleSelector } from '@/components/RoleSelector';
 import { RoleGate, Role } from '@/components/RoleGate';
 import { TimelineCard } from '@/components/TimelineCard';
+import ProjectInsightsPanel from '@/components/project/ProjectInsightsPanel';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 // Removed Progress usage in favor of custom stacked bar
@@ -13,11 +14,12 @@ import { toast } from '@/components/ui/sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ExternalLink, Plus, Edit, Upload, DollarSign, AlertTriangle, MessageSquare, Banknote, DoorClosed, Wallet, FileText, Target, Users, ShieldCheck } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@/components/ui/drawer';
-import { Address, erc20At, fromStablecoin, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toStablecoin, fetchProjectRealtimeState, fetchProjectStaticConfig, getWindowEthereum } from '@/lib/eth';
-import { getCompleteProjectData } from '@/lib/envio';
+import { Address, erc20At, fromStablecoin, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toStablecoin, fetchProjectRealtimeState, fetchProjectStaticConfig, getWindowEthereum, ProjectRealtimeState, ProjectStaticConfig } from '@/lib/eth';
+import { getCompleteProjectData, Project } from '@/lib/envio';
 import { contractsConfig, TOKEN_CONFIG, getTokenConfigByAddress } from '@/config/contracts';
 import { ipfsUpload } from '@/lib/ipfs';
 import { ethers } from 'ethers';
+import { buildProjectInsightsData } from '@/lib/project-insights';
 
 const ProjectDetails = () => {
   const { id } = useParams();
@@ -55,9 +57,9 @@ const ProjectDetails = () => {
   const [connected, setConnected] = useState(false);
 
   // Separate data sources: Envio (historical) + Contract (real-time)
-  const [envioData, setEnvioData] = useState<any>(null);
-  const [realtimeData, setRealtimeData] = useState<any>(null);
-  const [staticConfig, setStaticConfig] = useState<any>(null);
+  const [envioData, setEnvioData] = useState<Project | null>(null);
+  const [realtimeData, setRealtimeData] = useState<ProjectRealtimeState | null>(null);
+  const [staticConfig, setStaticConfig] = useState<ProjectStaticConfig | null>(null);
   const [supporters, setSupporters] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
@@ -68,6 +70,17 @@ const ProjectDetails = () => {
     }
     return TOKEN_CONFIG;
   }, [staticConfig]);
+
+  const insightsData = useMemo(
+    () =>
+      buildProjectInsightsData({
+        project: envioData,
+        staticConfig,
+        tokenSymbol: projectTokenConfig.symbol,
+        now: Date.now(),
+      }),
+    [envioData, staticConfig, projectTokenConfig.symbol],
+  );
 
   async function connectWallet() {
     try {
@@ -219,22 +232,76 @@ const ProjectDetails = () => {
     'Revenue and Sales',
   ] as const;
 
-  // Get phase data from Envio
+  // Get phase data sourced from Envio (PhaseMetrics + PhaseConfiguration snapshots)
   const envioPhases = envioData?.projectState?.phases || [];
-  const perPhaseCapAmounts = envioPhases.map((p: any) => Number(fromStablecoin(BigInt(p.phaseCap || '0'))));
+  const latestPhaseConfig = envioData?.phaseConfigurations?.[0];
+  const configPhaseCaps = Array.from({ length: 6 }, (_, i) => {
+    const raw = latestPhaseConfig?.phaseCaps?.[i];
+    if (!raw) return 0n;
+    try {
+      return BigInt(raw);
+    } catch {
+      return 0n;
+    }
+  });
+  const configCapBps = Array.from({ length: 6 }, (_, i) => {
+    if (!latestPhaseConfig?.capBps?.[i]) return 0;
+    const raw = Number(latestPhaseConfig.capBps[i]);
+    return Number.isFinite(raw) ? raw : 0;
+  });
+  const configAprBps = Array.from({ length: 6 }, (_, i) => {
+    if (!latestPhaseConfig?.aprBps?.[i]) return 0;
+    const raw = Number(latestPhaseConfig.aprBps[i]);
+    return Number.isFinite(raw) ? raw : 0;
+  });
+
+  const perPhaseCapAmounts = Array.from({ length: 6 }, (_, i) => {
+    const phaseMetric = envioPhases[i];
+    if (phaseMetric?.phaseCap && phaseMetric.phaseCap !== '0') {
+      try {
+        return Number(fromStablecoin(BigInt(phaseMetric.phaseCap)));
+      } catch {
+        // fall through to config
+      }
+    }
+    if (configPhaseCaps[i] > 0) {
+      return Number(fromStablecoin(configPhaseCaps[i]));
+    }
+    return 0;
+  });
+
   const cumulativeCapAmounts: number[] = [];
   for (let i = 0; i < 6; i++) {
-    const prev = i > 0 ? cumulativeCapAmounts[i-1] : 0;
+    const prev = i > 0 ? cumulativeCapAmounts[i - 1] : 0;
     cumulativeCapAmounts[i] = prev + (perPhaseCapAmounts[i] || 0);
   }
-  const capBpsRaw = (project.target > 0
-    ? cumulativeCapAmounts.map((amt)=> Math.round((amt / project.target) * 10000))
-    : []
-  );
-  const capBps = Array.from({ length: 6 }, (_, i) => capBpsRaw[i] ?? 0);
+
+  const perPhaseCapBps = Array.from({ length: 6 }, (_, i) => {
+    const metricBps = envioPhases[i]?.capBps;
+    if (metricBps && metricBps !== '0') {
+      const parsed = Number(metricBps);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    return configCapBps[i] ?? 0;
+  });
+
+  const capBps: number[] = [];
+  for (let i = 0; i < 6; i++) {
+    const prev = i > 0 ? capBps[i - 1] : 0;
+    capBps[i] = prev + (perPhaseCapBps[i] || 0);
+  }
+
   const cumulativeCapAmountsFilled = Array.from({ length: 6 }, (_, i) => cumulativeCapAmounts[i] ?? 0);
   // Convert APRs from bps to percent for display
-  const aprs = (staticConfig?.perPhaseAprBps || [0,0,0,0,0,0]).map((bps: number)=> bps / 100);
+  const aprs = Array.from({ length: 6 }, (_, i) => {
+    const envioApr = envioPhases[i]?.aprBps;
+    if (envioApr && envioApr !== '0') {
+      const aprBps = Number(envioApr);
+      if (Number.isFinite(aprBps)) return aprBps / 100;
+    }
+    if (configAprBps[i]) return configAprBps[i] / 100;
+    return 0;
+  });
   const currentPhaseIndex = Math.max(0, envioData?.projectState?.currentPhase ?? 0);
   const nextPhaseName = currentPhaseIndex + 1 < phaseNames.length
     ? phaseNames[currentPhaseIndex + 1]
@@ -500,8 +567,8 @@ const ProjectDetails = () => {
         <div className="container mx-auto px-4 py-10">
           <div className="space-y-8">
             <div className="rounded-3xl border border-white/30 bg-white/60 p-6 shadow-soft backdrop-blur dark:border-white/10 dark:bg-slate-950/35">
-              <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
-                <div className="flex flex-col gap-6 xl:flex-1 xl:min-w-0">
+              <div className="flex flex-col gap-6 xl:grid xl:grid-cols-[minmax(0,1fr)_380px] xl:items-start xl:gap-8">
+                <div className="flex flex-col gap-6 xl:min-w-0">
                   <div className="flex flex-wrap items-center justify-between gap-4">
                     <RoleSelector currentRole={currentRole} onRoleChange={setCurrentRole} />
                     <Button
@@ -568,25 +635,30 @@ const ProjectDetails = () => {
                         </p>
                       </div>
                     </div>
-                </div>
 
-                {/* Role-aware action bar */}
-                {isDeveloper && (
-                  <div className="rounded-2xl border border-white/30 bg-white/40 p-4 shadow-soft backdrop-blur dark:border-white/10 dark:bg-slate-900/40">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <RoleGate currentRole={currentRole} allowedRoles={['developer']}>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className="gap-2 bg-white/60 text-slate-800 hover:bg-white/80 dark:bg-slate-800/70 dark:text-slate-100 dark:hover:bg-slate-700"
-                        >
-                          <MessageSquare className="h-4 w-4" />
-                          Post Update
-                        </Button>
-                      </RoleGate>
-                    </div>
-                  </div>
-                )}
+                    {isDeveloper && (
+                      <div className="rounded-2xl border border-white/30 bg-white/40 p-4 shadow-soft backdrop-blur dark:border-white/10 dark:bg-slate-900/40">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <RoleGate currentRole={currentRole} allowedRoles={['developer']}>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              className="gap-2 bg-white/60 text-slate-800 hover:bg-white/80 dark:bg-slate-800/70 dark:text-slate-100 dark:hover:bg-slate-700"
+                            >
+                              <MessageSquare className="h-4 w-4" />
+                              Post Update
+                            </Button>
+                          </RoleGate>
+                        </div>
+                      </div>
+                    )}
+                </div>
+                <ProjectInsightsPanel
+                  loading={loading}
+                  data={insightsData}
+                  tokenSymbol={projectTokenConfig.symbol}
+                  className="xl:min-w-[360px]"
+                />
               </div>
             </div>
           </div>

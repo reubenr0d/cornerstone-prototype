@@ -23,19 +23,6 @@ async function main() {
     throw new Error('Failed to resolve PYUSD address');
   }
 
-  // Deploy faucet
-  const Faucet = await hre.ethers.getContractFactory('TokenFaucet');
-  const faucet = await Faucet.deploy(pyusd);
-  await faucet.waitForDeployment();
-  const faucetAddress = await faucet.getAddress();
-  console.log('TokenFaucet:', faucetAddress);
-
-  if (mock) {
-    const faucetFunding = 1_000_000_000n * 10n ** 6n;
-    await (await mock.mint(faucetAddress, faucetFunding)).wait();
-    console.log('Seeded faucet with', faucetFunding.toString(), 'token units');
-  }
-
   // Deploy registry
   const Reg = await hre.ethers.getContractFactory('ProjectRegistry');
   const reg = await Reg.deploy();
@@ -65,7 +52,6 @@ async function main() {
   console.log('\n--- paste into app/.env.local ---');
   console.log(`VITE_PYUSD_ADDRESS=${pyusd}`);
   console.log(`VITE_REGISTRY_ADDRESS=${registry}`);
-  console.log(`VITE_FAUCET_ADDRESS=${faucetAddress}`);
   // Project and Token addresses are shown above; do not write as env.
 }
 

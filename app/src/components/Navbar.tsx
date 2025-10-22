@@ -4,15 +4,15 @@ import { Button } from '@/components/ui/button';
 import { useWallet } from '@/hooks/use-wallet';
 import { Wallet, LogOut } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
-import { contractsConfig } from '@/config/contracts';
-import { faucetAt, getSigner } from '@/lib/eth';
+import { contractsConfig, TOKEN_CONFIG } from '@/config/contracts';
+import { getSigner, mintableTokenAt, toStablecoin } from '@/lib/eth';
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [isClaiming, setIsClaiming] = useState(false);
+  const [isMinting, setIsMinting] = useState(false);
   const location = useLocation();
   const { account, isConnected, isConnecting, connect, disconnect, formatAddress } = useWallet();
-  const faucetAddress = contractsConfig.faucet;
+  const stablecoinAddress = contractsConfig.pyusd ?? contractsConfig.usdc;
 
   const isActive = (path: string) => {
     return location.pathname === path;
@@ -25,34 +25,32 @@ const Navbar = () => {
     { path: '/about', label: 'About' },
   ];
 
-  const handleClaim = useCallback(async () => {
-    if (!faucetAddress) {
-      toast.error('Faucet address not configured. Set VITE_FAUCET_ADDRESS.');
+  const handleMint = useCallback(async () => {
+    if (!stablecoinAddress) {
+      toast.error('Stablecoin address not configured. Set VITE_PYUSD_ADDRESS or VITE_USDC_ADDRESS.');
       return;
     }
     if (!isConnected) {
-      toast.error('Connect your wallet to claim tokens.');
+      toast.error('Connect your wallet to mint tokens.');
       return;
     }
     try {
-      setIsClaiming(true);
+      setIsMinting(true);
       const signer = await getSigner();
-      const faucet = faucetAt(faucetAddress, signer);
-      const tx = await faucet.claim();
-      toast.success('Faucet claim submitted...');
+      const recipient = account ?? (await signer.getAddress());
+      const token = mintableTokenAt(stablecoinAddress, signer);
+      const amount = toStablecoin(10_000);
+      const tx = await token.mint(recipient, amount);
+      toast.success(`Mint transaction submitted...`);
       await tx.wait();
-      toast.success('10,000 tokens transferred to your wallet.');
+      toast.success(`10,000 ${TOKEN_CONFIG.symbol} minted to your wallet.`);
     } catch (err: any) {
-      const message: string = err?.shortMessage || err?.message || 'Failed to claim from faucet.';
-      if (message.includes('Faucet: claim too soon')) {
-        toast.error('You can only claim once every 24 hours.');
-      } else {
-        toast.error(message);
-      }
+      const message: string = err?.shortMessage || err?.message || 'Failed to mint tokens.';
+      toast.error(message);
     } finally {
-      setIsClaiming(false);
+      setIsMinting(false);
     }
-  }, [faucetAddress, isConnected]);
+  }, [stablecoinAddress, isConnected, account]);
 
   return (
     <header className="sticky top-0 z-50 w-full transition-all duration-300 bg-[#8B7355] border-b-4 border-[#654321] shadow-lg">
@@ -101,14 +99,14 @@ const Navbar = () => {
 
         {/* Desktop CTA Buttons */}
         <div className="hidden md:flex items-center space-x-4" style={{ opacity: 1, transform: 'none' }}>
-          {faucetAddress && (
+          {stablecoinAddress && (
             <Button
               variant="outline"
-              onClick={() => void handleClaim()}
-              disabled={isClaiming || !isConnected}
+              onClick={() => void handleMint()}
+              disabled={isMinting || !isConnected}
               className="minecraft-button h-10 px-4 py-2 bg-[#1E90FF] hover:bg-[#1C6DD0] text-white border-4 border-[#104E96] font-bold"
             >
-              {isClaiming ? 'Claiming...' : 'Claim 10,000'}
+              {isMinting ? 'Minting...' : `Mint 10,000 ${TOKEN_CONFIG.symbol}`}
             </Button>
           )}
           <Link to="/projects/new">
@@ -167,17 +165,17 @@ const Navbar = () => {
                 </Link>
               ))}
               <div className="flex flex-col space-y-2 pt-4">
-                {faucetAddress && (
+                {stablecoinAddress && (
                   <Button
                     variant="outline"
                     onClick={() => {
                       setIsOpen(false);
-                      void handleClaim();
+                      void handleMint();
                     }}
-                    disabled={isClaiming || !isConnected}
+                    disabled={isMinting || !isConnected}
                     className="minecraft-button w-full text-white bg-[#1E90FF] hover:bg-[#1C6DD0] border-4 border-[#104E96] font-bold"
                   >
-                    {isClaiming ? 'Claiming...' : 'Claim 10,000'}
+                    {isMinting ? 'Minting...' : `Mint 10,000 ${TOKEN_CONFIG.symbol}`}
                   </Button>
                 )}
                 <Link to="/projects/new" onClick={() => setIsOpen(false)}>

@@ -65,7 +65,7 @@ export type DepositorMetrics = {
 export type DepositEvent = {
   id: string;
   projectAddress: string;
-  amountUSDC: string; // Amount in stablecoin (field name from Envio schema)
+  amountPYUSD: string; // Amount in stablecoin (field name from Envio schema)
   sharesMinted: string;
   blockNumber: string;
   blockTimestamp: string;
@@ -161,6 +161,17 @@ export type RevenueClaimedEvent = {
   };
 };
 
+export type PhaseConfigurationSnapshot = {
+  id: string;
+  aprBps: string[];
+  durations: string[];
+  capBps: string[];
+  phaseCaps: string[];
+  blockNumber: string;
+  blockTimestamp: string;
+  transactionHash: string;
+};
+
 export type FundraiseClosedEvent = {
   id: string;
   projectAddress: string;
@@ -188,6 +199,7 @@ export type Project = {
   principalClaims: PrincipalClaimedEvent[];
   revenueClaims: RevenueClaimedEvent[];
   fundraiseClosed: FundraiseClosedEvent[];
+  phaseConfigurations?: PhaseConfigurationSnapshot[];
 };
 
 // ============================================================================
@@ -255,6 +267,65 @@ export async function getCompleteProjectData(
           docTypes
           docHashes
           metadataURIs
+          blockNumber
+          blockTimestamp
+          transactionHash
+        }
+        deposits(order_by: { blockTimestamp: asc }, limit: 500) {
+          id
+          amountPYUSD
+          sharesMinted
+          blockNumber
+          blockTimestamp
+          transactionHash
+          depositor {
+            id
+          }
+        }
+        fundWithdrawn(order_by: { blockTimestamp: asc }, limit: 500) {
+          id
+          phaseId
+          amount
+          blockNumber
+          blockTimestamp
+          transactionHash
+        }
+        reserveFunded(order_by: { blockTimestamp: asc }, limit: 200) {
+          id
+          amount
+          fundedBy
+          blockNumber
+          blockTimestamp
+          transactionHash
+        }
+        salesProceeds(order_by: { blockTimestamp: asc }, limit: 200) {
+          id
+          amount
+          blockNumber
+          blockTimestamp
+          transactionHash
+        }
+        fundraiseClosed(order_by: { blockTimestamp: asc }, limit: 50) {
+          id
+          successful
+          blockNumber
+          blockTimestamp
+          transactionHash
+        }
+        appraisals(order_by: { blockTimestamp: asc }, limit: 200) {
+          id
+          percentComplete
+          appraisalHash
+          blockNumber
+          blockTimestamp
+          transactionHash
+        }
+        phaseConfigurations(order_by: { blockTimestamp: desc }, limit: 1) {
+          id
+          aprBps
+          durations
+          capBps
+          phaseCaps
           blockNumber
           blockTimestamp
           transactionHash
@@ -352,4 +423,3 @@ export async function getAllProjects(): Promise<{ projects: Project[] }> {
     return { projects: [] };
   }
 }
-
