@@ -14,7 +14,7 @@ import { toast } from '@/components/ui/sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ExternalLink, Plus, Edit, Upload, DollarSign, AlertTriangle, MessageSquare, Banknote, DoorClosed, Wallet, FileText, Target, Users, ShieldCheck } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@/components/ui/drawer';
-import { Address, erc20At, fromStablecoin, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toStablecoin, fetchProjectRealtimeState, fetchProjectStaticConfig, fetchProjectPhaseCaps, getWindowEthereum, ProjectRealtimeState, ProjectStaticConfig } from '@/lib/eth';
+import { Address, erc20At, fromStablecoin, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toStablecoin, fetchProjectRealtimeState, fetchProjectStaticConfig, getWindowEthereum, ProjectRealtimeState, ProjectStaticConfig } from '@/lib/eth';
 import { getCompleteProjectData, Project } from '@/lib/envio';
 import { contractsConfig, TOKEN_CONFIG, getTokenConfigByAddress } from '@/config/contracts';
 import { ipfsUpload } from '@/lib/ipfs';
@@ -60,7 +60,6 @@ const ProjectDetails = () => {
   const [envioData, setEnvioData] = useState<Project | null>(null);
   const [realtimeData, setRealtimeData] = useState<ProjectRealtimeState | null>(null);
   const [staticConfig, setStaticConfig] = useState<ProjectStaticConfig | null>(null);
-  const [phaseCaps, setPhaseCaps] = useState<bigint[]>([]);
   const [supporters, setSupporters] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
@@ -79,9 +78,8 @@ const ProjectDetails = () => {
         staticConfig,
         tokenSymbol: projectTokenConfig.symbol,
         now: Date.now(),
-        phaseCaps,
       }),
-    [envioData, staticConfig, projectTokenConfig.symbol, phaseCaps],
+    [envioData, staticConfig, projectTokenConfig.symbol],
   );
 
   async function connectWallet() {
@@ -138,17 +136,15 @@ const ProjectDetails = () => {
       }
 
       // Fetch data in parallel: Single Envio query + Contract queries
-      const [envioResult, realtimeResult, staticResult, phaseCapsResult] = await Promise.all([
+      const [envioResult, realtimeResult, staticResult] = await Promise.all([
         getCompleteProjectData(projectAddress, account || undefined),
         fetchProjectRealtimeState(projectAddress, provider, account || undefined),
         fetchProjectStaticConfig(projectAddress, provider),
-        fetchProjectPhaseCaps(projectAddress, provider),
       ]);
       
       setEnvioData(envioResult.project);
       setRealtimeData(realtimeResult);
       setStaticConfig(staticResult);
-      setPhaseCaps(phaseCapsResult);
       setSupporters(envioResult.supportersCount);
     } catch (e) {
       console.error('Error refreshing project data:', e);
@@ -236,39 +232,75 @@ const ProjectDetails = () => {
     'Revenue and Sales',
   ] as const;
 
-  // Get phase data from Envio, fallback to contract data
+  // Get phase data sourced from Envio (PhaseMetrics + PhaseConfiguration snapshots)
   const envioPhases = envioData?.projectState?.phases || [];
-  
-  const perPhaseCapAmounts = envioPhases.length > 0 ? 
-    envioPhases.map((p: any) => {
-      const capAmount = Number(fromStablecoin(BigInt(p.phaseCap || '0')));
-      return capAmount;
-    }) :
-    phaseCaps.map((cap: bigint) => {
-      const capAmount = Number(fromStablecoin(cap));
-      return capAmount;
-    });
-  
+  const latestPhaseConfig = envioData?.phaseConfigurations?.[0];
+  const configPhaseCaps = Array.from({ length: 6 }, (_, i) => {
+    const raw = latestPhaseConfig?.phaseCaps?.[i];
+    if (!raw) return 0n;
+    try {
+      return BigInt(raw);
+    } catch {
+      return 0n;
+    }
+  });
+  const configCapBps = Array.from({ length: 6 }, (_, i) => {
+    if (!latestPhaseConfig?.capBps?.[i]) return 0;
+    const raw = Number(latestPhaseConfig.capBps[i]);
+    return Number.isFinite(raw) ? raw : 0;
+  });
+  const configAprBps = Array.from({ length: 6 }, (_, i) => {
+    if (!latestPhaseConfig?.aprBps?.[i]) return 0;
+    const raw = Number(latestPhaseConfig.aprBps[i]);
+    return Number.isFinite(raw) ? raw : 0;
+  });
+
+  const perPhaseCapAmounts = Array.from({ length: 6 }, (_, i) => {
+    const phaseMetric = envioPhases[i];
+    if (phaseMetric?.phaseCap && phaseMetric.phaseCap !== '0') {
+      try {
+        return Number(fromStablecoin(BigInt(phaseMetric.phaseCap)));
+      } catch {
+        // fall through to config
+      }
+    }
+    if (configPhaseCaps[i] > 0) {
+      return Number(fromStablecoin(configPhaseCaps[i]));
+    }
+    return 0;
+  });
+
   const cumulativeCapAmounts: number[] = [];
   for (let i = 0; i < 6; i++) {
-    const prev = i > 0 ? cumulativeCapAmounts[i-1] : 0;
+    const prev = i > 0 ? cumulativeCapAmounts[i - 1] : 0;
     cumulativeCapAmounts[i] = prev + (perPhaseCapAmounts[i] || 0);
   }
-  const capBpsRaw = (project.target > 0
-    ? cumulativeCapAmounts.map((amt)=> Math.round((amt / project.target) * 10000))
-    : []
-  );
-  const capBps = Array.from({ length: 6 }, (_, i) => capBpsRaw[i] ?? 0);
+
+  const perPhaseCapBps = Array.from({ length: 6 }, (_, i) => {
+    const metricBps = envioPhases[i]?.capBps;
+    if (metricBps && metricBps !== '0') {
+      const parsed = Number(metricBps);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    return configCapBps[i] ?? 0;
+  });
+
+  const capBps: number[] = [];
+  for (let i = 0; i < 6; i++) {
+    const prev = i > 0 ? capBps[i - 1] : 0;
+    capBps[i] = prev + (perPhaseCapBps[i] || 0);
+  }
+
   const cumulativeCapAmountsFilled = Array.from({ length: 6 }, (_, i) => cumulativeCapAmounts[i] ?? 0);
   // Convert APRs from bps to percent for display
   const aprs = Array.from({ length: 6 }, (_, i) => {
     const envioApr = envioPhases[i]?.aprBps;
-    if (envioApr !== undefined && envioApr !== null) {
-      const aprBps = Number(envioApr || '0');
-      return aprBps / 100;
+    if (envioApr && envioApr !== '0') {
+      const aprBps = Number(envioApr);
+      if (Number.isFinite(aprBps)) return aprBps / 100;
     }
-    const fallbackBps = staticConfig?.perPhaseAprBps?.[i] ?? 0;
-    return fallbackBps / 100;
+    if (configAprBps[i]) return configAprBps[i] / 100;
+    return 0;
   });
   const currentPhaseIndex = Math.max(0, envioData?.projectState?.currentPhase ?? 0);
   const nextPhaseName = currentPhaseIndex + 1 < phaseNames.length

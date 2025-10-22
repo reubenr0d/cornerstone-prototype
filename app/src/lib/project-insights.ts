@@ -80,7 +80,6 @@ type BuildArgs = {
   staticConfig: ProjectStaticConfig | null;
   tokenSymbol?: string;
   now?: number;
-  phaseCaps?: bigint[];
 };
 
 const ZERO_DATA: ProjectInsightsData = {
@@ -104,7 +103,6 @@ export function buildProjectInsightsData({
   staticConfig,
   tokenSymbol,
   now = Date.now(),
-  phaseCaps,
 }: BuildArgs): ProjectInsightsData {
   if (!project) {
     return ZERO_DATA;
@@ -161,7 +159,6 @@ export function buildProjectInsightsData({
     seriesStart: firstPointTs,
     seriesEnd: lastPointTs,
     now,
-    phaseCaps: phaseCaps,
   });
 
   const events = deriveEventMarkers({
@@ -237,14 +234,12 @@ function derivePhaseOverlays({
   seriesStart,
   seriesEnd,
   now,
-  phaseCaps,
 }: {
   project: Project;
   staticConfig: ProjectStaticConfig | null;
   seriesStart: number;
   seriesEnd: number;
   now: number;
-  phaseCaps?: bigint[];
 }): InsightPhaseOverlay[] {
   const metrics = (project.projectState?.phases || []).slice().sort((a, b) => a.phaseId - b.phaseId);
   const metricsById = new Map<number, PhaseMetrics>();
@@ -253,23 +248,35 @@ function derivePhaseOverlays({
   }
 
 
+  const latestConfig = project.phaseConfigurations?.[0];
+
   const perPhaseAprBps = Array.from({ length: PHASE_LABELS.length }, (_, i) => {
     const metric = metricsById.get(i);
     if (metric && metric.aprBps && metric.aprBps !== '0') {
       return Number(metric.aprBps);
     }
-    return staticConfig?.perPhaseAprBps?.[i] ?? 0;
+    if (latestConfig?.aprBps?.[i]) {
+      const parsed = Number(latestConfig.aprBps[i]);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    return 0;
   });
-  const targetAmount = staticConfig ? Number(fromStablecoin(staticConfig.maxRaise)) : 0;
+  const targetAmount = latestConfig?.phaseCaps?.length
+    ? latestConfig.phaseCaps.reduce((sum, cap) => sum + toTokenAmount(cap), 0)
+    : staticConfig
+      ? Number(fromStablecoin(staticConfig.maxRaise))
+      : 0;
 
   const perPhaseCap: number[] = [];
   const cumulativeCap: number[] = [];
   for (let i = 0; i < PHASE_LABELS.length; i++) {
     const metric = metricsById.get(i);
     // Use Envio data if available, otherwise fallback to contract data
-    const capAmount = metric && metric.phaseCap !== '0' ? 
-      toTokenAmount(metric.phaseCap) : 
-      (phaseCaps?.[i] ? Number(fromStablecoin(phaseCaps[i])) : 0);
+    const capAmount = metric && metric.phaseCap !== '0'
+      ? toTokenAmount(metric.phaseCap)
+      : latestConfig?.phaseCaps?.[i]
+        ? toTokenAmount(latestConfig.phaseCaps[i])
+        : 0;
     perPhaseCap[i] = capAmount;
     cumulativeCap[i] = (cumulativeCap[i - 1] || 0) + capAmount;
     
@@ -291,7 +298,13 @@ function derivePhaseOverlays({
       } else if (i === currentPhase) {
         end = seriesEnd || now;
       } else {
-        const durationMs = metric?.duration ? Number(metric.duration) * 1000 : 0;
+        let durationMs = metric?.duration ? Number(metric.duration) * 1000 : 0;
+        if (!durationMs && latestConfig?.durations?.[i]) {
+          const seconds = Number(latestConfig.durations[i]);
+          if (Number.isFinite(seconds)) {
+            durationMs = seconds * 1000;
+          }
+        }
         end = (overlays.at(-1)?.end || seriesEnd || now) + (durationMs || 21 * DAY_MS);
       }
     }

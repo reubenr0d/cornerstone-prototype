@@ -26,6 +26,7 @@ type Project {
   salesProceeds: [SalesProceedsSubmittedEvent!]! @derivedFrom(field: "project")
   principalClaims: [PrincipalClaimedEvent!]! @derivedFrom(field: "project")
   revenueClaims: [RevenueClaimedEvent!]! @derivedFrom(field: "project")
+  phaseConfigurations: [PhaseConfigurationEvent!]! @derivedFrom(field: "project")
 }
 
 type Depositor {

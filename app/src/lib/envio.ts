@@ -161,6 +161,17 @@ export type RevenueClaimedEvent = {
   };
 };
 
+export type PhaseConfigurationSnapshot = {
+  id: string;
+  aprBps: string[];
+  durations: string[];
+  capBps: string[];
+  phaseCaps: string[];
+  blockNumber: string;
+  blockTimestamp: string;
+  transactionHash: string;
+};
+
 export type FundraiseClosedEvent = {
   id: string;
   projectAddress: string;
@@ -188,6 +199,7 @@ export type Project = {
   principalClaims: PrincipalClaimedEvent[];
   revenueClaims: RevenueClaimedEvent[];
   fundraiseClosed: FundraiseClosedEvent[];
+  phaseConfigurations?: PhaseConfigurationSnapshot[];
 };
 
 // ============================================================================
@@ -304,6 +316,16 @@ export async function getCompleteProjectData(
           id
           percentComplete
           appraisalHash
+          blockNumber
+          blockTimestamp
+          transactionHash
+        }
+        phaseConfigurations(order_by: { blockTimestamp: desc }, limit: 1) {
+          id
+          aprBps
+          durations
+          capBps
+          phaseCaps
           blockNumber
           blockTimestamp
           transactionHash
