@@ -16,9 +16,18 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@
 import { Address, erc20At, fromStablecoin, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toStablecoin, fetchProjectRealtimeState, fetchProjectStaticConfig, getWindowEthereum, ProjectRealtimeState, ProjectStaticConfig } from '@/lib/eth';
 import { getCompleteProjectData, Project } from '@/lib/envio';
 import { contractsConfig, TOKEN_CONFIG, getTokenConfigByAddress } from '@/config/contracts';
+import type { SUPPORTED_CHAINS_IDS } from '@avail-project/nexus-core';
+import { useNexus } from '@/providers/NexusProvider';
 import { ipfsUpload } from '@/lib/ipfs';
 import { ethers } from 'ethers';
 import { buildProjectInsightsData, type ProjectInsightsData } from '@/lib/project-insights';
+
+const SUPPORTED_CHAINS = [
+  { id: 11155111, name: 'Sepolia' },
+  { id: 84532, name: 'Base Sepolia' },
+  { id: 421614, name: 'Arbitrum Sepolia' },
+  { id: 11155420, name: 'Optimism Sepolia' },
+] as const;
 
 const ProjectDetails = () => {
   const { id } = useParams();
@@ -46,6 +55,9 @@ const ProjectDetails = () => {
   const [isWithdrawingFunds, setIsWithdrawingFunds] = useState(false);
   const [isApprovingProceeds, setIsApprovingProceeds] = useState(false);
   const [isSubmittingProceeds, setIsSubmittingProceeds] = useState(false);
+  const [withdrawChainId, setWithdrawChainId] = useState<number | null>(null);
+  const [isBridging, setIsBridging] = useState(false);
+  const { nexusSDK, handleInit } = useNexus();
 
   const projectAddress = useMemo<Address | null>(() => {
     const p = id as string | undefined;
@@ -1476,22 +1488,110 @@ const ProjectDetails = () => {
                           const amt = Number(withdrawAmount || '0');
                           if (!amt || amt <= 0) { toast.error('Enter amount'); return; }
                           if (amt > withdrawableNow) { toast.error('Exceeds withdrawable'); return; }
-                          setIsWithdrawingFunds(true);
-                          const signer = await getSigner();
-                          const proj = projectAt(projectAddress, signer);
-                          const tx = await proj.withdrawPhaseFunds(toStablecoin(amt.toString()));
-                          await tx.wait();
-                          toast.success('Withdrawn');
+                          
+                          if (withdrawChainId && withdrawChainId !== 11155111) {
+                            // Cross-chain withdrawal via Avail Nexus
+                            setIsBridging(true);
+                            
+                            try {
+                              // Initialize Nexus SDK if not already initialized
+                              if (!nexusSDK?.isInitialized()) {
+                                toast.info('Initializing Nexus SDK...');
+                                await handleInit();
+                                
+                                // Wait a moment for initialization to complete
+                                await new Promise(resolve => setTimeout(resolve, 1000));
+                              }
+                              
+                              if (!nexusSDK) {
+                                throw new Error('Nexus SDK not available');
+                              }
+                              
+                              toast.info('Withdrawing funds on Sepolia...');
+                              
+                              // First withdraw to developer wallet on current chain
+                              const signer = await getSigner();
+                              const developerAddress = await signer.getAddress();
+                              const proj = projectAt(projectAddress, signer);
+                              const withdrawTx = await proj.withdrawPhaseFunds(toStablecoin(amt.toString()));
+                              await withdrawTx.wait();
+                              
+                              toast.success('Funds withdrawn on Sepolia. Initiating bridge...');
+                              
+                              // Get the token config for bridging
+                              const tokenSymbol = projectTokenConfig.symbol as 'USDC';
+                              const targetChainName = SUPPORTED_CHAINS.find(c => c.id === withdrawChainId)?.name;
+
+                              // Bridge to target chain using Nexus
+                              toast.info(`Bridging ${amt} ${tokenSymbol} to ${targetChainName}...`);
+
+                              // Convert amount to base units (USDC has 6 decimals)
+                              const bridgeAmount = toStablecoin(amt.toString()).toString();
+
+                              console.log('Bridge params:', {
+                                token: tokenSymbol,
+                                amount: bridgeAmount,
+                                chainId: withdrawChainId,
+                                sourceChains: [11155111],
+                                sdkNetwork: 'testnet',
+                              });
+
+                              const bridgeResult = await nexusSDK.bridge({
+                                token: tokenSymbol,
+                                amount: bridgeAmount,
+                                chainId: withdrawChainId as SUPPORTED_CHAINS_IDS,
+                                sourceChains: [11155111], // Only use funds from current chain (Sepolia)
+                              });
+
+                              if (!bridgeResult.success) {
+                                throw new Error(bridgeResult.error);
+                              }
+
+                              toast.success(`Successfully bridged ${amt} ${tokenSymbol}!`, {
+                                description: `Transaction completed on ${targetChainName}. ${bridgeResult.explorerUrl ? 'View on explorer' : 'Check your wallet'}`
+                              });
+
+                              console.log('Bridge result:', bridgeResult);
+
+                              // Optionally open explorer URL
+                              if (bridgeResult.explorerUrl) {
+                                console.log('Explorer URL:', bridgeResult.explorerUrl);
+                                // Uncomment to auto-open: window.open(bridgeResult.explorerUrl, '_blank');
+                              }
+                              
+                            } catch (error: any) {
+                              console.error('Bridge error:', error);
+                              toast.error('Bridge failed', {
+                                description: error?.message || 'Failed to bridge funds to destination chain'
+                              });
+                              throw error;
+                            }
+                          } else {
+                            // Direct withdrawal on same chain
+                            setIsWithdrawingFunds(true);
+                            const signer = await getSigner();
+                            const proj = projectAt(projectAddress, signer);
+                            const tx = await proj.withdrawPhaseFunds(toStablecoin(amt.toString()));
+                            await tx.wait();
+                            toast.success('Withdrawn');
+                          }
+                          
                           setWithdrawAmount('');
+                          setWithdrawChainId(null);
                           refresh();
-                        } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Withdraw failed'); }
-                        finally { setIsWithdrawingFunds(false); }
+                        } catch(e:any) { 
+                          toast.error(e?.shortMessage || e?.message || 'Withdraw failed'); 
+                        }
+                        finally { 
+                          setIsWithdrawingFunds(false);
+                          setIsBridging(false);
+                        }
                       }}>
-                        <DollarSign className="mr-2 h-4 w-4" /> {isWithdrawingFunds ? 'Withdrawing...' : 'Withdraw Funds'}
+                        <DollarSign className="w-4 h-4 mr-2" /> 
+                        {isWithdrawingFunds ? 'Withdrawing...' : isBridging ? 'Bridging...' : withdrawChainId ? 'Withdraw & Bridge' : 'Withdraw Funds'}
                       </Button>
                     </div>
                   </div>
-
                   {/* Sales Proceeds */}
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
