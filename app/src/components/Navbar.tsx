@@ -21,8 +21,6 @@ const Navbar = () => {
   const navLinks = [
     { path: '/', label: 'Home' },
     { path: '/projects', label: 'Projects' },
-    { path: '/dashboard', label: 'Dashboard' },
-    { path: '/about', label: 'About' },
   ];
 
   const handleMint = useCallback(async () => {

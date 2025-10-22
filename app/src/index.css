@@ -124,12 +124,24 @@ Inspired by Minecraft's blocky, pixelated aesthetic with earthy tones
     image-rendering: pixelated;
     image-rendering: -moz-crisp-edges;
     image-rendering: crisp-edges;
+    overflow-x: hidden;
   }
   
   /* Minecraft-style pixelated font for headings */
   h1, h2, h3, h4, h5, h6 {
     font-weight: 700;
     letter-spacing: 0.02em;
+  }
+
+  /* Prevent horizontal overflow */
+  html, body {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  /* Ensure containers don't overflow */
+  .container {
+    max-width: 100%;
   }
 }
 
