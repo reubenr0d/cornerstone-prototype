@@ -1,8 +1,12 @@
 import { GraphQLClient, gql } from 'graphql-request';
 import { Address } from './eth';
 
-const ENVIO_URL = (import.meta as any).env?.VITE_ENVIO_GRAPHQL_URL || 
-  'https://indexer.dev.hyperindex.xyz/0dc0e74/v1/graphql';
+const ENVIO_URL = (import.meta as any).env?.VITE_ENVIO_GRAPHQL_URL;
+
+if (!ENVIO_URL) {
+  console.error('VITE_ENVIO_GRAPHQL_URL environment variable is required but not set');
+  throw new Error('VITE_ENVIO_GRAPHQL_URL environment variable is required but not set');
+}
 
 export const envioClient = new GraphQLClient(ENVIO_URL);
 
