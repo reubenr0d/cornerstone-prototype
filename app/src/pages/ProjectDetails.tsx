@@ -1174,7 +1174,26 @@ const ProjectDetails = () => {
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Claimable Interest</span>
                         <span className="font-semibold">
-                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.claimableInterest ? Number(fromStablecoin(realtimeData.claimableInterest)).toLocaleString('en-US') : 0} ${projectTokenConfig.symbol}`}
+                        {loading ? (
+                          <Skeleton className="inline-block h-4 w-20" />
+                        ) : (() => {
+                            const interestValue = Number(fromStablecoin(realtimeData?.claimableInterest || 0));
+                            let displayValue;
+
+                            if (interestValue === 0) {
+                              displayValue = "0";
+                            } else if (interestValue < 0.001) {
+                              displayValue = "<0.001";
+                            } else {
+                              displayValue = interestValue.toLocaleString('en-US', {
+                                minimumFractionDigits: 3,
+                                maximumFractionDigits: 3,
+                              });
+                            }
+
+                            return `${displayValue} ${projectTokenConfig.symbol}`;
+                          })()
+                        }
                         </span>
                       </div>
                       <Button variant="outline" className="w-full mt-1" disabled={isClaimingInterest} onClick={async ()=>{
@@ -1215,27 +1234,6 @@ const ProjectDetails = () => {
                           finally { setIsRedeemingPrincipal(false); }
                         }}>{isRedeemingPrincipal ? 'Redeeming...' : 'Redeem Principal'}</Button>
                       )}
-                      {/* Revenue Claim */}
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Claimable Revenue</span>
-                        <span className="font-semibold">
-                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.claimableRevenue ? Number(fromStablecoin(realtimeData.claimableRevenue)).toLocaleString('en-US') : 0} ${projectTokenConfig.symbol}`}
-                        </span>
-                      </div>
-                      <Button variant="outline" className="w-full mt-1" disabled={isClaimingRevenue} onClick={async ()=>{
-                        try {
-                          if (!projectAddress || !account) return;
-                          if (!realtimeData?.claimableRevenue || realtimeData.claimableRevenue === 0n) { toast.error('No revenue to claim'); return; }
-                          setIsClaimingRevenue(true);
-                          const signer = await getSigner();
-                          const proj = projectAt(projectAddress, signer);
-                          const tx = await proj.claimRevenue(account);
-                          await tx.wait();
-                          toast.success('Revenue claimed');
-                          refresh();
-                        } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Claim failed'); }
-                        finally { setIsClaimingRevenue(false); }
-                      }}>{isClaimingRevenue ? 'Claiming...' : 'Claim Revenue'}</Button>
                     </CardContent>
                   </Card>
                 </RoleGate>
