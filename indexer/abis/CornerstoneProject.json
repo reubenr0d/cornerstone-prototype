@@ -8,7 +8,7 @@
       },
       {
         "internalType": "address",
-        "name": "pyusd_",
+        "name": "stablecoin_",
         "type": "address"
       },
       {
@@ -259,6 +259,37 @@
       }
     ],
     "name": "PhaseFundsWithdrawn",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "uint256[6]",
+        "name": "aprBps",
+        "type": "uint256[6]"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256[6]",
+        "name": "durations",
+        "type": "uint256[6]"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256[6]",
+        "name": "capBps",
+        "type": "uint256[6]"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256[6]",
+        "name": "phaseCaps",
+        "type": "uint256[6]"
+      }
+    ],
+    "name": "PhaseConfiguration",
     "type": "event"
   },
   {
@@ -861,19 +892,6 @@
     "type": "function"
   },
   {
-    "inputs": [],
-    "name": "pyusd",
-    "outputs": [
-      {
-        "internalType": "contract IERC20",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
     "inputs": [
       {
         "internalType": "address",
@@ -914,6 +932,19 @@
         "internalType": "uint256",
         "name": "",
         "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "stablecoin",
+    "outputs": [
+      {
+        "internalType": "contract IERC20",
+        "name": "",
+        "type": "address"
       }
     ],
     "stateMutability": "view",

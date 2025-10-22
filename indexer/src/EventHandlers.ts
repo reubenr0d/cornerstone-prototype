@@ -52,6 +52,9 @@ export const handleProjectCreated = ProjectRegistry.ProjectCreated.handler(
       lastUpdatedTimestamp: BigInt(event.block.timestamp),
     });
 
+    // Get phase caps from contract storage
+    // We need to calculate the phase caps from the contract's phaseCapsBps and maxRaise
+    // For now, we'll set them to 0 and they can be updated later when we have a way to call contract functions
     for (let i = 0; i <= 5; i++) {
       const phaseMetricsId = `${projectAddress}-phase-${i}`;
       context.PhaseMetrics.set({
@@ -59,11 +62,11 @@ export const handleProjectCreated = ProjectRegistry.ProjectCreated.handler(
         project_id: projectAddress,
         projectState_id: projectAddress,
         phaseId: i,
-        phaseCap: 0n,
+        phaseCap: 0n, // TODO: Calculate from contract storage
         phaseWithdrawn: 0n,
-        aprBps: 0n,
-        duration: 0n,
-        capBps: 0n,
+        aprBps: 0n, // TODO: Get from contract storage
+        duration: 0n, // TODO: Get from contract storage
+        capBps: 0n, // TODO: Get from contract storage
         isClosed: false,
         closedAtBlock: undefined,
         closedAtTimestamp: undefined,
@@ -487,6 +490,51 @@ export const handleRevenueClaimed = CornerstoneProject.RevenueClaimed.handler(
     }
 
     await updateDepositorMetrics(claimerId, projectAddress, event, context);
+  }
+);
+
+export const handlePhaseConfiguration = CornerstoneProject.PhaseConfiguration.handler(
+  async ({ event, context }) => {
+    const projectAddress = event.srcAddress.toLowerCase();
+    const txHash = event.block.hash;
+    const aprBps = Array.from(event.params.aprBps);
+    const durations = Array.from(event.params.durations);
+    const capBps = Array.from(event.params.capBps);
+    const phaseCaps = Array.from(event.params.phaseCaps);
+
+    // Store the phase configuration event
+    context.PhaseConfigurationEvent.set({
+      id: `${txHash}-${event.logIndex}`,
+      project_id: projectAddress,
+      aprBps,
+      durations,
+      capBps,
+      phaseCaps,
+      blockNumber: BigInt(event.block.number),
+      blockTimestamp: BigInt(event.block.timestamp),
+      transactionHash: txHash,
+    });
+
+    const maxPhases = Math.min(aprBps.length, 6);
+    for (let i = 0; i < maxPhases; i++) {
+      const phaseMetricsId = `${projectAddress}-phase-${i}`;
+      const phaseMetrics = await context.PhaseMetrics.get(phaseMetricsId);
+
+      context.PhaseMetrics.set({
+        id: phaseMetricsId,
+        project_id: projectAddress,
+        projectState_id: projectAddress,
+        phaseId: i,
+        phaseCap: phaseCaps[i] ?? 0n,
+        phaseWithdrawn: phaseMetrics?.phaseWithdrawn ?? 0n,
+        aprBps: aprBps[i] ?? 0n,
+        duration: durations[i] ?? 0n,
+        capBps: capBps[i] ?? 0n,
+        isClosed: phaseMetrics?.isClosed ?? false,
+        closedAtBlock: phaseMetrics?.closedAtBlock,
+        closedAtTimestamp: phaseMetrics?.closedAtTimestamp,
+      });
+    }
   }
 );
 

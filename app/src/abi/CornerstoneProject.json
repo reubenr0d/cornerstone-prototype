@@ -265,6 +265,37 @@
     "anonymous": false,
     "inputs": [
       {
+        "indexed": false,
+        "internalType": "uint256[6]",
+        "name": "aprBps",
+        "type": "uint256[6]"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256[6]",
+        "name": "durations",
+        "type": "uint256[6]"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256[6]",
+        "name": "capBps",
+        "type": "uint256[6]"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256[6]",
+        "name": "phaseCaps",
+        "type": "uint256[6]"
+      }
+    ],
+    "name": "PhaseConfiguration",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
         "indexed": true,
         "internalType": "address",
         "name": "user",
