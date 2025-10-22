@@ -16,8 +16,7 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@
 import { Address, erc20At, fromStablecoin, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toStablecoin, fetchProjectRealtimeState, fetchProjectStaticConfig, getWindowEthereum, ProjectRealtimeState, ProjectStaticConfig } from '@/lib/eth';
 import { getCompleteProjectData, Project } from '@/lib/envio';
 import { contractsConfig, TOKEN_CONFIG, getTokenConfigByAddress } from '@/config/contracts';
-import type { SUPPORTED_CHAINS_IDS } from '@avail-project/nexus-core';
-import { useNexus } from '@/providers/NexusProvider';
+import { NexusNetwork, NexusSDK, type SUPPORTED_CHAINS_IDS } from '@avail-project/nexus-core';
 import { ipfsUpload } from '@/lib/ipfs';
 import { ethers } from 'ethers';
 import { buildProjectInsightsData, type ProjectInsightsData } from '@/lib/project-insights';
@@ -57,7 +56,7 @@ const ProjectDetails = () => {
   const [isSubmittingProceeds, setIsSubmittingProceeds] = useState(false);
   const [withdrawChainId, setWithdrawChainId] = useState<number | null>(null);
   const [isBridging, setIsBridging] = useState(false);
-  const { nexusSDK, handleInit } = useNexus();
+  const [nexusSDK, setNexusSDK] = useState(null);
 
   const projectAddress = useMemo<Address | null>(() => {
     const p = id as string | undefined;
@@ -81,16 +80,39 @@ const ProjectDetails = () => {
     return TOKEN_CONFIG;
   }, [staticConfig]);
 
-  const insightsData = useMemo(
-    () =>
-      buildProjectInsightsData({
-        project: envioData,
-        staticConfig,
-        tokenSymbol: projectTokenConfig.symbol,
-        now: Date.now(),
-      }),
-    [envioData, staticConfig, projectTokenConfig.symbol],
-  );
+  async function initializeNexus() {
+    let provider = getWindowEthereum();
+
+      const sdk = new NexusSDK({ network: 'testnet' as NexusNetwork });
+ 
+      // Initialize with provider (required)
+      await sdk.initialize(provider);
+      toast.info("Nexus SDK initialized successfully")
+
+      // Assuming `sdk` is initialized from the previous step
+ 
+      // Intent approval: show routes/fees to user, then allow() or deny().
+      // Tip: call refresh() periodically (e.g., every 5s) to keep fees current.
+      sdk.setOnIntentHook(({ intent, allow, deny, refresh }) => {
+        // Show intent in your UI. Example decision:
+        const userConfirms = true; // replace with your UI logic
+        if (userConfirms) allow();
+        else deny();
+      
+        // Optionally set up a timer to refresh quotes:
+        // setInterval(() => refresh(), 5000);
+      });
+      
+      // Allowance approval: specify spend permissions per required source.
+      // Valid values: 'min' | 'max' | string | bigint (array length must match sources.length)
+      sdk.setOnAllowanceHook(({ allow, deny, sources }) => {
+        // Show allowances needed to user, then:
+        allow(['min']); // or ['max'] or custom per source
+        // Call deny() to cancel.
+      });
+      
+      setNexusSDK(sdk);
+  }
 
   async function connectWallet() {
     try {
@@ -1482,10 +1504,35 @@ const ProjectDetails = () => {
                           className="h-11 rounded-none border-4 border-[#654321] bg-[#FFF3C4] font-semibold text-[#2D1B00] placeholder:text-[#5D4E37] focus-visible:ring-[#FFD700]"
                         />
                       </div>
-                      <Button size="sm" className={`${minecraftSuccessButtonClass} justify-start px-4 h-10`} disabled={isWithdrawingFunds} onClick={async ()=>{
+                      <div className="grid gap-1">
+                        <Label htmlFor="withdrawChain">Destination Chain (Optional)</Label>
+                        <select
+                          id="withdrawChain"
+                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                          value={withdrawChainId ?? ''}
+                          onChange={(e) => setWithdrawChainId(e.target.value ? Number(e.target.value) : null)}
+                        >
+                          <option value="">Same chain (direct withdraw)</option>
+                          {SUPPORTED_CHAINS.map((chain) => (
+                            <option key={chain.id} value={chain.id}>
+                              {chain.name}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-muted-foreground">
+                          {withdrawChainId ? 'Funds will be bridged via Avail to the selected chain' : 'Withdraw directly to your wallet on current chain'}
+                        </p>
+                      </div>
+                      <Button onClick={initializeNexus}>
+                        Connect Avail Nexus
+                      </Button>
+                      {nexusSDK ? <span className="text-sm text-green-600">Avail Nexus Initialized</span> : <span className="text-sm text-red-600">Avail Nexus not initialized</span>}
+                      <Button size="sm" variant="outline" className="justify-start" disabled={isWithdrawingFunds || isBridging} onClick={async ()=>{
                         try {
                           if (!projectAddress) return;
                           const amt = Number(withdrawAmount || '0');
+                          console.log(amt);
+                          
                           if (!amt || amt <= 0) { toast.error('Enter amount'); return; }
                           if (amt > withdrawableNow) { toast.error('Exceeds withdrawable'); return; }
                           
@@ -1496,8 +1543,7 @@ const ProjectDetails = () => {
                             try {
                               // Initialize Nexus SDK if not already initialized
                               if (!nexusSDK?.isInitialized()) {
-                                toast.info('Initializing Nexus SDK...');
-                                await handleInit();
+                                toast.error('Nexus SDK not initialized');
                                 
                                 // Wait a moment for initialization to complete
                                 await new Promise(resolve => setTimeout(resolve, 1000));
@@ -1525,12 +1571,9 @@ const ProjectDetails = () => {
                               // Bridge to target chain using Nexus
                               toast.info(`Bridging ${amt} ${tokenSymbol} to ${targetChainName}...`);
 
-                              // Convert amount to base units (USDC has 6 decimals)
-                              const bridgeAmount = toStablecoin(amt.toString()).toString();
-
                               console.log('Bridge params:', {
                                 token: tokenSymbol,
-                                amount: bridgeAmount,
+                                amount: amt,
                                 chainId: withdrawChainId,
                                 sourceChains: [11155111],
                                 sdkNetwork: 'testnet',
@@ -1538,7 +1581,7 @@ const ProjectDetails = () => {
 
                               const bridgeResult = await nexusSDK.bridge({
                                 token: tokenSymbol,
-                                amount: bridgeAmount,
+                                amount: amt,
                                 chainId: withdrawChainId as SUPPORTED_CHAINS_IDS,
                                 sourceChains: [11155111], // Only use funds from current chain (Sepolia)
                               });
