@@ -81,6 +81,18 @@ type PhaseMetrics {
   closedAtTimestamp: BigInt
 }
 
+type PhaseConfigurationEvent {
+  id: ID!
+  project: Project! @index
+  aprBps: [BigInt!]!
+  durations: [BigInt!]!
+  capBps: [BigInt!]!
+  phaseCaps: [BigInt!]!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: String!
+}
+
 type DepositorMetrics {
   id: ID!
   user: Bytes! @index

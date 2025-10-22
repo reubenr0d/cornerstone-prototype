@@ -24,21 +24,6 @@ async function main() {
     console.log('Using existing stablecoin at:', stablecoin);
   }
 
-  // Deploy faucet
-  const Faucet = await hre.ethers.getContractFactory('TokenFaucet');
-  const faucet = await Faucet.deploy(stablecoin);
-  await faucet.waitForDeployment();
-  const faucetAddress = await faucet.getAddress();
-  console.log('TokenFaucet:', faucetAddress);
-
-  if (mock) {
-    const faucetFunding = 1_000_000_000n * 10n ** 6n;
-    await (await mock.mint(faucetAddress, faucetFunding)).wait();
-    console.log('Seeded faucet with', faucetFunding.toString(), 'token units');
-  } else {
-    console.log('Reminder: fund the faucet manually so users can claim on Sepolia.');
-  }
-
   // Deploy ProjectRegistry
   const Reg = await hre.ethers.getContractFactory('ProjectRegistry');
   const reg = await Reg.deploy();
@@ -69,7 +54,6 @@ async function main() {
   console.log(`VITE_RPC_URL=${process.env.SEPOLIA_RPC_URL || ''}`);
   console.log(`VITE_PYUSD_ADDRESS=${stablecoin}`);
   console.log(`VITE_REGISTRY_ADDRESS=${registry}`);
-  console.log(`VITE_FAUCET_ADDRESS=${faucetAddress}`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

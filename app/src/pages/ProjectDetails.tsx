@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { RoleSelector } from '@/components/RoleSelector';
 import { RoleGate, Role } from '@/components/RoleGate';
 import { TimelineCard } from '@/components/TimelineCard';
+import ProjectInsightsPanel from '@/components/project/ProjectInsightsPanel';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 // Removed Progress usage in favor of custom stacked bar
@@ -13,11 +14,12 @@ import { toast } from '@/components/ui/sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ExternalLink, Plus, Edit, Upload, DollarSign, AlertTriangle, MessageSquare, Banknote, DoorClosed, Wallet, FileText, Target, Users, ShieldCheck } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@/components/ui/drawer';
-import { Address, erc20At, fromStablecoin, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toStablecoin, fetchProjectRealtimeState, fetchProjectStaticConfig, getWindowEthereum } from '@/lib/eth';
-import { getCompleteProjectData } from '@/lib/envio';
+import { Address, erc20At, fromStablecoin, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toStablecoin, fetchProjectRealtimeState, fetchProjectStaticConfig, fetchProjectPhaseCaps, getWindowEthereum, ProjectRealtimeState, ProjectStaticConfig } from '@/lib/eth';
+import { getCompleteProjectData, Project } from '@/lib/envio';
 import { contractsConfig, TOKEN_CONFIG, getTokenConfigByAddress } from '@/config/contracts';
 import { ipfsUpload } from '@/lib/ipfs';
 import { ethers } from 'ethers';
+import { buildProjectInsightsData } from '@/lib/project-insights';
 
 const ProjectDetails = () => {
   const { id } = useParams();
@@ -55,9 +57,10 @@ const ProjectDetails = () => {
   const [connected, setConnected] = useState(false);
 
   // Separate data sources: Envio (historical) + Contract (real-time)
-  const [envioData, setEnvioData] = useState<any>(null);
-  const [realtimeData, setRealtimeData] = useState<any>(null);
-  const [staticConfig, setStaticConfig] = useState<any>(null);
+  const [envioData, setEnvioData] = useState<Project | null>(null);
+  const [realtimeData, setRealtimeData] = useState<ProjectRealtimeState | null>(null);
+  const [staticConfig, setStaticConfig] = useState<ProjectStaticConfig | null>(null);
+  const [phaseCaps, setPhaseCaps] = useState<bigint[]>([]);
   const [supporters, setSupporters] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
@@ -68,6 +71,18 @@ const ProjectDetails = () => {
     }
     return TOKEN_CONFIG;
   }, [staticConfig]);
+
+  const insightsData = useMemo(
+    () =>
+      buildProjectInsightsData({
+        project: envioData,
+        staticConfig,
+        tokenSymbol: projectTokenConfig.symbol,
+        now: Date.now(),
+        phaseCaps,
+      }),
+    [envioData, staticConfig, projectTokenConfig.symbol, phaseCaps],
+  );
 
   async function connectWallet() {
     try {
@@ -123,15 +138,17 @@ const ProjectDetails = () => {
       }
 
       // Fetch data in parallel: Single Envio query + Contract queries
-      const [envioResult, realtimeResult, staticResult] = await Promise.all([
+      const [envioResult, realtimeResult, staticResult, phaseCapsResult] = await Promise.all([
         getCompleteProjectData(projectAddress, account || undefined),
         fetchProjectRealtimeState(projectAddress, provider, account || undefined),
         fetchProjectStaticConfig(projectAddress, provider),
+        fetchProjectPhaseCaps(projectAddress, provider),
       ]);
       
       setEnvioData(envioResult.project);
       setRealtimeData(realtimeResult);
       setStaticConfig(staticResult);
+      setPhaseCaps(phaseCapsResult);
       setSupporters(envioResult.supportersCount);
     } catch (e) {
       console.error('Error refreshing project data:', e);
@@ -219,9 +236,19 @@ const ProjectDetails = () => {
     'Revenue and Sales',
   ] as const;
 
-  // Get phase data from Envio
+  // Get phase data from Envio, fallback to contract data
   const envioPhases = envioData?.projectState?.phases || [];
-  const perPhaseCapAmounts = envioPhases.map((p: any) => Number(fromStablecoin(BigInt(p.phaseCap || '0'))));
+  
+  const perPhaseCapAmounts = envioPhases.length > 0 ? 
+    envioPhases.map((p: any) => {
+      const capAmount = Number(fromStablecoin(BigInt(p.phaseCap || '0')));
+      return capAmount;
+    }) :
+    phaseCaps.map((cap: bigint) => {
+      const capAmount = Number(fromStablecoin(cap));
+      return capAmount;
+    });
+  
   const cumulativeCapAmounts: number[] = [];
   for (let i = 0; i < 6; i++) {
     const prev = i > 0 ? cumulativeCapAmounts[i-1] : 0;
@@ -234,7 +261,15 @@ const ProjectDetails = () => {
   const capBps = Array.from({ length: 6 }, (_, i) => capBpsRaw[i] ?? 0);
   const cumulativeCapAmountsFilled = Array.from({ length: 6 }, (_, i) => cumulativeCapAmounts[i] ?? 0);
   // Convert APRs from bps to percent for display
-  const aprs = (staticConfig?.perPhaseAprBps || [0,0,0,0,0,0]).map((bps: number)=> bps / 100);
+  const aprs = Array.from({ length: 6 }, (_, i) => {
+    const envioApr = envioPhases[i]?.aprBps;
+    if (envioApr !== undefined && envioApr !== null) {
+      const aprBps = Number(envioApr || '0');
+      return aprBps / 100;
+    }
+    const fallbackBps = staticConfig?.perPhaseAprBps?.[i] ?? 0;
+    return fallbackBps / 100;
+  });
   const currentPhaseIndex = Math.max(0, envioData?.projectState?.currentPhase ?? 0);
   const nextPhaseName = currentPhaseIndex + 1 < phaseNames.length
     ? phaseNames[currentPhaseIndex + 1]
@@ -500,8 +535,8 @@ const ProjectDetails = () => {
         <div className="container mx-auto px-4 py-10">
           <div className="space-y-8">
             <div className="rounded-3xl border border-white/30 bg-white/60 p-6 shadow-soft backdrop-blur dark:border-white/10 dark:bg-slate-950/35">
-              <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
-                <div className="flex flex-col gap-6 xl:flex-1 xl:min-w-0">
+              <div className="flex flex-col gap-6 xl:grid xl:grid-cols-[minmax(0,1fr)_380px] xl:items-start xl:gap-8">
+                <div className="flex flex-col gap-6 xl:min-w-0">
                   <div className="flex flex-wrap items-center justify-between gap-4">
                     <RoleSelector currentRole={currentRole} onRoleChange={setCurrentRole} />
                     <Button
@@ -568,25 +603,30 @@ const ProjectDetails = () => {
                         </p>
                       </div>
                     </div>
-                </div>
 
-                {/* Role-aware action bar */}
-                {isDeveloper && (
-                  <div className="rounded-2xl border border-white/30 bg-white/40 p-4 shadow-soft backdrop-blur dark:border-white/10 dark:bg-slate-900/40">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <RoleGate currentRole={currentRole} allowedRoles={['developer']}>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className="gap-2 bg-white/60 text-slate-800 hover:bg-white/80 dark:bg-slate-800/70 dark:text-slate-100 dark:hover:bg-slate-700"
-                        >
-                          <MessageSquare className="h-4 w-4" />
-                          Post Update
-                        </Button>
-                      </RoleGate>
-                    </div>
-                  </div>
-                )}
+                    {isDeveloper && (
+                      <div className="rounded-2xl border border-white/30 bg-white/40 p-4 shadow-soft backdrop-blur dark:border-white/10 dark:bg-slate-900/40">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <RoleGate currentRole={currentRole} allowedRoles={['developer']}>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              className="gap-2 bg-white/60 text-slate-800 hover:bg-white/80 dark:bg-slate-800/70 dark:text-slate-100 dark:hover:bg-slate-700"
+                            >
+                              <MessageSquare className="h-4 w-4" />
+                              Post Update
+                            </Button>
+                          </RoleGate>
+                        </div>
+                      </div>
+                    )}
+                </div>
+                <ProjectInsightsPanel
+                  loading={loading}
+                  data={insightsData}
+                  tokenSymbol={projectTokenConfig.symbol}
+                  className="xl:min-w-[360px]"
+                />
               </div>
             </div>
           </div>

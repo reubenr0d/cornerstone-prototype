@@ -22,14 +22,12 @@ export type DeployedAddresses = {
   pyusd?: Address;
   usdc?: Address;
   envioGraphqlUrl?: string;
-  faucet?: Address;
 };
 
 const fromEnv = () => ({
   registry: (import.meta.env.VITE_REGISTRY_ADDRESS as Address | undefined) ?? undefined,
   pyusd: (import.meta.env.VITE_PYUSD_ADDRESS as Address | undefined) ?? undefined,
   usdc: (import.meta.env.VITE_USDC_ADDRESS as Address | undefined) ?? undefined,
-  faucet: (import.meta.env.VITE_FAUCET_ADDRESS as Address | undefined) ?? undefined,
   envioGraphqlUrl: (import.meta.env.VITE_ENVIO_GRAPHQL_URL as string | undefined) ?? 'https://indexer.dev.hyperindex.xyz/0dc0e74/v1/graphql',
 });
 

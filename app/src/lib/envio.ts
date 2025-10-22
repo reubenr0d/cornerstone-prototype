@@ -65,7 +65,7 @@ export type DepositorMetrics = {
 export type DepositEvent = {
   id: string;
   projectAddress: string;
-  amountUSDC: string; // Amount in stablecoin (field name from Envio schema)
+  amountPYUSD: string; // Amount in stablecoin (field name from Envio schema)
   sharesMinted: string;
   blockNumber: string;
   blockTimestamp: string;
@@ -259,6 +259,55 @@ export async function getCompleteProjectData(
           blockTimestamp
           transactionHash
         }
+        deposits(order_by: { blockTimestamp: asc }, limit: 500) {
+          id
+          amountPYUSD
+          sharesMinted
+          blockNumber
+          blockTimestamp
+          transactionHash
+          depositor {
+            id
+          }
+        }
+        fundWithdrawn(order_by: { blockTimestamp: asc }, limit: 500) {
+          id
+          phaseId
+          amount
+          blockNumber
+          blockTimestamp
+          transactionHash
+        }
+        reserveFunded(order_by: { blockTimestamp: asc }, limit: 200) {
+          id
+          amount
+          fundedBy
+          blockNumber
+          blockTimestamp
+          transactionHash
+        }
+        salesProceeds(order_by: { blockTimestamp: asc }, limit: 200) {
+          id
+          amount
+          blockNumber
+          blockTimestamp
+          transactionHash
+        }
+        fundraiseClosed(order_by: { blockTimestamp: asc }, limit: 50) {
+          id
+          successful
+          blockNumber
+          blockTimestamp
+          transactionHash
+        }
+        appraisals(order_by: { blockTimestamp: asc }, limit: 200) {
+          id
+          percentComplete
+          appraisalHash
+          blockNumber
+          blockTimestamp
+          transactionHash
+        }
       }
       
       # Supporters count (all unique depositors)
@@ -352,4 +401,3 @@ export async function getAllProjects(): Promise<{ projects: Project[] }> {
     return { projects: [] };
   }
 }
-
