@@ -12,14 +12,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/components/ui/sonner';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ExternalLink, Plus, Edit, Upload, DollarSign, AlertTriangle, MessageSquare, Banknote, DoorClosed, Wallet, FileText, Target, Users, ShieldCheck } from 'lucide-react';
+import { Plus, Edit, Upload, DollarSign, AlertTriangle, MessageSquare, Banknote, DoorClosed, Wallet, FileText, Target, Users, ShieldCheck } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@/components/ui/drawer';
 import { Address, erc20At, fromStablecoin, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toStablecoin, fetchProjectRealtimeState, fetchProjectStaticConfig, getWindowEthereum, ProjectRealtimeState, ProjectStaticConfig } from '@/lib/eth';
 import { getCompleteProjectData, Project } from '@/lib/envio';
 import { contractsConfig, TOKEN_CONFIG, getTokenConfigByAddress } from '@/config/contracts';
 import { ipfsUpload } from '@/lib/ipfs';
 import { ethers } from 'ethers';
-import { buildProjectInsightsData } from '@/lib/project-insights';
+import { buildProjectInsightsData, type ProjectInsightsData } from '@/lib/project-insights';
 
 const ProjectDetails = () => {
   const { id } = useParams();
@@ -194,6 +194,38 @@ const ProjectDetails = () => {
 
   const withdrawableNow = Number(fromStablecoin(realtimeData?.withdrawableDevFunds ?? 0n));
 
+  const fallbackTotalRaised =
+    envioData?.deposits?.reduce<bigint>((acc, deposit) => {
+      try {
+        return acc + BigInt(deposit.amountPYUSD ?? '0');
+      } catch {
+        return acc;
+      }
+    }, 0n) ?? 0n;
+  const fallbackTotalDevWithdrawn =
+    envioData?.fundWithdrawn?.reduce<bigint>((acc, withdrawal) => {
+      try {
+        return acc + BigInt(withdrawal.amount ?? '0');
+      } catch {
+        return acc;
+      }
+    }, 0n) ?? 0n;
+  // Derive net yield by removing deposits and principal buckets from pool balance
+  const totalRaisedRaw = envioData?.projectState?.totalRaised
+    ? BigInt(envioData.projectState.totalRaised)
+    : fallbackTotalRaised;
+  const totalDevWithdrawnRaw = envioData?.projectState?.totalDevWithdrawn
+    ? BigInt(envioData.projectState.totalDevWithdrawn)
+    : fallbackTotalDevWithdrawn;
+  const poolBalanceRaw =
+    realtimeData?.poolBalance ??
+    (envioData?.projectState?.poolBalance ? BigInt(envioData.projectState.poolBalance) : 0n);
+  const principalBufferRaw =
+    realtimeData?.principalBuffer ??
+    (envioData?.projectState?.principalBuffer ? BigInt(envioData.projectState.principalBuffer) : 0n);
+  const interestAccruedRaw = poolBalanceRaw + totalDevWithdrawnRaw - totalRaisedRaw - principalBufferRaw;
+  const interestAccrued = Number(fromStablecoin(interestAccruedRaw > 0n ? interestAccruedRaw : 0n));
+
   const project = {
     name: staticConfig?.projectName?.trim() || 'Cornerstone Residences',
     status: 'Active',
@@ -213,6 +245,7 @@ const ProjectDetails = () => {
     currentPhase: phaseName(envioData?.projectState?.currentPhase ?? 0),
     milestones: 0,
     supporters: supporters ?? 0,
+    interestAccrued,
     description:
       'Redevelopment of a 120k sq. ft. mixed-use tower with ground floor retail, 140 market-rate apartments, and a rooftop amenity deck overlooking the South Lakefront Greenway.',
   };
@@ -221,6 +254,113 @@ const ProjectDetails = () => {
   const withdrawnPercentage = project.target > 0 ? (project.withdrawn / project.target) * 100 : 0;
   const minRaisePercentage = project.target > 0 ? (project.minTarget / project.target) * 100 : 0;
   const format = (n: number) => n.toLocaleString('en-US');
+  const formatDateLabel = (timestamp: number | null | undefined) => {
+    if (!timestamp || !Number.isFinite(timestamp)) return '';
+    return new Date(timestamp).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  };
+  const formatRelativeTime = (timestamp: number | null | undefined) => {
+    if (!timestamp || !Number.isFinite(timestamp)) return '';
+    const diffSeconds = (timestamp - Date.now()) / 1000;
+    const divisions: Array<{ amount: number; unit: Intl.RelativeTimeFormatUnit }> = [
+      { amount: 60, unit: 'second' },
+      { amount: 60, unit: 'minute' },
+      { amount: 24, unit: 'hour' },
+      { amount: 7, unit: 'day' },
+      { amount: 4.34524, unit: 'week' },
+      { amount: 12, unit: 'month' },
+      { amount: Infinity, unit: 'year' },
+    ];
+    try {
+      let duration = diffSeconds;
+      const formatter = new Intl.RelativeTimeFormat('en-US', { numeric: 'auto' });
+      for (const division of divisions) {
+        if (Math.abs(duration) < division.amount) {
+          return formatter.format(Math.round(duration), division.unit);
+        }
+        duration /= division.amount;
+      }
+    } catch {
+      // ignore if Intl.RelativeTimeFormat is unavailable
+    }
+    return '';
+  };
+  const describeTimelineEvent = (event: ProjectInsightsData['events'][number]) => {
+    switch (event.type) {
+      case 'deposit':
+        return event.subtitle ? `Investor deposits totaled ${event.subtitle}.` : 'Investor deposit recorded on-chain.';
+      case 'withdrawal':
+        return event.subtitle ? `Developer withdrawal processed for ${event.subtitle}.` : 'Developer withdrawal processed.';
+      case 'phase':
+        return `${typeof event.phaseId === 'number' ? `Phase ${event.phaseId + 1}` : 'Phase'} closed and documentation verified.`;
+      case 'reserve':
+        return event.subtitle ? `Interest reserve funded with ${event.subtitle}.` : 'Interest reserve funded on-chain.';
+      case 'proceeds':
+        return event.subtitle ? `Sales proceeds submitted totaling ${event.subtitle}.` : 'Sales proceeds submitted.';
+      case 'fundraise':
+        return 'Fundraise status updated and captured on-chain.';
+      case 'appraisal':
+        return 'Milestone appraisal submitted for verification.';
+      default:
+        return 'On-chain update recorded.';
+    }
+  };
+  const timelineEvents = useMemo(() => {
+    if (!insightsData?.events?.length) return [];
+    const eventTypeMap: Record<ProjectInsightsData['events'][number]['type'], 'milestone' | 'deliverable' | 'payout' | 'update'> = {
+      deposit: 'update',
+      withdrawal: 'payout',
+      phase: 'milestone',
+      reserve: 'update',
+      proceeds: 'payout',
+      fundraise: 'milestone',
+      appraisal: 'deliverable',
+    };
+    return insightsData.events
+      .slice()
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .map((event) => {
+        const dateLabel = formatDateLabel(event.timestamp);
+        const relative = formatRelativeTime(event.timestamp);
+        const metaParts = [relative, dateLabel, event.subtitle].filter(Boolean);
+        const meta = metaParts.length ? metaParts.join(' • ') : 'On-chain update';
+        return {
+          id: event.id,
+          type: eventTypeMap[event.type] ?? 'update',
+          title: event.title,
+          meta,
+          description: describeTimelineEvent(event),
+          actions: undefined as ReactNode | undefined,
+        };
+      });
+  }, [insightsData.events]);
+  const capitalSummaryMetrics = [
+    {
+      id: 'withdrawn',
+      icon: Banknote,
+      label: 'Withdrawn',
+      value: `${format(project.withdrawn)} ${projectTokenConfig.symbol}`,
+      skeletonClass: 'w-20',
+    },
+    {
+      id: 'min-raise',
+      icon: Target,
+      label: 'Min Raise',
+      value: `${format(project.minTarget)} ${projectTokenConfig.symbol}`,
+      skeletonClass: 'w-20',
+      hidden: !(loading || project.minTarget > 0),
+    },
+    {
+      id: 'unlockable',
+      icon: ShieldCheck,
+      label: 'Unlockable',
+      value: `${format(project.withdrawable)} ${projectTokenConfig.symbol}`,
+      skeletonClass: 'w-24',
+    },
+  ].filter((metric) => !metric.hidden);
 
   // Phases data (6 phases)
   const phaseNames = [
@@ -370,7 +510,7 @@ const ProjectDetails = () => {
       id: 'supporters',
       label: 'Supporters',
       value: format(project.supporters),
-      helper: `${format(Number(fromStablecoin(BigInt(envioData?.projectState?.accrualBase || '0'))))} ${projectTokenConfig.symbol} interest accrued`,
+      helper: `${format(project.interestAccrued)} ${projectTokenConfig.symbol} interest accrued`,
       icon: Users,
       tone: 'from-indigo-400/80 via-primary/60 to-accent/40',
     },
@@ -387,116 +527,6 @@ const ProjectDetails = () => {
     Current: 'bg-primary',
     Upcoming: 'bg-slate-300 dark:bg-slate-600',
   } as const;
-
-  const timelineEvents: Array<{
-    id: string;
-    type: 'milestone' | 'deliverable' | 'payout' | 'update' | 'proposal' | 'dispute';
-    title: string;
-    meta: string;
-    description: ReactNode;
-    actions?: ReactNode;
-  }> = [
-    {
-      id: 'fundraise-opened',
-      type: 'update',
-      title: 'Fundraise Opened',
-      meta: 'Opened 3 months ago • Deposits enabled until deadline',
-      description: 'Deposits accepted in Phase 0 until the fundraise deadline or manual closure by the developer.',
-    },
-    {
-      id: 'minimum-reached',
-      type: 'update',
-      title: 'Minimum Reached',
-      meta: '2 months ago • Min raise threshold met',
-      description: 'The project is now eligible for a successful close when fundraising ends.',
-    },
-    {
-      id: 'target-reached',
-      type: 'update',
-      title: 'Target Reached',
-      meta: '6 weeks ago • Max raise goal achieved',
-      description: 'Funding goal hit; further deposits may be paused at developer discretion.',
-    },
-    {
-      id: 'fundraise-closed',
-      type: 'milestone',
-      title: 'Fundraise Closed (Successful)',
-      meta: '41 days ago • Phase 1 started',
-      description: 'Phase 0 closed by developer. Fundraise succeeded and Phase 1 is now active.',
-    },
-    {
-      id: 'reserve-funded',
-      type: 'payout',
-      title: 'Reserve Funded',
-      meta: `40 days ago • Developer added 100,000 ${projectTokenConfig.symbol}`,
-      description: 'Interest reserve topped up to enable on-chain APR accrual.',
-    },
-    {
-      id: 'phase-1-closed',
-      type: 'milestone',
-      title: 'Phase 1 Closed',
-      meta: '30 days ago • Docs verified; cap unlocked',
-      description: 'Phase 1 requirements met. Associated withdrawal cap is now part of unlocked cumulative limits.',
-    },
-    {
-      id: 'developer-withdrawal',
-      type: 'payout',
-      title: 'Developer Withdrawal',
-      meta: `29 days ago • 50,000 ${projectTokenConfig.symbol} withdrawn under caps`,
-      description: 'Funds transferred to developer wallet within cumulative unlocked limits.',
-      actions: (
-        <a
-          href="#"
-          className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary/90 hover:underline"
-        >
-          View transaction <ExternalLink className="h-3 w-3" />
-        </a>
-      ),
-    },
-    {
-      id: 'phase-2-closed',
-      type: 'milestone',
-      title: 'Phase 2 Closed',
-      meta: '20 days ago • Docs verified; cap unlocked',
-      description: 'Phase 2 complete with approved documentation.',
-    },
-    {
-      id: 'sales-proceeds',
-      type: 'payout',
-      title: 'Sales Proceeds Submitted',
-      meta: `10 days ago • 25,000 ${projectTokenConfig.symbol} added to pool`,
-      description: 'Proceeds deposited; principal buffer updated and excess will distribute pro-rata when applicable.',
-      actions: (
-        <a
-          href="#"
-          className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary/90 hover:underline"
-        >
-          View transaction <ExternalLink className="h-3 w-3" />
-        </a>
-      ),
-    },
-    {
-      id: 'site-acquired',
-      type: 'update',
-      title: 'Site/Asset Acquired',
-      meta: '9 days ago • Deed recorded',
-      description: 'Title transferred to SPV. Deed/IPFS hash: 0x8b…f1c2.',
-    },
-    {
-      id: 'permit-approved',
-      type: 'update',
-      title: 'Permit Approved',
-      meta: '7 days ago • City of Riverview • Permit #A-20431',
-      description: 'Building and zoning permits approved; inspections scheduled.',
-    },
-    {
-      id: 'groundbreaking',
-      type: 'update',
-      title: 'Groundbreaking Started',
-      meta: 'Today • Contractor on-site',
-      description: 'Site work mobilized; grading and utilities trenching underway.',
-    },
-  ];
 
   type Doc = { id: string; name: string; type: 'image' | 'pdf'; url: string; hash: string };
   const [phaseDocuments, setPhaseDocuments] = useState<Doc[][]>([[], [], [], [], [], []]);
@@ -552,6 +582,7 @@ const ProjectDetails = () => {
 
   const tabs = [
     { id: 'milestones', label: 'Phases' },
+    { id: 'flow-insights', label: 'Flow Insights' },
     { id: 'verification', label: 'Documents' },
     { id: 'timeline', label: 'Timeline' },
   ];
@@ -567,7 +598,7 @@ const ProjectDetails = () => {
         <div className="container mx-auto px-4 py-10">
           <div className="space-y-8">
             <div className="rounded-3xl border border-white/30 bg-white/60 p-6 shadow-soft backdrop-blur dark:border-white/10 dark:bg-slate-950/35">
-              <div className="flex flex-col gap-6 xl:grid xl:grid-cols-[minmax(0,1fr)_380px] xl:items-start xl:gap-8">
+              <div className="flex flex-col gap-6">
                 <div className="flex flex-col gap-6 xl:min-w-0">
                   <div className="flex flex-wrap items-center justify-between gap-4">
                     <RoleSelector currentRole={currentRole} onRoleChange={setCurrentRole} />
@@ -653,12 +684,6 @@ const ProjectDetails = () => {
                       </div>
                     )}
                 </div>
-                <ProjectInsightsPanel
-                  loading={loading}
-                  data={insightsData}
-                  tokenSymbol={projectTokenConfig.symbol}
-                  className="xl:min-w-[360px]"
-                />
               </div>
             </div>
           </div>
@@ -711,21 +736,24 @@ const ProjectDetails = () => {
                       </div>
                     )}
                   </div>
-                  <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-slate-300">
-                    <span className="inline-flex items-center gap-1 rounded-full bg-white/60 px-2 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.25em] text-slate-600 dark:bg-slate-800/70 dark:text-slate-200">
-                      <Banknote className="h-3 w-3" />
-                      {loading ? <Skeleton className="inline-block h-3 w-20" /> : `${format(project.withdrawn)} Withdrawn`}
-                    </span>
-                    {(loading || project.minTarget > 0) && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-white/60 px-2 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.25em] text-slate-600 dark:bg-slate-800/70 dark:text-slate-200">
-                        <Target className="h-3 w-3" />
-                        {loading ? <Skeleton className="inline-block h-3 w-20" /> : `Min Raise ${format(project.minTarget)}`}
-                      </span>
-                    )}
-                    <span className="inline-flex items-center gap-1 rounded-full bg-white/60 px-2 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.25em] text-slate-600 dark:bg-slate-800/70 dark:text-slate-200">
-                      <ShieldCheck className="h-3 w-3" />
-                      {loading ? <Skeleton className="inline-block h-3 w-24" /> : `${format(project.withdrawable)} ${projectTokenConfig.symbol} Unlockable`}
-                    </span>
+                  <div className="flex w-full flex-col gap-3 text-slate-600 dark:text-slate-300 sm:flex-row">
+                    {capitalSummaryMetrics.map((metric) => {
+                      const Icon = metric.icon;
+                      return (
+                        <div
+                          key={metric.id}
+                          className="flex flex-1 items-center justify-between gap-3 rounded-full bg-white/60 px-3 py-2 text-[0.65rem] font-semibold dark:bg-slate-800/70 dark:text-slate-200 sm:min-w-0"
+                        >
+                          <span className="flex items-center gap-2 uppercase tracking-[0.25em]">
+                            <Icon className="h-3 w-3" />
+                            {metric.label}
+                          </span>
+                          <span className="flex items-center justify-end whitespace-nowrap text-right text-slate-700 tracking-[0.1em] dark:text-white">
+                            {loading ? <Skeleton className={`h-3 ${metric.skeletonClass}`} /> : metric.value}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -784,35 +812,57 @@ const ProjectDetails = () => {
               ))}
             </div>
 
+            {activeTab === 'flow-insights' && (
+              <div className="rounded-3xl border border-slate-200/70 bg-white/70 p-6 shadow-soft dark:border-slate-800 dark:bg-slate-900/60">
+                <div className="-mx-2 overflow-x-auto px-2 pb-2">
+                  <ProjectInsightsPanel
+                    loading={loading}
+                    data={insightsData}
+                    tokenSymbol={projectTokenConfig.symbol}
+                    className="min-w-[720px] w-full"
+                  />
+                </div>
+              </div>
+            )}
+
             {activeTab === 'timeline' && (
               <div className="rounded-3xl border border-slate-200/70 bg-white/70 p-6 shadow-soft dark:border-slate-800 dark:bg-slate-900/60">
                 <div className="relative">
-                  <div className="pointer-events-none absolute left-6 top-3 h-[calc(100%-1.5rem)] w-px bg-gradient-to-b from-primary/40 via-slate-300/40 to-transparent dark:from-primary/50 dark:via-slate-700/60 md:left-1/2 md:-translate-x-1/2" />
-                  <div className="space-y-10">
-                    {timelineEvents.map((event, idx) => (
-                      <div
-                        key={event.id}
-                        className={`relative flex gap-6 pl-12 md:pl-0 ${idx % 2 === 1 ? 'md:justify-end' : 'md:justify-start'}`}
-                      >
-                        <div className="absolute left-5 top-4 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white bg-primary shadow-soft ring-4 ring-primary/25 dark:border-slate-900 md:left-1/2 md:-translate-x-1/2" />
-                        <div
-                          className={`relative w-full md:max-w-[45%] ${
-                            idx % 2 === 1 ? 'md:translate-x-6' : 'md:-translate-x-6'
-                          }`}
-                        >
-                          <TimelineCard
-                            className="border border-slate-200/70 bg-white/85 p-5 shadow-soft transition-all hover:-translate-y-1 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900/70"
-                            type={event.type}
-                            title={event.title}
-                            meta={event.meta}
-                            actions={event.actions}
+                  {timelineEvents.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center gap-2 py-10 text-center text-sm text-slate-500 dark:text-slate-300">
+                      <span>No on-chain activity recorded yet.</span>
+                      <span>Deployments, withdrawals, and updates will appear here automatically.</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="pointer-events-none absolute left-6 top-3 h-[calc(100%-1.5rem)] w-px bg-gradient-to-b from-primary/40 via-slate-300/40 to-transparent dark:from-primary/50 dark:via-slate-700/60 md:left-1/2 md:-translate-x-1/2" />
+                      <div className="space-y-10">
+                        {timelineEvents.map((event, idx) => (
+                          <div
+                            key={event.id}
+                            className={`relative flex gap-6 pl-12 md:pl-0 ${idx % 2 === 1 ? 'md:justify-end' : 'md:justify-start'}`}
                           >
-                            {event.description}
-                          </TimelineCard>
-                        </div>
+                            <div className="absolute left-5 top-4 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white bg-primary shadow-soft ring-4 ring-primary/25 dark:border-slate-900 md:left-1/2 md:-translate-x-1/2" />
+                            <div
+                              className={`relative w-full md:max-w-[45%] ${
+                                idx % 2 === 1 ? 'md:translate-x-6' : 'md:-translate-x-6'
+                              }`}
+                            >
+                              <TimelineCard
+                                className="border border-slate-200/70 bg-white/85 p-5 shadow-soft transition-all hover:-translate-y-1 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900/70"
+                                type={event.type}
+                                title={event.title}
+                                meta={event.meta}
+                                actions={event.actions}
+                              >
+                                {event.description}
+                              </TimelineCard>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}

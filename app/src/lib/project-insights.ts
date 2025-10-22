@@ -347,32 +347,6 @@ function deriveEventMarkers({
   const symbol = tokenSymbol || "tokens";
   const markers: InsightEventMarker[] = [];
 
-  const deposits = project.deposits || [];
-  if (deposits.length > 0) {
-    const first = deposits[0];
-    const last = deposits[deposits.length - 1];
-    pushMarker(markers, {
-      id: `deposit-${first.id}`,
-      type: "deposit",
-      timestamp: parseTimestamp(first.blockTimestamp),
-      title: "First Deposit",
-      subtitle: formatAmountSubtitle(first.amountPYUSD, symbol),
-      amount: toTokenAmount(first.amountPYUSD),
-      tone: "primary",
-    });
-    if (last.id !== first.id) {
-      pushMarker(markers, {
-        id: `deposit-${last.id}`,
-        type: "deposit",
-        timestamp: parseTimestamp(last.blockTimestamp),
-        title: "Latest Deposit",
-        subtitle: formatAmountSubtitle(last.amountPYUSD, symbol),
-        amount: toTokenAmount(last.amountPYUSD),
-        tone: "primary",
-      });
-    }
-  }
-
   const withdrawals = project.fundWithdrawn || [];
   if (withdrawals.length > 0) {
     const recent = withdrawals.slice(-2);
