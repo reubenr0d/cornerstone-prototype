@@ -5,7 +5,7 @@ import type { ProjectInsightsData } from "@/lib/project-insights";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Area, CartesianGrid, ComposedChart, ReferenceArea, XAxis, YAxis } from "recharts";
+import { Area, CartesianGrid, ComposedChart, ReferenceArea, ReferenceLine, XAxis, YAxis } from "recharts";
 import type { TooltipProps } from "recharts";
 
 type Props = {
@@ -26,16 +26,12 @@ const minecraftColors = {
 
 const chartConfig = {
   deposits: {
-    label: "Cumulative Deposits",
+    label: "Deposits",
     color: minecraftColors.leaf,
   },
   withdrawals: {
-    label: "Cumulative Withdrawals",
+    label: "Withdrawals",
     color: minecraftColors.dirt,
-  },
-  net: {
-    label: "Net Exposure",
-    color: minecraftColors.water,
   },
 } as const;
 
@@ -72,7 +68,6 @@ function formatAmount(value: number, symbol: string) {
 export function ProjectInsightsPanel({ loading, data, tokenSymbol, className }: Props) {
   const gradientDepositsId = useId().replace(/:/g, "") + "-deposits";
   const gradientWithdrawalsId = useId().replace(/:/g, "") + "-withdrawals";
-  const gradientNetId = useId().replace(/:/g, "") + "-net";
 
   const points = data.points.length
     ? data.points
@@ -80,10 +75,10 @@ export function ProjectInsightsPanel({ loading, data, tokenSymbol, className }: 
 
   const maxSeries = points.reduce(
     (acc, point) =>
-      Math.max(acc, point.cumulativeDeposits, point.cumulativeWithdrawals, Math.abs(point.netExposure)),
+      Math.max(acc, point.cumulativeDeposits, point.cumulativeWithdrawals),
     0,
   );
-  const yPad = maxSeries > 0 ? maxSeries * 0.12 : 10;
+  const yPad = maxSeries > 0 ? maxSeries * 0.3 : 10;
 
   const domainSpan = Math.max(1, data.domain.end - data.domain.start);
   return (
@@ -106,8 +101,9 @@ export function ProjectInsightsPanel({ loading, data, tokenSymbol, className }: 
             <span className="text-xs text-stone-600 dark:text-stone-300/80">Awaiting activity</span>
           )}
         </div>
+        
         <p className="text-sm text-emerald-800/90 dark:text-emerald-200">
-          Cumulative deposits, developer withdrawals, and phase unlocks rendered over time.
+          Cumulative deposits, developer withdrawals, and phase unlocks rendered over time. Horizontal lines show phase withdrawal caps.
         </p>
       </header>
 
@@ -134,10 +130,6 @@ export function ProjectInsightsPanel({ loading, data, tokenSymbol, className }: 
                     <stop offset="5%" stopColor={minecraftColors.dirt} stopOpacity={0.52} />
                     <stop offset="95%" stopColor={minecraftColors.dirt} stopOpacity={0.08} />
                   </linearGradient>
-                  <linearGradient id={gradientNetId} x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="5%" stopColor={minecraftColors.water} stopOpacity={0.55} />
-                    <stop offset="95%" stopColor={minecraftColors.water} stopOpacity={0.08} />
-                  </linearGradient>
                 </defs>
 
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -157,10 +149,38 @@ export function ProjectInsightsPanel({ loading, data, tokenSymbol, className }: 
                   );
                 })}
 
+                {/* Horizontal lines for phase caps - spanning full graph width */}
+                {data.phases.map((phase) => {
+                  if (phase.capAmount <= 0) return null;
+                  const isCurrentOrPast = phase.status === "current" || phase.status === "past";
+                  return (
+                    <ReferenceLine
+                      key={`cap-line-${phase.phaseId}`}
+                      y={phase.capAmount}
+                      x1={data.domain.start}
+                      x2={data.domain.end}
+                      stroke={isCurrentOrPast ? minecraftColors.gold : minecraftColors.stone}
+                      strokeWidth={isCurrentOrPast ? 3 : 2}
+                      strokeDasharray={isCurrentOrPast ? "8 4" : "4 4"}
+                      strokeOpacity={isCurrentOrPast ? 1 : 0.7}
+                      label={{
+                        value: `${phase.label}: ${Math.round(phase.capAmount).toLocaleString()} ${tokenSymbol}`,
+                        position: "topRight",
+                        style: {
+                          fontSize: "10px",
+                          fill: isCurrentOrPast ? minecraftColors.gold : minecraftColors.stone,
+                          fontWeight: isCurrentOrPast ? "bold" : "normal",
+                          textShadow: "1px 1px 2px rgba(0,0,0,0.3)",
+                        },
+                      }}
+                    />
+                  );
+                })}
+
                 <XAxis
                   dataKey="timestamp"
                   type="number"
-                  domain={[data.domain.start, data.domain.end]}
+                  domain={points.length > 0 ? [points[0].timestamp, points[points.length - 1].timestamp] : [data.domain.start, data.domain.end]}
                   tickFormatter={formatAxisLabel}
                   tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
                   axisLine={false}
@@ -190,15 +210,6 @@ export function ProjectInsightsPanel({ loading, data, tokenSymbol, className }: 
                   strokeWidth={2}
                   fill={`url(#${gradientWithdrawalsId})`}
                   name="withdrawals"
-                  isAnimationActive={false}
-                />
-                <Area
-                  dataKey="netExposure"
-                  type="monotone"
-                  stroke={minecraftColors.water}
-                  strokeWidth={2}
-                  fill={`url(#${gradientNetId})`}
-                  name="net"
                   isAnimationActive={false}
                 />
 

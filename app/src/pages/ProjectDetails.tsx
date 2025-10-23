@@ -344,19 +344,19 @@ const ProjectDetails = () => {
       skeletonClass: 'w-20',
     },
     {
+      id: 'unlockable',
+      icon: ShieldCheck,
+      label: 'Unlockable',
+      value: `${format(project.withdrawable)} ${projectTokenConfig.symbol}`,
+      skeletonClass: 'w-24',
+    },
+    {
       id: 'min-raise',
       icon: Target,
       label: 'Min Raise',
       value: `${format(project.minTarget)} ${projectTokenConfig.symbol}`,
       skeletonClass: 'w-20',
       hidden: !(loading || project.minTarget > 0),
-    },
-    {
-      id: 'unlockable',
-      icon: ShieldCheck,
-      label: 'Unlockable',
-      value: `${format(project.withdrawable)} ${projectTokenConfig.symbol}`,
-      skeletonClass: 'w-24',
     },
   ].filter((metric) => !metric.hidden);
 
@@ -668,17 +668,6 @@ const ProjectDetails = () => {
                     </p>
                   </div>
                 </div>
-
-                {isDeveloper && (
-                  <div className="flex flex-wrap items-center gap-3">
-                    <RoleGate currentRole={currentRole} allowedRoles={['developer']}>
-                      <Button className={`${minecraftNeutralButtonClass} h-11 px-5 gap-2`}>
-                        <MessageSquare className="h-5 w-5" />
-                        Post Update
-                      </Button>
-                    </RoleGate>
-                  </div>
-                )}
               </div>
             </div>
           </div>
