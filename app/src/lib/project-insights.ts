@@ -32,8 +32,10 @@ export type InsightChartPoint = {
   isoLabel: string;
   dailyDeposits: number;
   dailyWithdrawals: number;
+  dailyReserveFunded: number;
   cumulativeDeposits: number;
   cumulativeWithdrawals: number;
+  cumulativeReserveFunded: number;
   netExposure: number;
 };
 
@@ -110,9 +112,10 @@ export function buildProjectInsightsData({
 
   const deposits = (project.deposits || []).slice().sort(byTimestamp);
   const withdrawals = (project.fundWithdrawn || []).slice().sort(byTimestamp);
+  const reserveFunded = (project.reserveFunded || []).slice().sort(byTimestamp);
   
-  // Create individual events for each deposit and withdrawal
-  const allEvents: Array<{ timestamp: number; type: 'deposit' | 'withdrawal'; amount: number }> = [];
+  // Create individual events for each deposit, withdrawal, and reserve funding
+  const allEvents: Array<{ timestamp: number; type: 'deposit' | 'withdrawal' | 'reserveFunded'; amount: number }> = [];
   
   for (const event of deposits) {
     const ts = parseTimestamp(event.blockTimestamp);
@@ -134,18 +137,31 @@ export function buildProjectInsightsData({
     });
   }
 
+  for (const event of reserveFunded) {
+    const ts = parseTimestamp(event.blockTimestamp);
+    if (ts === null) continue;
+    allEvents.push({
+      timestamp: ts,
+      type: 'reserveFunded',
+      amount: toTokenAmount(event.amount),
+    });
+  }
+
   // Sort all events by timestamp
   allEvents.sort((a, b) => a.timestamp - b.timestamp);
 
   const points: InsightChartPoint[] = [];
   let runningDeposits = 0;
   let runningWithdrawals = 0;
+  let runningReserveFunded = 0;
 
   for (const event of allEvents) {
     if (event.type === 'deposit') {
       runningDeposits += event.amount;
-    } else {
+    } else if (event.type === 'withdrawal') {
       runningWithdrawals += event.amount;
+    } else if (event.type === 'reserveFunded') {
+      runningReserveFunded += event.amount;
     }
     
     points.push({
@@ -153,8 +169,10 @@ export function buildProjectInsightsData({
       isoLabel: new Date(event.timestamp).toISOString(),
       dailyDeposits: event.type === 'deposit' ? event.amount : 0,
       dailyWithdrawals: event.type === 'withdrawal' ? event.amount : 0,
+      dailyReserveFunded: event.type === 'reserveFunded' ? event.amount : 0,
       cumulativeDeposits: runningDeposits,
       cumulativeWithdrawals: runningWithdrawals,
+      cumulativeReserveFunded: runningReserveFunded,
       netExposure: runningDeposits - runningWithdrawals,
     });
   }
