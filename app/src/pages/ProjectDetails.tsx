@@ -1260,7 +1260,26 @@ const ProjectDetails = () => {
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-[#5D4E37]">Claimable Interest</span>
                         <span className="font-bold">
-                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.claimableInterest ? Number(fromStablecoin(realtimeData.claimableInterest)).toLocaleString('en-US') : 0} ${projectTokenConfig.symbol}`}
+                        {loading ? (
+                          <Skeleton className="inline-block h-4 w-20" />
+                        ) : (() => {
+                            const interestValue = Number(fromStablecoin(realtimeData?.claimableInterest || 0));
+                            let displayValue;
+
+                            if (interestValue === 0) {
+                              displayValue = "0";
+                            } else if (interestValue < 0.001) {
+                              displayValue = "<0.001";
+                            } else {
+                              displayValue = interestValue.toLocaleString('en-US', {
+                                minimumFractionDigits: 3,
+                                maximumFractionDigits: 3,
+                              });
+                            }
+
+                            return `${displayValue} ${projectTokenConfig.symbol}`;
+                          })()
+                        }
                         </span>
                       </div>
                       <Button variant="outline" className={`${minecraftNeutralButtonClass} w-full mt-1`} disabled={isClaimingInterest} onClick={async ()=>{
