@@ -114,6 +114,17 @@ const ProjectDetails = () => {
       setNexusSDK(sdk);
   }
 
+  const insightsData = useMemo(
+    () =>
+      buildProjectInsightsData({
+        project: envioData,
+        staticConfig,
+        tokenSymbol: projectTokenConfig.symbol,
+        now: Date.now(),
+      }),
+    [envioData, staticConfig, projectTokenConfig.symbol],
+  );
+
   async function connectWallet() {
     try {
       const signer = await getSigner();
