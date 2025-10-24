@@ -20,9 +20,44 @@ export const MinecraftProjectCard = ({ project, supportersCount = 0 }: Minecraft
   // Calculate progress percentage
   const calculateProgress = () => {
     if (!state) return 0;
-    const raised = Number(state.totalRaised);
-    const target = raised * 1.2; // Estimate based on current phase
-    return Math.min((raised / target) * 100, 100);
+    
+    const totalRaised = BigInt(state.totalRaised || '0');
+    
+    // If no funds raised, return 0
+    if (totalRaised === BigInt(0)) return 0;
+    
+    // If fundraise is closed, show 100% if successful
+    if (state.fundraiseClosed && state.fundraiseSuccessful) {
+      return 100;
+    }
+    
+    // Get phase caps from phaseConfigurations
+    const phaseConfig = project.phaseConfigurations?.[0];
+    
+    if (!phaseConfig || !phaseConfig.phaseCaps || phaseConfig.phaseCaps.length === 0) {
+      // Fallback: if no phase configuration, show progress based on a rough estimate
+      // Show some progress if funds are raised (rough estimate: 10% per 100k PYUSD)
+      const raisedInPYUSD = Number(totalRaised) / 1e6;
+      return Math.min(raisedInPYUSD / 10, 100);
+    }
+    
+    const currentPhase = state.currentPhase;
+    
+    // Calculate total cap up to and including current phase
+    let capUpToCurrent = BigInt(0);
+    for (let i = 0; i <= currentPhase && i < phaseConfig.phaseCaps.length; i++) {
+      capUpToCurrent += BigInt(phaseConfig.phaseCaps[i] || '0');
+    }
+    
+    if (capUpToCurrent === BigInt(0)) {
+      // If cap is 0, show progress based on rough estimate
+      const raisedInPYUSD = Number(totalRaised) / 1e6;
+      return Math.min(raisedInPYUSD / 10, 100);
+    }
+    
+    // Calculate percentage
+    const percentage = Number((totalRaised * BigInt(10000)) / capUpToCurrent) / 100;
+    return Math.min(percentage, 100);
   };
 
   const progress = calculateProgress();

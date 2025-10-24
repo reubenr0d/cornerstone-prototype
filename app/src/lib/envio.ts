@@ -398,7 +398,10 @@ export async function getCompleteProjectData(
 }
 
 
-export async function getAllProjects(): Promise<{ projects: Project[] }> {
+export async function getAllProjects(): Promise<{ 
+  projects: Project[];
+  supportersCounts: Map<string, number>;
+}> {
   const query = gql`
     query GetAllProjects {
       Project(order_by: { createdAtTimestamp: desc }, limit: 100) {
@@ -411,19 +414,74 @@ export async function getAllProjects(): Promise<{ projects: Project[] }> {
         projectState {
           id
           currentPhase
+          lastClosedPhase
           totalRaised
           fundraiseClosed
           fundraiseSuccessful
+          phases(order_by: { phaseId: asc }) {
+            id
+            phaseId
+            phaseCap
+            phaseWithdrawn
+            aprBps
+            duration
+            capBps
+            isClosed
+            closedAtBlock
+            closedAtTimestamp
+          }
         }
+        phaseConfigurations(order_by: { blockTimestamp: desc }, limit: 1) {
+          id
+          aprBps
+          durations
+          capBps
+          phaseCaps
+          blockNumber
+          blockTimestamp
+          transactionHash
+        }
+      }
+      # Get all depositor metrics to count unique supporters per project
+      DepositorMetrics {
+        projectAddress
+        user
       }
     }
   `;
   
   try {
-    const result = await envioClient.request<{ Project: Project[] }>(query);
-    return { projects: result.Project };
+    const result = await envioClient.request<{ 
+      Project: Project[];
+      DepositorMetrics: { projectAddress: string; user: string }[];
+    }>(query);
+    
+    // Count unique supporters per project
+    const supportersCounts = new Map<string, number>();
+    const projectSupporters = new Map<string, Set<string>>();
+    
+    for (const metrics of result.DepositorMetrics || []) {
+      const projectAddr = metrics.projectAddress.toLowerCase();
+      if (!projectSupporters.has(projectAddr)) {
+        projectSupporters.set(projectAddr, new Set());
+      }
+      projectSupporters.get(projectAddr)!.add(metrics.user.toLowerCase());
+    }
+    
+    // Convert Sets to counts
+    for (const [projectAddr, supporters] of projectSupporters.entries()) {
+      supportersCounts.set(projectAddr, supporters.size);
+    }
+    
+    return { 
+      projects: result.Project,
+      supportersCounts 
+    };
   } catch (error) {
     console.error('Error fetching all projects from Envio:', error);
-    return { projects: [] };
+    return { 
+      projects: [],
+      supportersCounts: new Map()
+    };
   }
 }
