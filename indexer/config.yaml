@@ -26,10 +26,10 @@ contracts:
 
 networks:
   - id: 11155111
-    start_block: 9432377
+    start_block: 9481166
     contracts:
       - name: ProjectRegistry
-        address: "0x832d9D61E076791Ae7c625C27Ab1Ca4D7499f6cb"
+        address: "0xe45788d572878C0ddaA1ecbE4021816703F6D2BA"
       
       - name: CornerstoneProject
         address: "0x0000000000000000000000000000000000000000" # wildcard - indexes all instances
