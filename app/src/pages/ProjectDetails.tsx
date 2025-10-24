@@ -18,7 +18,7 @@ import { Address, erc20At, fromStablecoin, getAccount, getProvider, getRpcProvid
 import { getCompleteProjectData, Project } from '@/lib/envio';
 import { contractsConfig, TOKEN_CONFIG, getTokenConfigByAddress } from '@/config/contracts';
 import { NexusNetwork, NexusSDK, type SUPPORTED_CHAINS_IDS } from '@avail-project/nexus-core';
-import { ipfsUpload } from '@/lib/ipfs';
+import { ipfsUpload, fetchProjectMetadata, resolveImageUri, ProjectMetadata } from '@/lib/ipfs';
 import { ethers, parseUnits } from 'ethers';
 import { buildProjectInsightsData, type ProjectInsightsData } from '@/lib/project-insights';
 import { CornerstoneProjectABI } from '@/abi';
@@ -98,6 +98,7 @@ const ProjectDetails = () => {
   const [staticConfig, setStaticConfig] = useState<ProjectStaticConfig | null>(null);
   const [supporters, setSupporters] = useState<number>(0);
   const [loading, setLoading] = useState(true);
+  const [metadata, setMetadata] = useState<ProjectMetadata | null>(null);
 
   const resetDepositModal = () => {
     setDepositModalOpen(false);
@@ -297,6 +298,20 @@ const ProjectDetails = () => {
       setRealtimeData(realtimeResult);
       setStaticConfig(staticResult);
       setSupporters(envioResult.supportersCount);
+      
+      // Fetch metadata from IPFS if available
+      if (staticResult.metadataURI) {
+        try {
+          const projectMetadata = await fetchProjectMetadata(staticResult.metadataURI);
+          setMetadata(projectMetadata);
+        } catch (err) {
+          console.error('Failed to fetch project metadata:', err);
+          // Don't fail the whole page if metadata fetch fails
+          setMetadata(null);
+        }
+      } else {
+        setMetadata(null);
+      }
     } catch (e) {
       console.error('Error refreshing project data:', e);
       toast.error('Failed to load project data');
@@ -378,7 +393,7 @@ const ProjectDetails = () => {
   const interestAccrued = Number(fromStablecoin(interestAccruedRaw > 0n ? interestAccruedRaw : 0n));
 
   const project = {
-    name: staticConfig?.projectName?.trim() || 'Cornerstone Residences',
+    name: metadata?.name || staticConfig?.projectName?.trim() || 'Cornerstone Residences',
     status: 'Active',
     contractAddress: projectAddress ?? '0x',
     tokenAddress: envioData?.tokenAddress ?? staticConfig?.token ?? '0x',
@@ -397,8 +412,8 @@ const ProjectDetails = () => {
     milestones: 0,
     supporters: supporters ?? 0,
     interestAccrued,
-    description:
-      'Redevelopment of a 120k sq. ft. mixed-use tower with ground floor retail, 140 market-rate apartments, and a rooftop amenity deck overlooking the South Lakefront Greenway.',
+    description: metadata?.description || 'No description available',
+    imageUri: metadata?.imageURI || '',
   };
 
   const raisedPercentage = project.target > 0 ? (project.raised / project.target) * 100 : 0;
@@ -665,9 +680,9 @@ const ProjectDetails = () => {
   ] as const;
 
   const phaseStatusBadge = {
-    Past: 'border-4 border-[#2D572D] bg-[#55AA55] text-white shadow-[2px_2px_0_rgba(0,0,0,0.25)]',
-    Current: 'border-4 border-[#AA7700] bg-[#FFD700] text-[#2D1B00] shadow-[2px_2px_0_rgba(0,0,0,0.25)]',
-    Upcoming: 'border-4 border-[#3D2817] bg-[#8B7355] text-white shadow-[2px_2px_0_rgba(0,0,0,0.25)]',
+    Past: 'border-2 border-[#2D572D] bg-[#55AA55] text-white',
+    Current: 'border-2 border-[#AA7700] bg-[#FFD700] text-[#2D1B00]',
+    Upcoming: 'border-2 border-[#3D2817] bg-[#8B7355] text-white',
   } as const;
 
   const phaseStatusDot = {
@@ -729,20 +744,20 @@ const ProjectDetails = () => {
   const isDeveloper = currentRole === 'developer';
 
   const minecraftPanelClass =
-    'rounded-lg border-4 border-[#654321] bg-[#F5DEB3] shadow-[6px_6px_0_rgba(0,0,0,0.35)]';
+    'rounded border-2 border-[#654321] bg-[#F5DEB3]';
   const minecraftSubPanelClass =
-    'rounded-lg border-4 border-[#654321] bg-[#EBD8B0] shadow-[4px_4px_0_rgba(0,0,0,0.3)]';
-  const minecraftHeaderClass = 'border-b-4 border-[#654321] bg-[#C4A484] px-6 py-4';
+    'rounded border-2 border-[#654321] bg-[#EBD8B0]';
+  const minecraftHeaderClass = 'border-b-2 border-[#654321] bg-[#C4A484] px-5 py-3';
   const minecraftStatPillClass =
-    'flex flex-1 flex-col gap-2 rounded-lg border-4 border-[#654321] bg-[#F8E3B5] px-4 py-3 text-xs font-bold text-[#2D1B00] shadow-[3px_3px_0_rgba(0,0,0,0.3)] sm:min-w-0 min-w-0';
+    'flex flex-1 flex-col gap-2 rounded border-2 border-[#654321] bg-[#F8E3B5] px-3 py-2 text-xs font-bold text-[#2D1B00] sm:min-w-0 min-w-0';
   const minecraftTabButtonBase =
     'px-6 py-3 font-bold text-sm border-4 shadow-[2px_2px_0_rgba(0,0,0,0.3)] transition-all uppercase tracking-[0.2em] rounded-none';
   const minecraftPrimaryButtonClass =
-    'rounded-none bg-[#5599FF] hover:bg-[#4488EE] border-4 border-[#2D5788] text-white font-bold shadow-[3px_3px_0_rgba(0,0,0,0.3)] hover:shadow-[5px_5px_0_rgba(0,0,0,0.3)] active:translate-y-1 active:shadow-[1px_1px_0_rgba(0,0,0,0.3)] disabled:opacity-60 disabled:cursor-not-allowed';
+    'rounded-sm bg-[#5599FF] hover:bg-[#4488EE] border-2 border-[#2D5788] text-white font-bold disabled:opacity-60 disabled:cursor-not-allowed';
   const minecraftSuccessButtonClass =
-    'rounded-none bg-[#55AA55] hover:bg-[#449944] border-4 border-[#2D572D] text-white font-bold shadow-[3px_3px_0_rgba(0,0,0,0.3)] hover:shadow-[5px_5px_0_rgba(0,0,0,0.3)] active:translate-y-1 active:shadow-[1px_1px_0_rgba(0,0,0,0.3)] disabled:opacity-60 disabled:cursor-not-allowed';
+    'rounded-sm bg-[#55AA55] hover:bg-[#449944] border-2 border-[#2D572D] text-white font-bold disabled:opacity-60 disabled:cursor-not-allowed';
   const minecraftNeutralButtonClass =
-    'rounded-none bg-[#D2B48C] hover:bg-[#C0A479] border-4 border-[#654321] text-[#2D1B00] font-bold shadow-[3px_3px_0_rgba(0,0,0,0.3)] hover:shadow-[5px_5px_0_rgba(0,0,0,0.3)] active:translate-y-1 active:shadow-[1px_1px_0_rgba(0,0,0,0.3)] disabled:opacity-60 disabled:cursor-not-allowed';
+    'rounded-sm bg-[#D2B48C] hover:bg-[#C0A479] border-2 border-[#654321] text-[#2D1B00] font-bold disabled:opacity-60 disabled:cursor-not-allowed';
   const minecraftLinkClass =
     'font-mono text-xs text-[#2D1B00] underline decoration-4 decoration-[#FFD700] underline-offset-4 hover:text-[#2D1B00] hover:decoration-[#FFEE99]';
   const minecraftBadgeClass =
@@ -762,181 +777,151 @@ const ProjectDetails = () => {
         <div className="absolute inset-0 bg-[repeating-linear-gradient(90deg,transparent,transparent_16px,rgba(0,0,0,0.1)_16px,rgba(0,0,0,0.1)_18px)]" />
       </div>
       <div className="relative z-10">
-        {/* Header */}
-        <header className="container mx-auto px-4 pt-12">
-          <div className="bg-gradient-to-b from-[#654321] to-[#3D2817] p-1 shadow-[10px_10px_0_rgba(0,0,0,0.45)]">
-            <div className="border-4 border-[#3D2817] bg-gradient-to-b from-[#F1D9A7] via-[#D2B48C] to-[#B08D69] px-6 py-8 text-[#2D1B00]">
-              <div className="flex flex-col gap-8">
-
-                <div className="flex flex-col gap-6 lg:flex-row">
-                  <div className="relative h-32 w-32 flex-shrink-0 overflow-hidden border-4 border-[#3D2817] shadow-[6px_6px_0_rgba(0,0,0,0.4)]">
-                    <img
-                      src="https://images.unsplash.com/photo-1501183638710-841dd1904471?w=600&q=60&auto=format&fit=crop"
-                      alt="Project visual"
-                      className="h-full w-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-[#3D2817]/40" />
-                  </div>
-                  <div className="flex-1 min-w-0 space-y-4">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <h1 className="text-3xl font-bold tracking-[0.25em] text-[#FFD700] [text-shadow:_3px_3px_0_rgb(0_0_0_/_40%)]">
-                        {loading ? <Skeleton className="h-9 w-64" /> : project.name.toUpperCase()}
-                      </h1>
-                      <Badge className={`${minecraftBadgeClass}`}>
-                        {project.status}
-                      </Badge>
-                    </div>
-                    <p className="text-sm font-semibold text-[#2D1B00]">
-                      Project:{' '}
-                      {loading ? (
-                        <Skeleton className="inline-block h-4 w-48" />
-                      ) : (
-                        <a
-                          href={`https://sepolia.etherscan.io/address/${project.contractAddress}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className={minecraftLinkClass}
-                        >
-                          {project.contractAddress}
-                        </a>
-                      )}
-                    </p>
-                    <p className="text-sm font-semibold text-[#2D1B00]">
-                      Token:{' '}
-                      {loading ? (
-                        <Skeleton className="inline-block h-4 w-48" />
-                      ) : (
-                        <a
-                          href={`https://sepolia.etherscan.io/address/${project.tokenAddress}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className={minecraftLinkClass}
-                        >
-                          {project.tokenAddress}
-                        </a>
-                      )}
-                    </p>
-                    <p className="text-sm text-[#5D4E37]">
-                      {project.description}
-                    </p>
-                  </div>
+        {/* Header - Simplified */}
+        <header className="container mx-auto px-4 pt-8 pb-4">
+          <div className="border-2 border-[#654321] bg-gradient-to-b from-[#F1D9A7] to-[#D2B48C] p-6">
+            <div className="flex flex-col gap-6 lg:flex-row">
+              <div className="relative h-28 w-28 flex-shrink-0 overflow-hidden border-2 border-[#3D2817]">
+                <img
+                  src={project.imageUri ? resolveImageUri(project.imageUri) : "https://images.unsplash.com/photo-1501183638710-841dd1904471?w=600&q=60&auto=format&fit=crop"}
+                  alt="Project visual"
+                  className="h-full w-full object-cover"
+                />
+              </div>
+              <div className="flex-1 min-w-0 space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-2xl font-bold tracking-wider text-[#2D1B00]">
+                    {loading ? <Skeleton className="h-8 w-64" /> : project.name.toUpperCase()}
+                  </h1>
+                  <Badge className="rounded-sm border-2 border-[#2D572D] bg-[#55AA55] px-3 py-0.5 text-xs font-bold uppercase tracking-wide text-white">
+                    {project.status}
+                  </Badge>
                 </div>
+                <div className="space-y-1 text-xs text-[#5D4E37]">
+                  <p>
+                    <span className="font-bold">Project:</span>{' '}
+                    {loading ? (
+                      <Skeleton className="inline-block h-3 w-48" />
+                    ) : (
+                      <a
+                        href={`https://sepolia.etherscan.io/address/${project.contractAddress}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline hover:text-[#2D1B00]"
+                      >
+                        {project.contractAddress}
+                      </a>
+                    )}
+                  </p>
+                  <p>
+                    <span className="font-bold">Token:</span>{' '}
+                    {loading ? (
+                      <Skeleton className="inline-block h-3 w-48" />
+                    ) : (
+                      <a
+                        href={`https://sepolia.etherscan.io/address/${project.tokenAddress}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline hover:text-[#2D1B00]"
+                      >
+                        {project.tokenAddress}
+                      </a>
+                    )}
+                  </p>
+                </div>
+                <p className="text-sm text-[#2D1B00] line-clamp-2">
+                  {project.description}
+                </p>
               </div>
             </div>
           </div>
         </header>
 
         {/* Main content */}
-        <div className="container mx-auto px-4 py-12">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="container mx-auto px-4 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main column */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Summary */}
+            {/* Capital Overview - Simplified */}
             <Card className={`${minecraftPanelClass} overflow-hidden`}>
-              <CardHeader className={`${minecraftHeaderClass} pb-4`}>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <CardTitle className="text-lg font-bold text-[#2D1B00] tracking-[0.2em] uppercase">
-                      Capital Overview
-                    </CardTitle>
-                    <CardDescription className="text-sm font-semibold text-[#5D4E37]">
-                      Funding progress across targets, reserves, and developer unlocks.
-                    </CardDescription>
-                  </div>
-                  <Badge className="rounded-none border-4 border-[#AA7700] bg-[#FFD700] px-4 py-1 text-xs font-bold uppercase tracking-[0.25em] text-[#2D1B00] shadow-[2px_2px_0_rgba(0,0,0,0.3)]">
-                    {project.target ? `${raisedPercentage.toFixed(1)}% Funded` : 'Open'}
+              <CardHeader className={`${minecraftHeaderClass}`}>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base font-bold text-[#2D1B00] tracking-[0.15em] uppercase">
+                    Capital Overview
+                  </CardTitle>
+                  <Badge className="rounded-none border-2 border-[#AA7700] bg-[#FFD700] px-3 py-0.5 text-xs font-bold uppercase tracking-wide text-[#2D1B00]">
+                    {project.target ? `${raisedPercentage.toFixed(1)}%` : 'Open'}
                   </Badge>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-6 pt-6 text-[#2D1B00]">
-                <div className="space-y-4">
-                  {/* Enhanced Target and Raised Display */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="relative overflow-hidden rounded-lg border-4 border-[#654321] bg-gradient-to-br from-[#FFD700] via-[#FFE55C] to-[#FFD700] p-4 shadow-[4px_4px_0_rgba(0,0,0,0.3)]">
-                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.3)_0%,_transparent_70%)]" />
-                      <div className="relative z-10">
-                        <p className="text-xs font-bold uppercase tracking-[0.3em] text-[#2D1B00] mb-1">Amount Raised</p>
-                        <p className="text-2xl font-bold text-[#2D1B00] [text-shadow:_1px_1px_0_rgb(0_0_0_/_20%)]">
-                          {loading ? <Skeleton className="h-8 w-32" /> : `${format(project.raised)} ${projectTokenConfig.symbol}`}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="relative overflow-hidden rounded-lg border-4 border-[#654321] bg-gradient-to-br from-[#5599FF] via-[#6BB6FF] to-[#5599FF] p-4 shadow-[4px_4px_0_rgba(0,0,0,0.3)]">
-                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.3)_0%,_transparent_70%)]" />
-                      <div className="relative z-10">
-                        <p className="text-xs font-bold uppercase tracking-[0.3em] text-white mb-1">Target Goal</p>
-                        <p className="text-2xl font-bold text-white [text-shadow:_1px_1px_0_rgb(0_0_0_/_20%)]">
-                          {loading ? <Skeleton className="h-8 w-32" /> : `${format(project.target)} ${projectTokenConfig.symbol}`}
-                        </p>
-                      </div>
-                    </div>
+              <CardContent className="p-6 space-y-6 text-[#2D1B00]">
+                {/* Raised vs Target - Cleaner layout */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="rounded-lg border-2 border-[#654321] bg-gradient-to-br from-[#FFD700] to-[#FFE55C] p-4">
+                    <p className="text-[0.65rem] font-bold uppercase tracking-wider text-[#2D1B00]/70 mb-1">Raised</p>
+                    <p className="text-xl font-bold text-[#2D1B00]">
+                      {loading ? <Skeleton className="h-6 w-28" /> : `${format(project.raised)} ${projectTokenConfig.symbol}`}
+                    </p>
                   </div>
-                  
-                  {/* Enhanced Progress Bar */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-sm font-bold text-[#2D1B00]">
-                      <span>Funding Progress</span>
-                      <span className="text-lg">{raisedPercentage.toFixed(1)}%</span>
-                    </div>
-                    <div className="relative h-6 w-full overflow-hidden rounded-none border-4 border-[#654321] bg-[#B08D69] shadow-[2px_2px_0_rgba(0,0,0,0.3)]">
-                      <div
-                        className="absolute inset-y-0 left-0 bg-gradient-to-r from-[#5599FF] to-[#6BB6FF] transition-all duration-500 ease-out shadow-[inset_0_1px_0_rgba(255,255,255,0.3)]"
-                        style={{ width: `${Math.min(100, raisedPercentage)}%` }}
-                      />
-                      <div
-                        className="absolute inset-y-0 left-0 bg-gradient-to-r from-[#55AA55] to-[#66BB66] transition-all duration-500 ease-out shadow-[inset_0_1px_0_rgba(255,255,255,0.3)]"
-                        style={{ width: `${Math.min(100, withdrawnPercentage)}%` }}
-                      />
-                      {project.target > 0 && project.minTarget > 0 && (
-                        <div
-                          className="absolute inset-y-0 flex w-1 -translate-x-0.5 items-center justify-center"
-                          style={{ left: `${Math.max(0, Math.min(100, minRaisePercentage))}%` }}
-                        >
-                          <span className="h-full w-px bg-[#FF4500] shadow-[0_0_4px_rgba(255,69,0,0.8)]" />
-                        </div>
-                      )}
-                      {/* Progress percentage overlay */}
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="text-xs font-bold text-[#2D1B00] [text-shadow:_1px_1px_0_rgb(255_255_255_/_80%)]">
-                          {raisedPercentage.toFixed(1)}%
-                        </span>
-                      </div>
-                    </div>
+                  <div className="rounded-lg border-2 border-[#654321] bg-gradient-to-br from-[#5599FF] to-[#6BB6FF] p-4">
+                    <p className="text-[0.65rem] font-bold uppercase tracking-wider text-white/70 mb-1">Target</p>
+                    <p className="text-xl font-bold text-white">
+                      {loading ? <Skeleton className="h-6 w-28" /> : `${format(project.target)} ${projectTokenConfig.symbol}`}
+                    </p>
                   </div>
-                  <div className="grid gap-4 md:grid-cols-3">
-                    {capitalSummaryMetrics.map((metric) => {
-                      const Icon = metric.icon;
-                      return (
-                        <div
-                          key={metric.id}
-                          className="group relative flex h-full flex-col overflow-hidden rounded-lg border-4 border-[#654321] bg-gradient-to-br from-[#F8E3B5] via-[#FFF3C4] to-[#F8E3B5] p-5 text-[#2D1B00] shadow-[4px_4px_0_rgba(0,0,0,0.3)] transition-all hover:-translate-y-1 hover:shadow-[6px_6px_0_rgba(0,0,0,0.3)]"
-                        >
-                          <div
-                            className="absolute inset-0 bg-[radial-gradient(circle,_rgba(255,215,0,0.3)_0%,_transparent_70%)] opacity-70 transition-opacity group-hover:opacity-90"
-                            aria-hidden="true"
-                          />
-                          <div className="relative z-10 flex flex-col items-center text-center gap-4">
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-lg border-4 border-[#654321] bg-gradient-to-br from-[#FFD700] to-[#FFE55C] text-[#2D1B00] shadow-[2px_2px_0_rgba(0,0,0,0.25)]">
-                                <Icon className="h-4 w-4" />
-                              </div>
-                              <p className="text-sm font-bold uppercase tracking-[0.2em] text-[#2D1B00]">
-                                {metric.label}
-                              </p>
-                            </div>
-                            <div className="w-full">
-                              <p className="text-xl font-bold text-[#2D1B00] break-words">
-                                {loading ? <Skeleton className={`h-6 ${metric.skeletonClass}`} /> : metric.value}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
+                </div>
+                
+                {/* Simplified Progress Bar */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold text-[#2D1B00]">
+                    <span>Progress</span>
+                    <span>{raisedPercentage.toFixed(1)}%</span>
+                  </div>
+                  <div className="relative h-4 w-full overflow-hidden rounded-sm border-2 border-[#654321] bg-[#B08D69]">
+                    <div
+                      className="absolute inset-y-0 left-0 bg-gradient-to-r from-[#5599FF] to-[#6BB6FF]"
+                      style={{ width: `${Math.min(100, raisedPercentage)}%` }}
+                    />
+                    <div
+                      className="absolute inset-y-0 left-0 bg-gradient-to-r from-[#55AA55] to-[#66BB66]"
+                      style={{ width: `${Math.min(100, withdrawnPercentage)}%` }}
+                    />
+                    {project.target > 0 && project.minTarget > 0 && (
+                      <div
+                        className="absolute inset-y-0 w-0.5 bg-[#FF4500]"
+                        style={{ left: `${Math.max(0, Math.min(100, minRaisePercentage))}%` }}
+                      />
+                    )}
                   </div>
                 </div>
 
-                <div className="grid gap-4 border-t-4 border-[#654321] pt-6 text-sm md:grid-cols-3">
+                {/* Key Metrics - Compact Grid */}
+                <div className="grid gap-3 grid-cols-3">
+                  {capitalSummaryMetrics.map((metric) => {
+                    const Icon = metric.icon;
+                    return (
+                      <div
+                        key={metric.id}
+                        className="rounded-lg border-2 border-[#654321] bg-[#F8E3B5] p-3 text-center"
+                      >
+                        <div className="flex justify-center mb-2">
+                          <div className="flex h-8 w-8 items-center justify-center rounded border-2 border-[#654321] bg-[#FFD700]">
+                            <Icon className="h-4 w-4 text-[#2D1B00]" />
+                          </div>
+                        </div>
+                        <p className="text-[0.6rem] font-bold uppercase tracking-wider text-[#5D4E37] mb-1">
+                          {metric.label}
+                        </p>
+                        <p className="text-sm font-bold text-[#2D1B00] break-words">
+                          {loading ? <Skeleton className={`h-4 ${metric.skeletonClass} mx-auto`} /> : metric.value}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Additional Stats - Simplified */}
+                <div className="grid gap-3 grid-cols-3 pt-4 border-t-2 border-[#654321]">
                   {overviewStats.map((stat) => {
                     const Icon = stat.icon;
                     return (
@@ -970,19 +955,19 @@ const ProjectDetails = () => {
               </CardContent>
             </Card>
 
-            {/* Tabs */}
-            <div className="flex flex-wrap items-center gap-3 rounded-none border-4 border-[#654321] bg-[#C4A484] p-2 shadow-[6px_6px_0_rgba(0,0,0,0.35)]">
+            {/* Tabs - Cleaner */}
+            <div className="flex flex-wrap gap-2 rounded border-2 border-[#654321] bg-[#C4A484] p-2">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`${minecraftTabButtonBase} ${
+                  className={`px-4 py-2 font-bold text-xs border-2 rounded-sm transition-all uppercase tracking-wider ${
                     activeTab === tab.id
-                      ? 'bg-[#FFD700] text-[#2D1B00] border-[#AA7700] shadow-[4px_4px_0_rgba(0,0,0,0.35)]'
-                      : 'bg-[#8B7355] text-white border-[#3D2817] hover:-translate-y-0.5 hover:shadow-[4px_4px_0_rgba(0,0,0,0.35)]'
+                      ? 'bg-[#FFD700] text-[#2D1B00] border-[#AA7700]'
+                      : 'bg-[#8B7355] text-white border-[#3D2817] hover:bg-[#9B8365]'
                   }`}
                 >
-                  <span className="relative z-10 tracking-[0.25em]">{tab.label}</span>
+                  {tab.label}
                 </button>
               ))}
             </div>
@@ -1045,8 +1030,8 @@ const ProjectDetails = () => {
             {activeTab === 'milestones' && (
               <div className={`${minecraftPanelClass} p-6`}>
                 <div className="relative text-[#2D1B00]">
-                  <div className="absolute left-6 top-0 h-full w-px bg-gradient-to-b from-[#3D2817] via-[#8B7355] to-transparent" />
-                  <div className="space-y-8">
+                  <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-gradient-to-b from-[#3D2817] via-[#8B7355] to-transparent" />
+                  <div className="space-y-6">
                     {phasesDetails.map((p, idx) => {
                       const statusKey = p.status as keyof typeof phaseStatusDot;
                       const dotTone = phaseStatusDot[statusKey] ?? 'bg-slate-300';
@@ -1070,46 +1055,46 @@ const ProjectDetails = () => {
                       ].filter(Boolean) as Array<{ label: string; value: string }>;
 
                       return (
-                        <div key={p.index} className="relative flex gap-6 pl-12 md:pl-16">
-                          <div className="absolute left-4 top-6 z-10 flex h-4 w-4 items-center justify-center rounded-full border-4 border-[#3D2817] bg-[#F8E3B5] shadow-[3px_3px_0_rgba(0,0,0,0.3)]">
-                            <span className={`h-2.5 w-2.5 rounded-full ${dotTone}`} />
+                        <div key={p.index} className="relative flex gap-4 pl-10">
+                          <div className="absolute left-3.5 top-5 z-10 flex h-3 w-3 items-center justify-center rounded-full border-2 border-[#3D2817] bg-[#F8E3B5]">
+                            <span className={`h-1.5 w-1.5 rounded-full ${dotTone}`} />
                           </div>
                           <div
-                            className={`w-full rounded-lg border-4 border-[#654321] p-5 shadow-[4px_4px_0_rgba(0,0,0,0.3)] transition-all hover:-translate-y-1 hover:shadow-[6px_6px_0_rgba(0,0,0,0.3)] ${
+                            className={`w-full rounded border-2 border-[#654321] p-4 transition-all ${
                               idx === currentPhaseIndex ? 'bg-[#FFDFA6]' : 'bg-[#F8E3B5]'
                             }`}
                           >
-                            <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex items-center justify-between gap-3 mb-3">
                               <div>
-                                <p className="text-xs font-bold uppercase tracking-[0.35em] text-[#5D4E37]">
+                                <p className="text-[0.6rem] font-bold uppercase tracking-wider text-[#5D4E37]">
                                   Phase {p.index + 1}
                                 </p>
-                                <h3 className="text-lg font-bold text-[#2D1B00]">{p.name}</h3>
+                                <h3 className="text-base font-bold text-[#2D1B00]">{p.name}</h3>
                               </div>
-                              <Badge className={`rounded-none px-4 py-1 text-xs font-bold uppercase tracking-[0.25em] ${badgeTone}`}>
+                              <Badge className={`rounded-sm px-3 py-0.5 text-[0.6rem] font-bold uppercase tracking-wide ${badgeTone}`}>
                                 {p.status}
                               </Badge>
                             </div>
 
-                            <div className="mt-4 grid gap-4 md:grid-cols-4">
+                            <div className="grid gap-3 grid-cols-2 md:grid-cols-4 mb-4">
                               {infoBlocks.map((block) => (
                                 <div key={block.label}>
-                                  <p className="text-[0.65rem] font-bold uppercase tracking-[0.3em] text-[#5D4E37]">
+                                  <p className="text-[0.6rem] font-bold uppercase tracking-wide text-[#5D4E37] mb-0.5">
                                     {block.label}
                                   </p>
-                                  <p className="text-sm font-bold text-[#2D1B00]">
-                                    {loading ? <Skeleton className="h-4 w-20" /> : block.value}
+                                  <p className="text-xs font-bold text-[#2D1B00]">
+                                    {loading ? <Skeleton className="h-3 w-16" /> : block.value}
                                   </p>
                                 </div>
                               ))}
                             </div>
 
-                            <div className="mt-5 space-y-2">
-                              <div className="flex items-center justify-between text-xs font-semibold text-[#5D4E37]">
-                                <span>Cap Unlock Progress</span>
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between text-[0.6rem] font-semibold text-[#5D4E37]">
+                                <span>Cap Unlock</span>
                                 <span>{progressWidth}</span>
                               </div>
-                              <div className="relative h-2 w-full overflow-hidden rounded-none border-4 border-[#654321] bg-[#B08D69]">
+                              <div className="relative h-1.5 w-full overflow-hidden rounded-sm border border-[#654321] bg-[#B08D69]">
                                 <div
                                   className="absolute inset-y-0 left-0 bg-[#5599FF]"
                                   style={{ width: progressWidth }}
@@ -1118,7 +1103,7 @@ const ProjectDetails = () => {
                             </div>
 
                             {p.showWithdrawn && (
-                              <p className="mt-3 text-xs text-[#5D4E37]">
+                              <p className="mt-2 text-[0.6rem] text-[#5D4E37]">
                                 Phase cap unlocked and included in cumulative developer withdrawals.
                               </p>
                             )}

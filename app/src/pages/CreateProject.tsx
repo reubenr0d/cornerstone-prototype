@@ -9,6 +9,7 @@ import { ArrowLeft, ArrowRight, Check, Wallet } from 'lucide-react';
 import { getRpcProvider, getSigner, registryAt, getAccount, Address } from '@/lib/eth';
 import { contractsConfig } from '@/config/contracts';
 import { toast } from '@/components/ui/sonner';
+import { uploadProjectMetadata, ProjectMetadata, ipfsUpload } from '@/lib/ipfs';
 
 interface Milestone {
   id: string;
@@ -96,6 +97,16 @@ const CreateProject = () => {
   const [maxRaise, setMaxRaise] = useState('');
   const [fundingDurationDays, setFundingDurationDays] = useState('30');
   const [selectedToken, setSelectedToken] = useState<'USDC' | 'PYUSD'>('USDC');
+  
+  // Metadata fields
+  const [projectImage, setProjectImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
+  const [country, setCountry] = useState('');
+  const [squareFeet, setSquareFeet] = useState('');
+  const [units, setUnits] = useState('');
+  const [propertyType, setPropertyType] = useState('');
 
   const tokenName = useMemo(() => `Cornerstone-${name || 'Project'}`, [name]);
   const tokenSymbol = useMemo(() => {
@@ -135,6 +146,48 @@ const CreateProject = () => {
         setIsPublishing(false);
         return;
       }
+      
+      // Upload metadata to IPFS first
+      let metadataURI = '';
+      try {
+        toast.info('Uploading project metadata to IPFS...');
+        
+        // Upload project image if provided
+        let imageIPFSUri = '';
+        if (projectImage) {
+          const uploaded = await ipfsUpload([projectImage]);
+          imageIPFSUri = uploaded[0]?.uri || '';
+          console.log('Project image uploaded:', imageIPFSUri);
+        }
+        
+        // Build metadata object
+        const metadata: ProjectMetadata = {
+          version: '1.0',
+          name: name || 'Untitled Project',
+          description: description || '',
+          imageURI: imageIPFSUri,
+          location: {
+            city: city || '',
+            state: state || '',
+            country: country || ''
+          },
+          specifications: {
+            squareFeet: parseInt(squareFeet || '0', 10),
+            units: parseInt(units || '0', 10),
+            type: propertyType || 'residential'
+          }
+        };
+        
+        // Upload metadata JSON
+        metadataURI = await uploadProjectMetadata(metadata);
+        toast.success(`Metadata uploaded: ${metadataURI}`);
+      } catch (err) {
+        console.error('Metadata upload failed:', err);
+        toast.error('Failed to upload metadata to IPFS. Please try again.');
+        setIsPublishing(false);
+        return;
+      }
+      
       const tokenAddress = selectedToken === 'USDC' 
         ? (import.meta.env.VITE_USDC_ADDRESS as Address)
         : (import.meta.env.VITE_PYUSD_ADDRESS as Address);
@@ -226,6 +279,7 @@ const CreateProject = () => {
           phaseAPRs,
           phaseDurations,
           phaseCaps,
+          metadataURI
         );
         // eslint-disable-next-line no-console
         console.log('[CreateProject] simulate ok (project, token)', sim);
@@ -251,6 +305,7 @@ const CreateProject = () => {
           phaseAPRs,
           phaseDurations,
           phaseCaps,
+          metadataURI
         );
         // eslint-disable-next-line no-console
         console.log('[CreateProject] estimateGas', est.toString());
@@ -271,6 +326,7 @@ const CreateProject = () => {
         phaseAPRs,
         phaseDurations,
         phaseCaps,
+        metadataURI,
         { gasLimit }
       );
       // eslint-disable-next-line no-console
@@ -397,14 +453,86 @@ const CreateProject = () => {
                     onChange={(e)=>setDescription(e.target.value)}
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="logo">Logo URL</Label>
-                    <Input id="logo" placeholder="https://..." />
+                
+                {/* Project Image Upload */}
+                <div>
+                  <Label htmlFor="projectImage">Project Image</Label>
+                  <Input 
+                    id="projectImage" 
+                    type="file" 
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setProjectImage(file);
+                        setImagePreview(URL.createObjectURL(file));
+                      }
+                    }}
+                  />
+                  {imagePreview && (
+                    <div className="mt-2">
+                      <img src={imagePreview} alt="Project preview" className="h-32 w-auto rounded border-2 border-[#654321]" />
+                    </div>
+                  )}
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Upload a main image for your project
+                  </p>
+                </div>
+                
+                {/* Location Fields */}
+                <div>
+                  <Label>Project Location</Label>
+                  <div className="grid grid-cols-3 gap-3 mt-2">
+                    <Input 
+                      placeholder="City" 
+                      value={city} 
+                      onChange={(e) => setCity(e.target.value)} 
+                    />
+                    <Input 
+                      placeholder="State/Province" 
+                      value={state} 
+                      onChange={(e) => setState(e.target.value)} 
+                    />
+                    <Input 
+                      placeholder="Country" 
+                      value={country} 
+                      onChange={(e) => setCountry(e.target.value)} 
+                    />
                   </div>
-                  <div>
-                    <Label htmlFor="banner">Banner URL</Label>
-                    <Input id="banner" placeholder="https://..." />
+                </div>
+                
+                {/* Specifications */}
+                <div>
+                  <Label>Property Specifications</Label>
+                  <div className="grid grid-cols-3 gap-3 mt-2">
+                    <div>
+                      <Input 
+                        type="number" 
+                        placeholder="Square Feet" 
+                        value={squareFeet} 
+                        onChange={(e) => setSquareFeet(e.target.value)} 
+                      />
+                    </div>
+                    <div>
+                      <Input 
+                        type="number" 
+                        placeholder="Units" 
+                        value={units} 
+                        onChange={(e) => setUnits(e.target.value)} 
+                      />
+                    </div>
+                    <div>
+                      <Select value={propertyType} onValueChange={setPropertyType}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="residential">Residential</SelectItem>
+                          <SelectItem value="commercial">Commercial</SelectItem>
+                          <SelectItem value="mixed-use">Mixed-Use</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </div>
               </div>

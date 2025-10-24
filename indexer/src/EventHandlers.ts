@@ -10,6 +10,15 @@ export const handleProjectCreated = ProjectRegistry.ProjectCreated.handler(
     const projectAddress = event.params.project.toLowerCase();
     const txHash = event.block.hash;
 
+    // Fetch metadataURI from Registry contract
+    let metadataURI = "";
+    try {
+      const registryContract = context.ProjectRegistry.getContract(event.srcAddress);
+      metadataURI = await registryContract.projectMetadataURI(event.params.project);
+    } catch (error) {
+      console.warn(`Failed to fetch metadataURI for project ${projectAddress}:`, error);
+    }
+
     context.Project.set({
       id: projectAddress,
       address: event.params.project,
@@ -17,6 +26,7 @@ export const handleProjectCreated = ProjectRegistry.ProjectCreated.handler(
       creator: event.params.creator,
       createdAtBlock: BigInt(event.block.number),
       createdAtTimestamp: BigInt(event.block.timestamp),
+      metadataURI: metadataURI,
       projectState_id: projectAddress,
     });
 

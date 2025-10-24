@@ -11,7 +11,8 @@ interface IProjectRegistry {
         uint256 fundraiseDeadline,
         uint256[6] calldata phaseAPRs, // includes phase 0 (fundraising)
         uint256[6] calldata phaseDurations, // includes phase 0 (fundraising)
-        uint256[6] calldata phaseWithdrawCaps // includes phase 0 (fundraising)
+        uint256[6] calldata phaseWithdrawCaps, // includes phase 0 (fundraising)
+        string calldata metadataURI
     ) external returns (address projectAddress, address tokenAddress);
 
     function createProjectWithTokenMeta(
@@ -23,12 +24,16 @@ interface IProjectRegistry {
         uint256 fundraiseDeadline,
         uint256[6] calldata phaseAPRs, // includes phase 0 (fundraising)
         uint256[6] calldata phaseDurations, // includes phase 0 (fundraising)
-        uint256[6] calldata phaseWithdrawCaps // includes phase 0 (fundraising)
+        uint256[6] calldata phaseWithdrawCaps, // includes phase 0 (fundraising)
+        string calldata metadataURI
     ) external returns (address projectAddress, address tokenAddress);
 }
 
 contract ProjectRegistry is IProjectRegistry {
     uint256 public projectCount;
+    
+    // Mapping from project address to metadata URI (IPFS)
+    mapping(address => string) public projectMetadataURI;
 
     event ProjectCreated(address indexed project, address indexed token, address indexed creator);
 
@@ -41,7 +46,8 @@ contract ProjectRegistry is IProjectRegistry {
         uint256 fundraiseDeadline,
         uint256[6] calldata phaseAPRs,
         uint256[6] calldata phaseDurations,
-        uint256[6] calldata phaseWithdrawCaps
+        uint256[6] calldata phaseWithdrawCaps,
+        string calldata metadataURI
     ) external returns (address projectAddress, address tokenAddress) {
         require(stablecoin != address(0), "stablecoin addr required");
         require(minRaise > 0 && maxRaise >= minRaise, "bad raise bounds");
@@ -66,6 +72,9 @@ contract ProjectRegistry is IProjectRegistry {
 
         projectAddress = address(project);
         tokenAddress = project.token();
+        
+        // Store metadata URI
+        projectMetadataURI[projectAddress] = metadataURI;
 
         emit ProjectCreated(projectAddress, tokenAddress, msg.sender);
     }
@@ -79,7 +88,8 @@ contract ProjectRegistry is IProjectRegistry {
         uint256 fundraiseDeadline,
         uint256[6] calldata phaseAPRs,
         uint256[6] calldata phaseDurations,
-        uint256[6] calldata phaseWithdrawCaps
+        uint256[6] calldata phaseWithdrawCaps,
+        string calldata metadataURI
     ) external returns (address projectAddress, address tokenAddress) {
         require(stablecoin != address(0), "stablecoin addr required");
         require(bytes(tokenName).length > 0 && bytes(tokenSymbol).length > 0, "name/symbol req");
@@ -101,7 +111,20 @@ contract ProjectRegistry is IProjectRegistry {
         );
         projectAddress = address(project);
         tokenAddress = project.token();
+        
+        // Store metadata URI
+        projectMetadataURI[projectAddress] = metadataURI;
+        
         emit ProjectCreated(projectAddress, tokenAddress, msg.sender);
+    }
+    
+    /// @notice Update metadata URI for a project (only callable by project owner)
+    /// @param projectAddress The address of the project contract
+    /// @param newMetadataURI The new IPFS metadata URI
+    function updateMetadataURI(address projectAddress, string calldata newMetadataURI) external {
+        CornerstoneProject project = CornerstoneProject(projectAddress);
+        require(msg.sender == project.owner(), "Only project owner");
+        projectMetadataURI[projectAddress] = newMetadataURI;
     }
 
     function _concat(string memory a, string memory b) internal pure returns (string memory) {
