@@ -18,8 +18,9 @@ import { getCompleteProjectData, Project } from '@/lib/envio';
 import { contractsConfig, TOKEN_CONFIG, getTokenConfigByAddress } from '@/config/contracts';
 import { NexusNetwork, NexusSDK, type SUPPORTED_CHAINS_IDS } from '@avail-project/nexus-core';
 import { ipfsUpload } from '@/lib/ipfs';
-import { ethers } from 'ethers';
+import { ethers, parseUnits } from 'ethers';
 import { buildProjectInsightsData, type ProjectInsightsData } from '@/lib/project-insights';
+import { CornerstoneProjectABI } from '@/abi';
 
 const SUPPORTED_CHAINS = [
   { id: 11155111, name: 'Sepolia' },
@@ -56,6 +57,8 @@ const ProjectDetails = () => {
   const [isSubmittingProceeds, setIsSubmittingProceeds] = useState(false);
   const [withdrawChainId, setWithdrawChainId] = useState<number | null>(null);
   const [isBridging, setIsBridging] = useState(false);
+  const [depositSourceChain, setDepositSourceChain] = useState<number | null>(null);
+  const [isBridgingDeposit, setIsBridgingDeposit] = useState(false);
   const [nexusSDK, setNexusSDK] = useState(null);
 
   const projectAddress = useMemo<Address | null>(() => {
@@ -1225,7 +1228,29 @@ const ProjectDetails = () => {
                           className="h-11 rounded-none border-4 border-[#654321] bg-[#FFF3C4] font-semibold text-[#2D1B00] placeholder:text-[#5D4E37] focus-visible:ring-[#FFD700]"
                         />
                       </div>
-                      {!approvedSupport ? (
+                      <div className="grid gap-1">
+                        <Label htmlFor="depositSourceChain">Source Chain (Optional)</Label>
+                        <select
+                          id="depositSourceChain"
+                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                          value={depositSourceChain ?? ''}
+                          onChange={(e) => {
+                            setDepositSourceChain(e.target.value ? Number(e.target.value) : null);
+                            setApprovedSupport(false);
+                          }}
+                        >
+                          <option value="">Current chain (direct deposit)</option>
+                          {SUPPORTED_CHAINS.map((chain) => (
+                            <option key={chain.id} value={chain.id}>
+                              {chain.name}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-[#5D4E37]">
+                          {depositSourceChain ? 'Funds will be bridged via Avail and deposited automatically' : 'Deposit directly from current chain'}
+                        </p>
+                      </div>
+                      {!approvedSupport && !depositSourceChain ? (
                         <Button className={`${minecraftPrimaryButtonClass} w-full h-12`} size="lg" disabled={isApprovingSupport} onClick={async ()=>{
                           try {
                             if (!projectAddress || !staticConfig?.stablecoin) { toast.error('Addresses not loaded'); return; }
@@ -1248,30 +1273,104 @@ const ProjectDetails = () => {
                         <Button className={`${minecraftSuccessButtonClass} w-full h-12`} size="lg" disabled={isDepositing} onClick={async ()=>{
                           try {
                             if (!projectAddress) return;
-                            setIsDepositing(true);
-                            const signer = await getSigner();
-                            const proj = projectAt(projectAddress, signer);
                             const amt = toStablecoin(supportAmount);
                             
-                            // Check if this is user's first deposit to increment supporters count
-                            const isFirstDeposit = !realtimeData?.userBalance || realtimeData.userBalance === 0n;
-                            
-                            const tx = await proj.deposit(amt);
-                            await tx.wait();
-                            toast.success('Deposited');
-                            setApprovedSupport(false);
-                            setSupportAmount('');
-                            
-                            // Optimistically increment supporters count if first deposit
-                            if (isFirstDeposit) {
-                              setSupporters(prev => prev + 1);
+                            if (depositSourceChain && depositSourceChain !== 11155111) {
+                              // Cross-chain deposit via Avail Nexus bridgeAndExecute
+                              setIsBridgingDeposit(true);
+                              console.log(depositSourceChain);
+                              
+                              try {
+                                if (!nexusSDK?.isInitialized()) {
+                                  toast.error('Please connect Avail Nexus first');
+                                  return;
+                                }
+                                
+                                const tokenSymbol = 'USDC';
+                                const targetChainName = SUPPORTED_CHAINS.find(c => c.id === 11155111)?.name;
+                                console.log(tokenSymbol);
+                                
+                                
+                                toast.info(`Bridging ${supportAmount} ${tokenSymbol} from ${SUPPORTED_CHAINS.find(c => c.id === depositSourceChain)?.name}...`);
+                                const amount = parseUnits(supportAmount, 6);
+                                await nexusSDK.setAllowance(84532, ['USDC'], amount);
+                                
+                                const result = await nexusSDK.bridgeAndExecute({
+                                  token: tokenSymbol,
+                                  amount: supportAmount,
+                                  toChainId: 11155111, // Sepolia
+                                  sourceChains: [depositSourceChain],
+                                  execute: {
+                                    contractAddress: projectAddress,
+                                    contractAbi: CornerstoneProjectABI,
+                                    functionName: 'deposit',
+                                    buildFunctionParams: (token, amount, chainId, userAddress) => {
+                                      const decimals = 6; // USDC decimals
+                                      const amountWei = ethers.parseUnits(amount, decimals);
+                                      return {
+                                        functionParams: [amountWei],
+                                      };
+                                    },
+                                    tokenApproval: {
+                                      token: tokenSymbol,
+                                      amount: supportAmount,
+                                    },
+                                  },
+                                  waitForReceipt: true,
+                                });
+                                
+                                if (!result.success) {
+                                  throw new Error(result.error || 'Bridge and deposit failed');
+                                }
+                                
+                                toast.success(`Successfully deposited ${supportAmount} ${tokenSymbol}!`, {
+                                  description: `Bridged and deposited on ${targetChainName}`
+                                });
+                                
+                                // Check if this was user's first deposit
+                                const isFirstDeposit = !realtimeData?.userBalance || realtimeData.userBalance === 0n;
+                                if (isFirstDeposit) {
+                                  setSupporters(prev => prev + 1);
+                                }
+                                
+                              } catch (error: any) {
+                                console.error('Bridge and deposit error:', error);
+                                toast.error('Bridge and deposit failed', {
+                                  description: error?.message || 'Failed to bridge and deposit funds'
+                                });
+                                throw error;
+                              }
+                            } else {
+                              // Direct deposit on same chain
+                              setIsDepositing(true);
+                              const signer = await getSigner();
+                              const proj = projectAt(projectAddress, signer);
+                              
+                              const isFirstDeposit = !realtimeData?.userBalance || realtimeData.userBalance === 0n;
+                              
+                              const tx = await proj.deposit(amt);
+                              await tx.wait();
+                              toast.success('Deposited');
+                              
+                              if (isFirstDeposit) {
+                                setSupporters(prev => prev + 1);
+                              }
                             }
                             
+                            setApprovedSupport(false);
+                            setSupportAmount('');
+                            setDepositSourceChain(null);
                             refresh();
-                          } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Deposit failed'); }
-                          finally { setIsDepositing(false); }
+                          } catch(e:any) { 
+                            toast.error(e?.shortMessage || e?.message || 'Deposit failed'); 
+                          }
+                          finally { 
+                            setIsDepositing(false);
+                            setIsBridgingDeposit(false);
+                          }
                         }}>
-                          <DollarSign className="mr-2 h-4 w-4" /> {isDepositing ? 'Depositing...' : 'Deposit'}
+                          <DollarSign className="mr-2 h-4 w-4" /> 
+                          {isDepositing ? 'Depositing...' : isBridgingDeposit ? 'Bridging & Depositing...' : depositSourceChain ? 'Bridge & Deposit' : 'Deposit'}
                         </Button>
                       )}
                     </CardContent>

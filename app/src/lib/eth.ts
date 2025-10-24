@@ -62,7 +62,7 @@ async function ensureWalletNetwork(provider: ethers.BrowserProvider) {
 
 export async function getSigner(): Promise<ethers.Signer> {
   const provider = await getProvider();
-  await ensureWalletNetwork(provider);
+  // await ensureWalletNetwork(provider);
   // request accounts if needed
   await provider.send('eth_requestAccounts', []);
   return await provider.getSigner();
