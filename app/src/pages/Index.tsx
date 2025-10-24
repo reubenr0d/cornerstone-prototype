@@ -52,7 +52,7 @@ const Index = () => {
               
               {/* Stats */}
               <div className="grid grid-cols-3 gap-8 pt-8">
-                <div className="space-y-1">
+                {/* <div className="space-y-1">
                   <div className="text-3xl font-bold">$2.5M+</div>
                   <div className="text-sm text-muted-foreground">Funds Secured</div>
                 </div>
@@ -63,7 +63,7 @@ const Index = () => {
                 <div className="space-y-1">
                   <div className="text-3xl font-bold">98%</div>
                   <div className="text-sm text-muted-foreground">Success Rate</div>
-                </div>
+                </div> */}
               </div>
             </div>
             

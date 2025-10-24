@@ -32,8 +32,10 @@ export type InsightChartPoint = {
   isoLabel: string;
   dailyDeposits: number;
   dailyWithdrawals: number;
+  dailyReserveFunded: number;
   cumulativeDeposits: number;
   cumulativeWithdrawals: number;
+  cumulativeReserveFunded: number;
   netExposure: number;
 };
 
@@ -110,39 +112,67 @@ export function buildProjectInsightsData({
 
   const deposits = (project.deposits || []).slice().sort(byTimestamp);
   const withdrawals = (project.fundWithdrawn || []).slice().sort(byTimestamp);
-  const buckets = new Map<number, DailyBucket>();
-
+  const reserveFunded = (project.reserveFunded || []).slice().sort(byTimestamp);
+  
+  // Create individual events for each deposit, withdrawal, and reserve funding
+  const allEvents: Array<{ timestamp: number; type: 'deposit' | 'withdrawal' | 'reserveFunded'; amount: number }> = [];
+  
   for (const event of deposits) {
     const ts = parseTimestamp(event.blockTimestamp);
     if (ts === null) continue;
-    const bucketKey = truncateToDay(ts);
-    const bucket = ensureBucket(buckets, bucketKey);
-    bucket.deposits += toTokenAmount(event.amountPYUSD);
+    allEvents.push({
+      timestamp: ts,
+      type: 'deposit',
+      amount: toTokenAmount(event.amountPYUSD),
+    });
   }
 
   for (const event of withdrawals) {
     const ts = parseTimestamp(event.blockTimestamp);
     if (ts === null) continue;
-    const bucketKey = truncateToDay(ts);
-    const bucket = ensureBucket(buckets, bucketKey);
-    bucket.withdrawals += toTokenAmount(event.amount);
+    allEvents.push({
+      timestamp: ts,
+      type: 'withdrawal',
+      amount: toTokenAmount(event.amount),
+    });
   }
 
-  const orderedBucketEntries = Array.from(buckets.entries()).sort((a, b) => a[0] - b[0]);
-  const points: InsightChartPoint[] = [];
+  for (const event of reserveFunded) {
+    const ts = parseTimestamp(event.blockTimestamp);
+    if (ts === null) continue;
+    allEvents.push({
+      timestamp: ts,
+      type: 'reserveFunded',
+      amount: toTokenAmount(event.amount),
+    });
+  }
 
+  // Sort all events by timestamp
+  allEvents.sort((a, b) => a.timestamp - b.timestamp);
+
+  const points: InsightChartPoint[] = [];
   let runningDeposits = 0;
   let runningWithdrawals = 0;
-  for (const [bucketTs, bucket] of orderedBucketEntries) {
-    runningDeposits += bucket.deposits;
-    runningWithdrawals += bucket.withdrawals;
+  let runningReserveFunded = 0;
+
+  for (const event of allEvents) {
+    if (event.type === 'deposit') {
+      runningDeposits += event.amount;
+    } else if (event.type === 'withdrawal') {
+      runningWithdrawals += event.amount;
+    } else if (event.type === 'reserveFunded') {
+      runningReserveFunded += event.amount;
+    }
+    
     points.push({
-      timestamp: bucketTs,
-      isoLabel: new Date(bucketTs).toISOString(),
-      dailyDeposits: bucket.deposits,
-      dailyWithdrawals: bucket.withdrawals,
+      timestamp: event.timestamp,
+      isoLabel: new Date(event.timestamp).toISOString(),
+      dailyDeposits: event.type === 'deposit' ? event.amount : 0,
+      dailyWithdrawals: event.type === 'withdrawal' ? event.amount : 0,
+      dailyReserveFunded: event.type === 'reserveFunded' ? event.amount : 0,
       cumulativeDeposits: runningDeposits,
       cumulativeWithdrawals: runningWithdrawals,
+      cumulativeReserveFunded: runningReserveFunded,
       netExposure: runningDeposits - runningWithdrawals,
     });
   }
