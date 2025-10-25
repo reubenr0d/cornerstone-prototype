@@ -75,6 +75,10 @@ const ProjectDetails = () => {
   const [fundReserveSourceChain, setFundReserveSourceChain] = useState<number | null>(null);
   const [isBridgingFundReserve, setIsBridgingFundReserve] = useState(false);
 
+  // Withdraw Phase Funds modal states
+  const [withdrawFundsModalOpen, setWithdrawFundsModalOpen] = useState(false);
+  const [withdrawFundsStep, setWithdrawFundsStep] = useState<'amount' | 'chain' | 'withdraw'>('amount');
+
   // Submit Proceeds bridge states
   const [submitProceedsSourceChain, setSubmitProceedsSourceChain] = useState<number | null>(null);
   const [isBridgingSubmitProceeds, setIsBridgingSubmitProceeds] = useState(false);
@@ -115,6 +119,13 @@ const ProjectDetails = () => {
     setSubmitProceedsStep('amount');
     setProceedsAmount('');
     setApprovedProceeds(false);
+  };
+
+  const resetWithdrawFundsModal = () => {
+    setWithdrawFundsModalOpen(false);
+    setWithdrawFundsStep('amount');
+    setWithdrawAmount('');
+    setWithdrawChainId(null);
   };
 
   // Dynamically determine which token this project uses
@@ -2297,165 +2308,379 @@ const ProjectDetails = () => {
                       </Button>
                     </div>
                   </div>
-
-                  {/* Withdraw Funds */}
+                  {/* Withdraw Phase Funds */}
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
                       <DollarSign className="h-4 w-4 text-[#3D2817]" />
                       <span className="text-sm font-bold text-[#2D1B00]">Withdraw Phase Funds</span>
                     </div>
-                    <div className="grid gap-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-semibold text-[#5D4E37]">Withdrawable Now</span>
-                        <span className="font-bold">
-                          {loading ? <Skeleton className="inline-block h-4 w-24" /> : `${withdrawableNow.toLocaleString('en-US')} ${projectTokenConfig.symbol}`}
-                        </span>
-                      </div>
-                      <div className="grid gap-1">
-                        <Label htmlFor="withdrawAmount" className="text-sm font-bold text-[#2D1B00]">Amount ({projectTokenConfig.symbol})</Label>
-                        <Input
-                          id="withdrawAmount"
-                          inputMode="decimal"
-                          placeholder="e.g. 10000"
-                          value={withdrawAmount}
-                          onChange={(e)=>setWithdrawAmount(e.target.value)}
-                          className="h-11 rounded-none border-4 border-[#654321] bg-[#FFF3C4] font-semibold text-[#2D1B00] placeholder:text-[#5D4E37] focus-visible:ring-[#FFD700]"
-                        />
-                      </div>
-                      <div className="grid gap-1">
-                        <Label htmlFor="withdrawChain">Destination Chain (Optional)</Label>
-                        <select
-                          id="withdrawChain"
-                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                          value={withdrawChainId ?? ''}
-                          onChange={(e) => setWithdrawChainId(e.target.value ? Number(e.target.value) : null)}
-                        >
-                          <option value="">Same chain (direct withdraw)</option>
-                          {SUPPORTED_CHAINS.map((chain) => {
-                            const balance = chainBalances[chain.id];
-                            const balanceText = balance ? ` (${parseFloat(balance).toFixed(2)} USDC)` : '';
-                            return (
-                              <option key={chain.id} value={chain.id}>
-                                {chain.name}{balanceText}
-                              </option>
-                            );
-                          })}
-                        </select>
-                        <p className="text-xs text-muted-foreground">
-                          {withdrawChainId ? 'Funds will be bridged via Avail to the selected chain' : 'Withdraw directly to your wallet on current chain'}
-                        </p>
-                      </div>
-                      <Button onClick={initializeNexus}>
-                        Connect Avail Nexus
-                      </Button>
-                      {nexusSDK ? <span className="text-sm text-green-600">Avail Nexus Initialized</span> : <span className="text-sm text-red-600">Avail Nexus not initialized</span>}
-                      <Button size="sm" variant="outline" className="justify-start" disabled={isWithdrawingFunds || isBridging} onClick={async ()=>{
-                        try {
-                          if (!projectAddress) return;
-                          const amt = Number(withdrawAmount || '0');
-                          console.log(amt);
-                          
-                          if (!amt || amt <= 0) { toast.error('Enter amount'); return; }
-                          if (amt > withdrawableNow) { toast.error('Exceeds withdrawable'); return; }
-                          
-                          if (withdrawChainId && withdrawChainId !== 11155111) {
-                            // Cross-chain withdrawal via Avail Nexus
-                            setIsBridging(true);
-                            
-                            try {
-                              // Initialize Nexus SDK if not already initialized
-                              if (!nexusSDK?.isInitialized()) {
-                                toast.error('Nexus SDK not initialized');
-                                
-                                // Wait a moment for initialization to complete
-                                await new Promise(resolve => setTimeout(resolve, 1000));
-                              }
+                    
+                    <Dialog open={withdrawFundsModalOpen} onOpenChange={(open) => {
+                      if (!open) resetWithdrawFundsModal();
+                      setWithdrawFundsModalOpen(open);
+                    }}>
+                      <DialogTrigger asChild>
+                        <Button size="sm" className={`${minecraftPrimaryButtonClass} w-full h-10`}>
+                          <DollarSign className="mr-2 h-4 w-4" />
+                          Withdraw Funds
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className={`${minecraftPanelClass} max-w-md`}>
+                        <DialogHeader className="pb-4 border-b-4 border-[#654321]">
+                          <DialogTitle className="text-xl font-bold uppercase tracking-[0.2em] text-[#2D1B00]">
+                            Withdraw Funds Workflow
+                          </DialogTitle>
+                          <DialogDescription className="text-sm font-semibold text-[#5D4E37]">
+                            {withdrawFundsStep === 'amount' && 'Step 1: Enter withdrawal amount'}
+                            {withdrawFundsStep === 'chain' && 'Step 2: Select destination chain (optional)'}
+                            {withdrawFundsStep === 'withdraw' && 'Step 3: Complete withdrawal'}
+                          </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="space-y-4 py-4">
+                          {/* Avail Nexus Connection Status */}
+                          {!nexusSDK && (
+                            <div className={`${minecraftSubPanelClass} p-4 space-y-3`}>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <div className="h-3 w-3 rounded-full bg-red-500 animate-pulse" />
+                                  <p className="text-sm font-bold text-[#2D1B00]">Avail Nexus</p>
+                                </div>
+                                <Badge className="rounded-none border-2 border-red-600 bg-red-100 px-3 py-1 text-xs font-bold text-red-700">
+                                  Not Connected
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-[#5D4E37]">
+                                Connect Avail Nexus to enable cross-chain withdrawals to other networks.
+                              </p>
+                              <Button
+                                className={`${minecraftPrimaryButtonClass} w-full h-10`}
+                                onClick={async () => {
+                                  try {
+                                    await initializeNexus();
+                                    toast.success('Avail Nexus connected successfully');
+                                  } catch (error: any) {
+                                    toast.error('Failed to connect Avail Nexus', {
+                                      description: error?.message || 'Could not initialize Nexus SDK'
+                                    });
+                                  }
+                                }}
+                              >
+                                Connect Avail Nexus
+                              </Button>
+                            </div>
+                          )}
+
+                          {nexusSDK && (
+                            <div className={`${minecraftSubPanelClass} p-4`}>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <div className="h-3 w-3 rounded-full bg-green-500" />
+                                  <p className="text-sm font-bold text-[#2D1B00]">Avail Nexus</p>
+                                </div>
+                                <Badge className="rounded-none border-2 border-green-600 bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
+                                  Connected
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-[#5D4E37] mt-2">
+                                Cross-chain withdrawals are enabled via Avail Nexus bridging.
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Step Progress Indicator */}
+                          <div className="flex items-center justify-center mb-6">
+                            {['amount', 'chain', 'withdraw'].map((step, index) => (
+                              <div key={step} className="flex items-center">
+                                <div className={`flex h-8 w-8 items-center justify-center rounded-full border-4 font-bold text-sm ${
+                                  withdrawFundsStep === step
+                                    ? 'border-[#AA7700] bg-[#FFD700] text-[#2D1B00]'
+                                    : ['amount', 'chain', 'withdraw'].indexOf(withdrawFundsStep) > index
+                                    ? 'border-[#2D572D] bg-[#55AA55] text-white'
+                                    : 'border-[#654321] bg-[#8B7355] text-white'
+                                }`}>
+                                  {index + 1}
+                                </div>
+                                {index < 2 && (
+                                  <div className={`w-12 h-1 mx-1 ${
+                                    ['amount', 'chain', 'withdraw'].indexOf(withdrawFundsStep) > index
+                                      ? 'bg-[#55AA55]'
+                                      : 'bg-[#8B7355]'
+                                  }`} />
+                                )}
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Step 1: Amount Input */}
+                          {withdrawFundsStep === 'amount' && (
+                            <div className="space-y-4">
+                              <div className={`${minecraftSubPanelClass} p-4`}>
+                                <p className="text-sm font-semibold text-[#2D1B00] mb-2">Withdrawable Now:</p>
+                                <p className="text-2xl font-bold text-[#2D1B00]">
+                                  {loading ? <Skeleton className="h-8 w-32" /> : `${withdrawableNow.toLocaleString('en-US')} ${projectTokenConfig.symbol}`}
+                                </p>
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="modal-withdraw-amount" className="text-sm font-bold text-[#2D1B00]">
+                                  Amount to Withdraw ({projectTokenConfig.symbol})
+                                </Label>
+                                <Input
+                                  id="modal-withdraw-amount"
+                                  type="number"
+                                  inputMode="decimal"
+                                  placeholder="e.g. 10000"
+                                  value={withdrawAmount}
+                                  onChange={(e) => setWithdrawAmount(e.target.value)}
+                                  className="h-11 rounded-none border-4 border-[#654321] bg-[#FFF3C4] font-semibold text-[#2D1B00] placeholder:text-[#5D4E37] focus-visible:ring-[#FFD700]"
+                                />
+                                <p className="text-xs text-[#5D4E37]">
+                                  Withdraw phase funds that have been unlocked based on project progress and phase completion.
+                                </p>
+                              </div>
+                              <Button
+                                className={`${minecraftPrimaryButtonClass} w-full h-12`}
+                                disabled={!withdrawAmount || Number(withdrawAmount) <= 0 || Number(withdrawAmount) > withdrawableNow}
+                                onClick={() => setWithdrawFundsStep('chain')}
+                              >
+                                Continue
+                              </Button>
+                              {Number(withdrawAmount) > withdrawableNow && withdrawAmount && (
+                                <p className="text-xs text-red-600 font-semibold">
+                                  Amount exceeds withdrawable balance
+                                </p>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Step 2: Chain Selection */}
+                          {withdrawFundsStep === 'chain' && (
+                            <div className="space-y-4">
+                              <div className={`${minecraftSubPanelClass} p-4`}>
+                                <p className="text-sm font-semibold text-[#2D1B00] mb-2">Amount to withdraw:</p>
+                                <p className="text-2xl font-bold text-[#2D1B00]">
+                                  {withdrawAmount} {projectTokenConfig.symbol}
+                                </p>
+                              </div>
+
+                              {/* Warning if Nexus not connected */}
+                              {!nexusSDK && (
+                                <div className="rounded-lg border-4 border-yellow-600 bg-yellow-50 p-3">
+                                  <div className="flex items-start gap-2">
+                                    <AlertTriangle className="h-5 w-5 text-yellow-700 flex-shrink-0 mt-0.5" />
+                                    <div>
+                                      <p className="text-sm font-bold text-yellow-900">Avail Nexus Required</p>
+                                      <p className="text-xs text-yellow-800 mt-1">
+                                        Connect Avail Nexus above to enable cross-chain withdrawals. You can still withdraw directly to Sepolia.
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="space-y-2">
+                                <Label htmlFor="modal-withdrawChain" className="text-sm font-bold text-[#2D1B00]">
+                                  Destination Chain (Optional)
+                                </Label>
+                                <select
+                                  id="modal-withdrawChain"
+                                  className="flex h-11 w-full rounded-none border-4 border-[#654321] bg-[#FFF3C4] px-3 py-2 text-sm font-semibold text-[#2D1B00] shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] disabled:opacity-50 disabled:cursor-not-allowed"
+                                  value={withdrawChainId ?? ''}
+                                  disabled={!nexusSDK}
+                                  onChange={(e) => setWithdrawChainId(e.target.value ? Number(e.target.value) : null)}
+                                >
+                                  <option value="">Same chain (Sepolia - direct withdrawal)</option>
+                                  {SUPPORTED_CHAINS.filter(chain => chain.id !== 11155111).map((chain) => (
+                                    <option key={chain.id} value={chain.id}>
+                                      {chain.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                <p className="text-xs text-[#5D4E37]">
+                                  {!nexusSDK
+                                    ? 'Connect Avail Nexus to enable cross-chain withdrawals'
+                                    : withdrawChainId
+                                    ? 'Funds will be withdrawn and bridged to the selected chain via Avail'
+                                    : 'Withdraw directly to your wallet on Sepolia'}
+                                </p>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  className={`${minecraftNeutralButtonClass} flex-1 h-12`}
+                                  onClick={() => setWithdrawFundsStep('amount')}
+                                >
+                                  Back
+                                </Button>
+                                <Button
+                                  className={`${minecraftPrimaryButtonClass} flex-1 h-12`}
+                                  onClick={() => setWithdrawFundsStep('withdraw')}
+                                >
+                                  Continue
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Step 3: Withdraw */}
+                          {withdrawFundsStep === 'withdraw' && (
+                            <div className="space-y-4">
+                              <div className={`${minecraftSubPanelClass} p-4 space-y-3`}>
+                                <div className="flex justify-between items-center">
+                                  <p className="text-sm font-semibold text-[#5D4E37]">Withdrawable:</p>
+                                  <p className="text-lg font-bold text-[#2D1B00]">
+                                    {withdrawableNow.toLocaleString('en-US')} {projectTokenConfig.symbol}
+                                  </p>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <p className="text-sm font-semibold text-[#5D4E37]">Withdrawing:</p>
+                                  <p className="text-xl font-bold text-[#2D1B00]">
+                                    {withdrawAmount} {projectTokenConfig.symbol}
+                                  </p>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <p className="text-sm font-semibold text-[#5D4E37]">Destination:</p>
+                                  <p className="text-sm font-bold text-[#2D1B00]">
+                                    {withdrawChainId
+                                      ? SUPPORTED_CHAINS.find(c => c.id === withdrawChainId)?.name
+                                      : 'Sepolia (Direct)'}
+                                  </p>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <p className="text-sm font-semibold text-[#5D4E37]">Method:</p>
+                                  <p className="text-sm font-bold text-[#2D1B00]">
+                                    {withdrawChainId ? 'Withdraw & Bridge' : 'Direct Withdrawal'}
+                                  </p>
+                                </div>
+                                <div className="h-px bg-[#654321]" />
+                                <div className="flex justify-between items-center">
+                                  <p className="text-sm font-semibold text-[#5D4E37]">Remaining:</p>
+                                  <p className="text-2xl font-bold text-[#2D1B00]">
+                                    {(withdrawableNow - Number(withdrawAmount)).toLocaleString('en-US')} {projectTokenConfig.symbol}
+                                  </p>
+                                </div>
+                              </div>
                               
-                              if (!nexusSDK) {
-                                throw new Error('Nexus SDK not available');
-                              }
-                              
-                              toast.info('Withdrawing funds on Sepolia...');
-                              
-                              // First withdraw to developer wallet on current chain
-                              const signer = await getSigner();
-                              const developerAddress = await signer.getAddress();
-                              const proj = projectAt(projectAddress, signer);
-                              const withdrawTx = await proj.withdrawPhaseFunds(toStablecoin(amt.toString()));
-                              await withdrawTx.wait();
-                              
-                              toast.success('Funds withdrawn on Sepolia. Initiating bridge...');
-                              
-                              // Get the token config for bridging
-                              const tokenSymbol = projectTokenConfig.symbol as 'USDC';
-                              const targetChainName = SUPPORTED_CHAINS.find(c => c.id === withdrawChainId)?.name;
+                              {withdrawChainId && (
+                                <div className="rounded-lg border-4 border-blue-600 bg-blue-50 p-3">
+                                  <div className="flex items-start gap-2">
+                                    <DollarSign className="h-5 w-5 text-blue-700 flex-shrink-0 mt-0.5" />
+                                    <div>
+                                      <p className="text-sm font-bold text-blue-900">Cross-Chain Withdrawal</p>
+                                      <p className="text-xs text-blue-800 mt-1">
+                                        Funds will be withdrawn on Sepolia and automatically bridged to {SUPPORTED_CHAINS.find(c => c.id === withdrawChainId)?.name} via Avail Nexus.
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
 
-                              // Bridge to target chain using Nexus
-                              toast.info(`Bridging ${amt} ${tokenSymbol} to ${targetChainName}...`);
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  className={`${minecraftNeutralButtonClass} flex-1 h-12`}
+                                  onClick={() => setWithdrawFundsStep('chain')}
+                                >
+                                  Back
+                                </Button>
+                                <Button
+                                  className={`${minecraftSuccessButtonClass} flex-1 h-12`}
+                                  disabled={isWithdrawingFunds || isBridging}
+                                  onClick={async () => {
+                                    try {
+                                      if (!projectAddress) return;
+                                      const amt = Number(withdrawAmount || '0');
+                                      
+                                      if (!amt || amt <= 0) {
+                                        toast.error('Enter amount');
+                                        return;
+                                      }
+                                      if (amt > withdrawableNow) {
+                                        toast.error('Exceeds withdrawable');
+                                        return;
+                                      }
+                                      
+                                      if (withdrawChainId && withdrawChainId !== 11155111) {
+                                        // Cross-chain withdrawal via Avail Nexus
+                                        setIsBridging(true);
+                                        
+                                        try {
+                                          if (!nexusSDK?.isInitialized()) {
+                                            toast.error('Nexus SDK not initialized');
+                                            return;
+                                          }
+                                          
+                                          toast.info('Withdrawing funds on Sepolia...');
+                                          
+                                          // First withdraw to developer wallet on current chain
+                                          const signer = await getSigner();
+                                          const proj = projectAt(projectAddress, signer);
+                                          const withdrawTx = await proj.withdrawPhaseFunds(toStablecoin(amt.toString()));
+                                          await withdrawTx.wait();
+                                          
+                                          toast.success('Funds withdrawn on Sepolia. Initiating bridge...');
+                                          
+                                          // Get the token config for bridging
+                                          const tokenSymbol = 'USDC';
+                                          const targetChainName = SUPPORTED_CHAINS.find(c => c.id === withdrawChainId)?.name;
 
-                              console.log('Bridge params:', {
-                                token: tokenSymbol,
-                                amount: amt,
-                                chainId: withdrawChainId,
-                                sourceChains: [11155111],
-                                sdkNetwork: 'testnet',
-                              });
+                                          // Bridge to target chain using Nexus
+                                          toast.info(`Bridging ${amt} ${tokenSymbol} to ${targetChainName}...`);
 
-                              const bridgeResult = await nexusSDK.bridge({
-                                token: tokenSymbol,
-                                amount: amt,
-                                chainId: withdrawChainId as SUPPORTED_CHAINS_IDS,
-                                sourceChains: [11155111], // Only use funds from current chain (Sepolia)
-                              });
+                                          const bridgeResult = await nexusSDK.bridge({
+                                            token: tokenSymbol,
+                                            amount: amt,
+                                            chainId: withdrawChainId as SUPPORTED_CHAINS_IDS,
+                                            sourceChains: [11155111], // Only use funds from current chain (Sepolia)
+                                          });
 
-                              if (!bridgeResult.success) {
-                                throw new Error(bridgeResult.error);
-                              }
+                                          if (!bridgeResult.success) {
+                                            throw new Error(bridgeResult.error || 'Bridge failed');
+                                          }
 
-                              toast.success(`Successfully bridged ${amt} ${tokenSymbol}!`, {
-                                description: `Transaction completed on ${targetChainName}. ${bridgeResult.explorerUrl ? 'View on explorer' : 'Check your wallet'}`
-                              });
+                                          toast.success(`Successfully bridged ${amt} ${tokenSymbol}!`, {
+                                            description: `Transaction completed on ${targetChainName}`
+                                          });
 
-                              console.log('Bridge result:', bridgeResult);
-
-                              // Optionally open explorer URL
-                              if (bridgeResult.explorerUrl) {
-                                console.log('Explorer URL:', bridgeResult.explorerUrl);
-                                // Uncomment to auto-open: window.open(bridgeResult.explorerUrl, '_blank');
-                              }
-                              
-                            } catch (error: any) {
-                              console.error('Bridge error:', error);
-                              toast.error('Bridge failed', {
-                                description: error?.message || 'Failed to bridge funds to destination chain'
-                              });
-                              throw error;
-                            }
-                          } else {
-                            // Direct withdrawal on same chain
-                            setIsWithdrawingFunds(true);
-                            const signer = await getSigner();
-                            const proj = projectAt(projectAddress, signer);
-                            const tx = await proj.withdrawPhaseFunds(toStablecoin(amt.toString()));
-                            await tx.wait();
-                            toast.success('Withdrawn');
-                          }
-                          
-                          setWithdrawAmount('');
-                          setWithdrawChainId(null);
-                          refresh();
-                        } catch(e:any) { 
-                          toast.error(e?.shortMessage || e?.message || 'Withdraw failed'); 
-                        }
-                        finally { 
-                          setIsWithdrawingFunds(false);
-                          setIsBridging(false);
-                        }
-                      }}>
-                        <DollarSign className="w-4 h-4 mr-2" /> 
-                        {isWithdrawingFunds ? 'Withdrawing...' : isBridging ? 'Bridging...' : withdrawChainId ? 'Withdraw & Bridge' : 'Withdraw Funds'}
-                      </Button>
-                    </div>
+                                          if (bridgeResult.explorerUrl) {
+                                            console.log('Explorer URL:', bridgeResult.explorerUrl);
+                                          }
+                                          
+                                        } catch (error: any) {
+                                          console.error('Bridge error:', error);
+                                          toast.error('Bridge failed', {
+                                            description: error?.message || 'Failed to bridge funds to destination chain'
+                                          });
+                                          throw error;
+                                        }
+                                      } else {
+                                        // Direct withdrawal on same chain
+                                        setIsWithdrawingFunds(true);
+                                        const signer = await getSigner();
+                                        const proj = projectAt(projectAddress, signer);
+                                        const tx = await proj.withdrawPhaseFunds(toStablecoin(amt.toString()));
+                                        await tx.wait();
+                                        toast.success('Withdrawn');
+                                      }
+                                      
+                                      resetWithdrawFundsModal();
+                                      refresh();
+                                    } catch (e: any) {
+                                      toast.error(e?.shortMessage || e?.message || 'Withdraw failed');
+                                    } finally {
+                                      setIsWithdrawingFunds(false);
+                                      setIsBridging(false);
+                                    }
+                                  }}
+                                >
+                                  {isWithdrawingFunds ? 'Withdrawing...' : isBridging ? 'Bridging...' : 'Confirm Withdrawal'}
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </DialogContent>
+                    </Dialog>
                   </div>
                   {/* Sales Proceeds */}
                   <div className="space-y-2">
