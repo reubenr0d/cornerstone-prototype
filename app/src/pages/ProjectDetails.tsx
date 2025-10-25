@@ -63,6 +63,21 @@ const ProjectDetails = () => {
   const [isBridgingDeposit, setIsBridgingDeposit] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [depositStep, setDepositStep] = useState<'amount' | 'approve' | 'chain' | 'deposit'>('amount');
+  // Fund Reserve Modal States
+  const [fundReserveModalOpen, setFundReserveModalOpen] = useState(false);
+  const [fundReserveStep, setFundReserveStep] = useState<'amount' | 'approve' | 'chain' | 'fund'>('amount');
+
+  // Submit Proceeds Modal States
+  const [submitProceedsModalOpen, setSubmitProceedsModalOpen] = useState(false);
+  const [submitProceedsStep, setSubmitProceedsStep] = useState<'amount' | 'approve' | 'chain' | 'submit'>('amount');
+
+  // Fund Reserve bridge states
+  const [fundReserveSourceChain, setFundReserveSourceChain] = useState<number | null>(null);
+  const [isBridgingFundReserve, setIsBridgingFundReserve] = useState(false);
+
+  // Submit Proceeds bridge states
+  const [submitProceedsSourceChain, setSubmitProceedsSourceChain] = useState<number | null>(null);
+  const [isBridgingSubmitProceeds, setIsBridgingSubmitProceeds] = useState(false);
   const [nexusSDK, setNexusSDK] = useState(null);
 
   const projectAddress = useMemo<Address | null>(() => {
@@ -85,6 +100,20 @@ const ProjectDetails = () => {
     setSupportAmount('');
     setApprovedSupport(false);
     setDepositSourceChain(null);
+  };
+
+  const resetFundReserveModal = () => {
+    setFundReserveModalOpen(false);
+    setFundReserveStep('amount');
+    setReserveAmount('');
+    setApprovedReserve(false);
+  };
+  
+  const resetSubmitProceedsModal = () => {
+    setSubmitProceedsModalOpen(false);
+    setSubmitProceedsStep('amount');
+    setProceedsAmount('');
+    setApprovedProceeds(false);
   };
 
   // Dynamically determine which token this project uses
@@ -1719,56 +1748,404 @@ const ProjectDetails = () => {
                       <Banknote className="h-4 w-4 text-[#3D2817]" />
                       <span className="text-sm font-bold text-[#2D1B00]">Fund Reserve</span>
                     </div>
-                    <div className="grid gap-2">
-                      <div className="grid gap-1">
-                        <Label htmlFor="reserveAmount" className="text-sm font-bold text-[#2D1B00]">Amount ({projectTokenConfig.symbol})</Label>
-                        <Input
-                          id="reserveAmount"
-                          inputMode="decimal"
-                          placeholder="e.g. 50000"
-                          value={reserveAmount}
-                          onChange={(e) => setReserveAmount(e.target.value)}
-                          className="h-11 rounded-none border-4 border-[#654321] bg-[#FFF3C4] font-semibold text-[#2D1B00] placeholder:text-[#5D4E37] focus-visible:ring-[#FFD700]"
-                        />
-                      </div>
-                      {!approvedReserve ? (
-                        <Button size="sm" className={`${minecraftPrimaryButtonClass} justify-start px-4 h-10`} disabled={isApprovingReserve} onClick={async ()=>{
-                          try {
-                            if (!projectAddress || !staticConfig?.stablecoin) { toast.error('Addresses not loaded'); return; }
-                            const amt = reserveAmount.trim();
-                            if (!amt || Number(amt) <= 0) { toast.error('Enter amount'); return; }
-                            setIsApprovingReserve(true);
-                            const signer = await getSigner();
-                            const t = erc20At(staticConfig.stablecoin, signer);
-                            const tx = await t.approve(projectAddress, toStablecoin(amt));
-                            await tx.wait();
-                            setApprovedReserve(true);
-                            toast.success('Approved');
-                          } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Approve failed'); }
-                          finally { setIsApprovingReserve(false); }
-                        }}>
-                          <Wallet className="mr-2 h-4 w-4" /> {isApprovingReserve ? 'Approving...' : 'Approve'}
+                    
+                    <Dialog open={fundReserveModalOpen} onOpenChange={(open) => {
+                      if (!open) resetFundReserveModal();
+                      setFundReserveModalOpen(open);
+                    }}>
+                      <DialogTrigger asChild>
+                        <Button size="sm" className={`${minecraftPrimaryButtonClass} w-full h-10`}>
+                          <Banknote className="mr-2 h-4 w-4" />
+                          Fund Reserve
                         </Button>
-                      ) : (
-                        <Button size="sm" className={`${minecraftSuccessButtonClass} justify-start px-4 h-10`} disabled={isFundingReserve} onClick={async ()=>{
-                          try {
-                            if (!projectAddress) return;
-                            setIsFundingReserve(true);
-                            const signer = await getSigner();
-                            const proj = projectAt(projectAddress, signer);
-                            const tx = await proj.fundReserve(toStablecoin(reserveAmount));
-                            await tx.wait();
-                            toast.success('Reserve funded');
-                            setApprovedReserve(false);
-                            setReserveAmount('');
-                            refresh();
-                          } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Fund failed'); }
-                          finally { setIsFundingReserve(false); }
-                        }}>
-                          <Banknote className="mr-2 h-4 w-4" /> {isFundingReserve ? 'Funding...' : 'Fund Reserve'}
-                        </Button>
-                      )}
-                    </div>
+                      </DialogTrigger>
+                      <DialogContent className={`${minecraftPanelClass} max-w-md`}>
+                        <DialogHeader className="pb-4 border-b-4 border-[#654321]">
+                          <DialogTitle className="text-xl font-bold uppercase tracking-[0.2em] text-[#2D1B00]">
+                            Fund Reserve Workflow
+                          </DialogTitle>
+                          <DialogDescription className="text-sm font-semibold text-[#5D4E37]">
+                            {fundReserveStep === 'amount' && 'Step 1: Enter reserve amount'}
+                            {fundReserveStep === 'approve' && 'Step 2: Approve token spending'}
+                            {fundReserveStep === 'chain' && 'Step 3: Select source chain (optional)'}
+                            {fundReserveStep === 'fund' && 'Step 4: Complete funding'}
+                          </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="space-y-4 py-4">
+                          {/* Avail Nexus Connection Status */}
+                          {!nexusSDK && (
+                            <div className={`${minecraftSubPanelClass} p-4 space-y-3`}>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <div className="h-3 w-3 rounded-full bg-red-500 animate-pulse" />
+                                  <p className="text-sm font-bold text-[#2D1B00]">Avail Nexus</p>
+                                </div>
+                                <Badge className="rounded-none border-2 border-red-600 bg-red-100 px-3 py-1 text-xs font-bold text-red-700">
+                                  Not Connected
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-[#5D4E37]">
+                                Connect Avail Nexus to enable cross-chain funding from other networks.
+                              </p>
+                              <Button
+                                className={`${minecraftPrimaryButtonClass} w-full h-10`}
+                                onClick={async () => {
+                                  try {
+                                    await initializeNexus();
+                                    toast.success('Avail Nexus connected successfully');
+                                  } catch (error: any) {
+                                    toast.error('Failed to connect Avail Nexus', {
+                                      description: error?.message || 'Could not initialize Nexus SDK'
+                                    });
+                                  }
+                                }}
+                              >
+                                Connect Avail Nexus
+                              </Button>
+                            </div>
+                          )}
+
+                          {nexusSDK && (
+                            <div className={`${minecraftSubPanelClass} p-4`}>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <div className="h-3 w-3 rounded-full bg-green-500" />
+                                  <p className="text-sm font-bold text-[#2D1B00]">Avail Nexus</p>
+                                </div>
+                                <Badge className="rounded-none border-2 border-green-600 bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
+                                  Connected
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-[#5D4E37] mt-2">
+                                Cross-chain funding is enabled via Avail Nexus bridging.
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Step Progress Indicator */}
+                          <div className="flex items-center justify-between mb-6">
+                            {['amount', 'approve', 'chain', 'fund'].map((step, index) => (
+                              <div key={step} className="flex items-center">
+                                <div className={`flex h-8 w-8 items-center justify-center rounded-full border-4 font-bold text-sm ${
+                                  fundReserveStep === step
+                                    ? 'border-[#AA7700] bg-[#FFD700] text-[#2D1B00]'
+                                    : ['amount', 'approve', 'chain', 'fund'].indexOf(fundReserveStep) > index
+                                    ? 'border-[#2D572D] bg-[#55AA55] text-white'
+                                    : 'border-[#654321] bg-[#8B7355] text-white'
+                                }`}>
+                                  {index + 1}
+                                </div>
+                                {index < 3 && (
+                                  <div className={`w-8 h-1 mx-1 ${
+                                    ['amount', 'approve', 'chain', 'fund'].indexOf(fundReserveStep) > index
+                                      ? 'bg-[#55AA55]'
+                                      : 'bg-[#8B7355]'
+                                  }`} />
+                                )}
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Step 1: Amount Input */}
+                          {fundReserveStep === 'amount' && (
+                            <div className="space-y-4">
+                              <div className={`${minecraftSubPanelClass} p-4`}>
+                                <p className="text-sm font-semibold text-[#2D1B00] mb-2">Current Reserve Balance:</p>
+                                <p className="text-2xl font-bold text-[#2D1B00]">
+                                  {loading ? <Skeleton className="h-8 w-32" /> : `${format(project.escrow)} ${projectTokenConfig.symbol}`}
+                                </p>
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="modal-reserve-amount" className="text-sm font-bold text-[#2D1B00]">
+                                  Amount to Add ({projectTokenConfig.symbol})
+                                </Label>
+                                <Input
+                                  id="modal-reserve-amount"
+                                  type="number"
+                                  inputMode="decimal"
+                                  placeholder="e.g. 50000"
+                                  value={reserveAmount}
+                                  onChange={(e) => setReserveAmount(e.target.value)}
+                                  className="h-11 rounded-none border-4 border-[#654321] bg-[#FFF3C4] font-semibold text-[#2D1B00] placeholder:text-[#5D4E37] focus-visible:ring-[#FFD700]"
+                                />
+                                <p className="text-xs text-[#5D4E37]">
+                                  The interest reserve ensures timely payments to investors during project phases.
+                                </p>
+                              </div>
+                              <Button
+                                className={`${minecraftPrimaryButtonClass} w-full h-12`}
+                                disabled={!reserveAmount || Number(reserveAmount) <= 0}
+                                onClick={() => setFundReserveStep('approve')}
+                              >
+                                Continue
+                              </Button>
+                            </div>
+                          )}
+
+                          {/* Step 2: Approve */}
+                          {fundReserveStep === 'approve' && (
+                            <div className="space-y-4">
+                              <div className={`${minecraftSubPanelClass} p-4`}>
+                                <p className="text-sm font-semibold text-[#2D1B00] mb-2">Amount to fund:</p>
+                                <p className="text-2xl font-bold text-[#2D1B00]">
+                                  {reserveAmount} {projectTokenConfig.symbol}
+                                </p>
+                              </div>
+                              <p className="text-xs text-[#5D4E37]">
+                                You need to approve the contract to spend your tokens on Sepolia before proceeding.
+                              </p>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  className={`${minecraftNeutralButtonClass} flex-1 h-12`}
+                                  onClick={() => setFundReserveStep('amount')}
+                                >
+                                  Back
+                                </Button>
+                                <Button
+                                  className={`${minecraftPrimaryButtonClass} flex-1 h-12`}
+                                  disabled={isApprovingReserve}
+                                  onClick={async () => {
+                                    try {
+                                      if (!projectAddress || !staticConfig?.stablecoin) {
+                                        toast.error('Addresses not loaded');
+                                        return;
+                                      }
+                                      const amt = reserveAmount.trim();
+                                      if (!amt || Number(amt) <= 0) {
+                                        toast.error('Enter amount');
+                                        return;
+                                      }
+                                      setIsApprovingReserve(true);
+                                      const signer = await getSigner();
+                                      const t = erc20At(staticConfig.stablecoin, signer);
+                                      const tx = await t.approve(projectAddress, toStablecoin(amt));
+                                      await tx.wait();
+                                      setApprovedReserve(true);
+                                      toast.success('Approved');
+                                      setFundReserveStep('chain');
+                                    } catch (e: any) {
+                                      toast.error(e?.shortMessage || e?.message || 'Approve failed');
+                                    } finally {
+                                      setIsApprovingReserve(false);
+                                    }
+                                  }}
+                                >
+                                  {isApprovingReserve ? 'Approving...' : 'Approve'}
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Step 3: Chain Selection */}
+                          {fundReserveStep === 'chain' && (
+                            <div className="space-y-4">
+                              <div className={`${minecraftSubPanelClass} p-4`}>
+                                <p className="text-sm font-semibold text-[#2D1B00] mb-2">Amount to fund:</p>
+                                <p className="text-2xl font-bold text-[#2D1B00]">
+                                  {reserveAmount} {projectTokenConfig.symbol}
+                                </p>
+                              </div>
+
+                              {/* Warning if Nexus not connected */}
+                              {!nexusSDK && (
+                                <div className="rounded-lg border-4 border-yellow-600 bg-yellow-50 p-3">
+                                  <div className="flex items-start gap-2">
+                                    <AlertTriangle className="h-5 w-5 text-yellow-700 flex-shrink-0 mt-0.5" />
+                                    <div>
+                                      <p className="text-sm font-bold text-yellow-900">Avail Nexus Required</p>
+                                      <p className="text-xs text-yellow-800 mt-1">
+                                        Connect Avail Nexus above to enable cross-chain funding. You can still fund directly from Sepolia.
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="space-y-2">
+                                <Label htmlFor="modal-fundReserveSourceChain" className="text-sm font-bold text-[#2D1B00]">
+                                  Source Chain (Optional)
+                                </Label>
+                                <select
+                                  id="modal-fundReserveSourceChain"
+                                  className="flex h-11 w-full rounded-none border-4 border-[#654321] bg-[#FFF3C4] px-3 py-2 text-sm font-semibold text-[#2D1B00] shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] disabled:opacity-50 disabled:cursor-not-allowed"
+                                  value={fundReserveSourceChain ?? ''}
+                                  disabled={!nexusSDK}
+                                  onChange={async (e) => {
+                                    const selectedChain = e.target.value ? Number(e.target.value) : null;
+                                    setFundReserveSourceChain(selectedChain);
+                                    
+                                    if (selectedChain) {
+                                      try {
+                                        await switchToChain(selectedChain);
+                                        toast.success(`Switched to ${SUPPORTED_CHAINS.find(c => c.id === selectedChain)?.name}`);
+                                      } catch (error: any) {
+                                        toast.error('Failed to switch chain', {
+                                          description: error?.message || 'Could not switch to selected chain'
+                                        });
+                                        setFundReserveSourceChain(null);
+                                      }
+                                    }
+                                  }}
+                                >
+                                  <option value="">Current chain (Sepolia - direct funding)</option>
+                                  {SUPPORTED_CHAINS.filter(chain => chain.id !== 11155111).map((chain) => (
+                                    <option key={chain.id} value={chain.id}>
+                                      {chain.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                <p className="text-xs text-[#5D4E37]">
+                                  {!nexusSDK
+                                    ? 'Connect Avail Nexus to enable cross-chain funding'
+                                    : fundReserveSourceChain
+                                    ? 'Funds will be bridged via Avail and deposited automatically'
+                                    : 'Fund directly from Sepolia'}
+                                </p>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  className={`${minecraftNeutralButtonClass} flex-1 h-12`}
+                                  onClick={() => {
+                                    setFundReserveStep('approve');
+                                    setApprovedReserve(false);
+                                  }}
+                                >
+                                  Back
+                                </Button>
+                                <Button
+                                  className={`${minecraftPrimaryButtonClass} flex-1 h-12`}
+                                  onClick={() => setFundReserveStep('fund')}
+                                >
+                                  Continue
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Step 4: Fund */}
+                          {fundReserveStep === 'fund' && (
+                            <div className="space-y-4">
+                              <div className={`${minecraftSubPanelClass} p-4 space-y-3`}>
+                                <div className="flex justify-between items-center">
+                                  <p className="text-sm font-semibold text-[#5D4E37]">Current Reserve:</p>
+                                  <p className="text-lg font-bold text-[#2D1B00]">
+                                    {format(project.escrow)} {projectTokenConfig.symbol}
+                                  </p>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <p className="text-sm font-semibold text-[#5D4E37]">Adding:</p>
+                                  <p className="text-xl font-bold text-[#2D1B00]">
+                                    +{reserveAmount} {projectTokenConfig.symbol}
+                                  </p>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <p className="text-sm font-semibold text-[#5D4E37]">Source:</p>
+                                  <p className="text-sm font-bold text-[#2D1B00]">
+                                    {fundReserveSourceChain
+                                      ? SUPPORTED_CHAINS.find(c => c.id === fundReserveSourceChain)?.name
+                                      : 'Sepolia (Direct)'}
+                                  </p>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <p className="text-sm font-semibold text-[#5D4E37]">Method:</p>
+                                  <p className="text-sm font-bold text-[#2D1B00]">
+                                    {fundReserveSourceChain ? 'Bridge & Fund' : 'Direct Funding'}
+                                  </p>
+                                </div>
+                                <div className="h-px bg-[#654321]" />
+                                <div className="flex justify-between items-center">
+                                  <p className="text-sm font-semibold text-[#5D4E37]">New Reserve:</p>
+                                  <p className="text-2xl font-bold text-[#2D1B00]">
+                                    {format(project.escrow + Number(reserveAmount))} {projectTokenConfig.symbol}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  className={`${minecraftNeutralButtonClass} flex-1 h-12`}
+                                  onClick={() => setFundReserveStep('chain')}
+                                >
+                                  Back
+                                </Button>
+                                <Button
+                                  className={`${minecraftSuccessButtonClass} flex-1 h-12`}
+                                  disabled={isFundingReserve || isBridgingFundReserve}
+                                  onClick={async () => {
+                                    try {
+                                      if (!projectAddress) return;
+                                      const amt = toStablecoin(reserveAmount);
+                                      
+                                      if (fundReserveSourceChain && fundReserveSourceChain !== 11155111) {
+                                        setIsBridgingFundReserve(true);
+                                        
+                                        if (!nexusSDK?.isInitialized()) {
+                                          toast.error('Please connect Avail Nexus first');
+                                          return;
+                                        }
+                                        
+                                        const tokenSymbol = 'USDC';
+                                        toast.info(`Bridging ${reserveAmount} ${tokenSymbol}...`);
+                                        
+                                        const result = await nexusSDK.bridgeAndExecute({
+                                          token: tokenSymbol,
+                                          amount: reserveAmount,
+                                          toChainId: 11155111,
+                                          sourceChains: [fundReserveSourceChain],
+                                          execute: {
+                                            contractAddress: projectAddress,
+                                            contractAbi: CornerstoneProjectABI,
+                                            functionName: 'fundReserve',
+                                            buildFunctionParams: (token, amount, chainId, userAddress) => {
+                                              const decimals = 6;
+                                              const amountWei = ethers.parseUnits(amount, decimals);
+                                              return {
+                                                functionParams: [amountWei],
+                                              };
+                                            },
+                                            tokenApproval: {
+                                              token: tokenSymbol,
+                                              amount: reserveAmount,
+                                            },
+                                          },
+                                          waitForReceipt: true,
+                                        });
+                                        
+                                        if (!result.success) {
+                                          throw new Error(result.error || 'Bridge and fund failed');
+                                        }
+                                        
+                                        toast.success(`Successfully funded reserve with ${reserveAmount} ${tokenSymbol}!`);
+                                      } else {
+                                        setIsFundingReserve(true);
+                                        const signer = await getSigner();
+                                        const proj = projectAt(projectAddress, signer);
+                                        const tx = await proj.fundReserve(amt);
+                                        await tx.wait();
+                                        toast.success('Reserve funded');
+                                      }
+                                      
+                                      resetFundReserveModal();
+                                      refresh();
+                                    } catch (e: any) {
+                                      toast.error(e?.shortMessage || e?.message || 'Fund failed');
+                                    } finally {
+                                      setIsFundingReserve(false);
+                                      setIsBridgingFundReserve(false);
+                                    }
+                                  }}
+                                >
+                                  {isFundingReserve ? 'Funding...' : isBridgingFundReserve ? 'Bridging...' : 'Confirm Funding'}
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </DialogContent>
+                    </Dialog>
                   </div>
 
                   {/* Close Phase */}
@@ -1997,56 +2374,415 @@ const ProjectDetails = () => {
                       <DollarSign className="h-4 w-4 text-[#3D2817]" />
                       <span className="text-sm font-bold text-[#2D1B00]">Submit Sales Proceeds</span>
                     </div>
-                    <div className="grid gap-2">
-                      <div className="grid gap-1">
-                        <Label htmlFor="proceedsAmount" className="text-sm font-bold text-[#2D1B00]">Amount ({projectTokenConfig.symbol})</Label>
-                        <Input
-                          id="proceedsAmount"
-                          inputMode="decimal"
-                          placeholder="e.g. 25000"
-                          value={proceedsAmount}
-                          onChange={(e)=>{ setProceedsAmount(e.target.value); setApprovedProceeds(false); }}
-                          className="h-11 rounded-none border-4 border-[#654321] bg-[#FFF3C4] font-semibold text-[#2D1B00] placeholder:text-[#5D4E37] focus-visible:ring-[#FFD700]"
-                        />
-                      </div>
-                      {!approvedProceeds ? (
-                        <Button size="sm" className={`${minecraftPrimaryButtonClass} justify-start px-4 h-10`} disabled={isApprovingProceeds} onClick={async ()=>{
-                          try {
-                            if (!projectAddress || !staticConfig?.stablecoin) { toast.error('Addresses not loaded'); return; }
-                            const amt = proceedsAmount.trim();
-                            if (!amt || Number(amt) <= 0) { toast.error('Enter amount'); return; }
-                            setIsApprovingProceeds(true);
-                            const signer = await getSigner();
-                            const t = erc20At(staticConfig.stablecoin, signer);
-                            const tx = await t.approve(projectAddress, toStablecoin(amt));
-                            await tx.wait();
-                            setApprovedProceeds(true);
-                            toast.success('Approved');
-                          } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Approve failed'); }
-                          finally { setIsApprovingProceeds(false); }
-                        }}>
-                          <Wallet className="mr-2 h-4 w-4" /> {isApprovingProceeds ? 'Approving...' : 'Approve'}
+                    
+                    <Dialog open={submitProceedsModalOpen} onOpenChange={(open) => {
+                      if (!open) resetSubmitProceedsModal();
+                      setSubmitProceedsModalOpen(open);
+                    }}>
+                      <DialogTrigger asChild>
+                        <Button size="sm" className={`${minecraftPrimaryButtonClass} w-full h-10`}>
+                          <DollarSign className="mr-2 h-4 w-4" />
+                          Submit Proceeds
                         </Button>
-                      ) : (
-                        <Button size="sm" className={`${minecraftSuccessButtonClass} justify-start px-4 h-10`} disabled={isSubmittingProceeds} onClick={async ()=>{
-                          try {
-                            if (!projectAddress) return;
-                            setIsSubmittingProceeds(true);
-                            const signer = await getSigner();
-                            const proj = projectAt(projectAddress, signer);
-                            const tx = await proj.submitSalesProceeds(toStablecoin(proceedsAmount));
-                            await tx.wait();
-                            toast.success('Proceeds submitted');
-                            setApprovedProceeds(false);
-                            setProceedsAmount('');
-                            refresh();
-                          } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Submit failed'); }
-                          finally { setIsSubmittingProceeds(false); }
-                        }}>
-                          <DollarSign className="mr-2 h-4 w-4" /> {isSubmittingProceeds ? 'Submitting...' : 'Submit Proceeds'}
-                        </Button>
-                      )}
-                    </div>
+                      </DialogTrigger>
+                      <DialogContent className={`${minecraftPanelClass} max-w-md`}>
+                        <DialogHeader className="pb-4 border-b-4 border-[#654321]">
+                          <DialogTitle className="text-xl font-bold uppercase tracking-[0.2em] text-[#2D1B00]">
+                            Submit Proceeds Workflow
+                          </DialogTitle>
+                          <DialogDescription className="text-sm font-semibold text-[#5D4E37]">
+                            {submitProceedsStep === 'amount' && 'Step 1: Enter proceeds amount'}
+                            {submitProceedsStep === 'approve' && 'Step 2: Approve token spending'}
+                            {submitProceedsStep === 'chain' && 'Step 3: Select source chain (optional)'}
+                            {submitProceedsStep === 'submit' && 'Step 4: Complete submission'}
+                          </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="space-y-4 py-4">
+                          {/* Avail Nexus Connection Status */}
+                          {!nexusSDK && (
+                            <div className={`${minecraftSubPanelClass} p-4 space-y-3`}>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <div className="h-3 w-3 rounded-full bg-red-500 animate-pulse" />
+                                  <p className="text-sm font-bold text-[#2D1B00]">Avail Nexus</p>
+                                </div>
+                                <Badge className="rounded-none border-2 border-red-600 bg-red-100 px-3 py-1 text-xs font-bold text-red-700">
+                                  Not Connected
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-[#5D4E37]">
+                                Connect Avail Nexus to enable cross-chain proceeds submission from other networks.
+                              </p>
+                              <Button
+                                className={`${minecraftPrimaryButtonClass} w-full h-10`}
+                                onClick={async () => {
+                                  try {
+                                    await initializeNexus();
+                                    toast.success('Avail Nexus connected successfully');
+                                  } catch (error: any) {
+                                    toast.error('Failed to connect Avail Nexus', {
+                                      description: error?.message || 'Could not initialize Nexus SDK'
+                                    });
+                                  }
+                                }}
+                              >
+                                Connect Avail Nexus
+                              </Button>
+                            </div>
+                          )}
+
+                          {nexusSDK && (
+                            <div className={`${minecraftSubPanelClass} p-4`}>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <div className="h-3 w-3 rounded-full bg-green-500" />
+                                  <p className="text-sm font-bold text-[#2D1B00]">Avail Nexus</p>
+                                </div>
+                                <Badge className="rounded-none border-2 border-green-600 bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
+                                  Connected
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-[#5D4E37] mt-2">
+                                Cross-chain proceeds submission is enabled via Avail Nexus bridging.
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Step Progress Indicator */}
+                          <div className="flex items-center justify-between mb-6">
+                            {['amount', 'approve', 'chain', 'submit'].map((step, index) => (
+                              <div key={step} className="flex items-center">
+                                <div className={`flex h-8 w-8 items-center justify-center rounded-full border-4 font-bold text-sm ${
+                                  submitProceedsStep === step
+                                    ? 'border-[#AA7700] bg-[#FFD700] text-[#2D1B00]'
+                                    : ['amount', 'approve', 'chain', 'submit'].indexOf(submitProceedsStep) > index
+                                    ? 'border-[#2D572D] bg-[#55AA55] text-white'
+                                    : 'border-[#654321] bg-[#8B7355] text-white'
+                                }`}>
+                                  {index + 1}
+                                </div>
+                                {index < 3 && (
+                                  <div className={`w-8 h-1 mx-1 ${
+                                    ['amount', 'approve', 'chain', 'submit'].indexOf(submitProceedsStep) > index
+                                      ? 'bg-[#55AA55]'
+                                      : 'bg-[#8B7355]'
+                                  }`} />
+                                )}
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Step 1: Amount Input */}
+                          {submitProceedsStep === 'amount' && (
+                            <div className="space-y-4">
+                              <div className={`${minecraftSubPanelClass} p-4`}>
+                                <p className="text-sm font-semibold text-[#2D1B00] mb-2">Principal Buffer Available:</p>
+                                <p className="text-2xl font-bold text-[#2D1B00]">
+                                  {loading ? <Skeleton className="h-8 w-32" /> : `${realtimeData?.principalBuffer ? Number(fromStablecoin(realtimeData.principalBuffer)).toLocaleString('en-US') : 0} ${projectTokenConfig.symbol}`}
+                                </p>
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="modal-proceeds-amount" className="text-sm font-bold text-[#2D1B00]">
+                                  Sales Proceeds Amount ({projectTokenConfig.symbol})
+                                </Label>
+                                <Input
+                                  id="modal-proceeds-amount"
+                                  type="number"
+                                  inputMode="decimal"
+                                  placeholder="e.g. 25000"
+                                  value={proceedsAmount}
+                                  onChange={(e) => setProceedsAmount(e.target.value)}
+                                  className="h-11 rounded-none border-4 border-[#654321] bg-[#FFF3C4] font-semibold text-[#2D1B00] placeholder:text-[#5D4E37] focus-visible:ring-[#FFD700]"
+                                />
+                                <p className="text-xs text-[#5D4E37]">
+                                  Submit proceeds from property sales or revenue. These funds will be added to the principal buffer for investor redemptions.
+                                </p>
+                              </div>
+                              <Button
+                                className={`${minecraftPrimaryButtonClass} w-full h-12`}
+                                disabled={!proceedsAmount || Number(proceedsAmount) <= 0}
+                                onClick={() => setSubmitProceedsStep('approve')}
+                              >
+                                Continue
+                              </Button>
+                            </div>
+                          )}
+
+                          {/* Step 2: Approve */}
+                          {submitProceedsStep === 'approve' && (
+                            <div className="space-y-4">
+                              <div className={`${minecraftSubPanelClass} p-4`}>
+                                <p className="text-sm font-semibold text-[#2D1B00] mb-2">Proceeds to submit:</p>
+                                <p className="text-2xl font-bold text-[#2D1B00]">
+                                  {proceedsAmount} {projectTokenConfig.symbol}
+                                </p>
+                              </div>
+                              <p className="text-xs text-[#5D4E37]">
+                                You need to approve the contract to spend your tokens on Sepolia before proceeding.
+                              </p>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  className={`${minecraftNeutralButtonClass} flex-1 h-12`}
+                                  onClick={() => setSubmitProceedsStep('amount')}
+                                >
+                                  Back
+                                </Button>
+                                <Button
+                                  className={`${minecraftPrimaryButtonClass} flex-1 h-12`}
+                                  disabled={isApprovingProceeds}
+                                  onClick={async () => {
+                                    try {
+                                      if (!projectAddress || !staticConfig?.stablecoin) {
+                                        toast.error('Addresses not loaded');
+                                        return;
+                                      }
+                                      const amt = proceedsAmount.trim();
+                                      if (!amt || Number(amt) <= 0) {
+                                        toast.error('Enter amount');
+                                        return;
+                                      }
+                                      setIsApprovingProceeds(true);
+                                      const signer = await getSigner();
+                                      const t = erc20At(staticConfig.stablecoin, signer);
+                                      const tx = await t.approve(projectAddress, toStablecoin(amt));
+                                      await tx.wait();
+                                      setApprovedProceeds(true);
+                                      toast.success('Approved');
+                                      setSubmitProceedsStep('chain');
+                                    } catch (e: any) {
+                                      toast.error(e?.shortMessage || e?.message || 'Approve failed');
+                                    } finally {
+                                      setIsApprovingProceeds(false);
+                                    }
+                                  }}
+                                >
+                                  {isApprovingProceeds ? 'Approving...' : 'Approve'}
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Step 3: Chain Selection */}
+                          {submitProceedsStep === 'chain' && (
+                            <div className="space-y-4">
+                              <div className={`${minecraftSubPanelClass} p-4`}>
+                                <p className="text-sm font-semibold text-[#2D1B00] mb-2">Proceeds to submit:</p>
+                                <p className="text-2xl font-bold text-[#2D1B00]">
+                                  {proceedsAmount} {projectTokenConfig.symbol}
+                                </p>
+                              </div>
+
+                              {/* Warning if Nexus not connected */}
+                              {!nexusSDK && (
+                                <div className="rounded-lg border-4 border-yellow-600 bg-yellow-50 p-3">
+                                  <div className="flex items-start gap-2">
+                                    <AlertTriangle className="h-5 w-5 text-yellow-700 flex-shrink-0 mt-0.5" />
+                                    <div>
+                                      <p className="text-sm font-bold text-yellow-900">Avail Nexus Required</p>
+                                      <p className="text-xs text-yellow-800 mt-1">
+                                        Connect Avail Nexus above to enable cross-chain proceeds submission. You can still submit directly from Sepolia.
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="space-y-2">
+                                <Label htmlFor="modal-submitProceedsSourceChain" className="text-sm font-bold text-[#2D1B00]">
+                                  Source Chain (Optional)
+                                </Label>
+                                <select
+                                  id="modal-submitProceedsSourceChain"
+                                  className="flex h-11 w-full rounded-none border-4 border-[#654321] bg-[#FFF3C4] px-3 py-2 text-sm font-semibold text-[#2D1B00] shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] disabled:opacity-50 disabled:cursor-not-allowed"
+                                  value={submitProceedsSourceChain ?? ''}
+                                  disabled={!nexusSDK}
+                                  onChange={async (e) => {
+                                    const selectedChain = e.target.value ? Number(e.target.value) : null;
+                                    setSubmitProceedsSourceChain(selectedChain);
+                                    
+                                    if (selectedChain) {
+                                      try {
+                                        await switchToChain(selectedChain);
+                                        toast.success(`Switched to ${SUPPORTED_CHAINS.find(c => c.id === selectedChain)?.name}`);
+                                      } catch (error: any) {
+                                        toast.error('Failed to switch chain', {
+                                          description: error?.message || 'Could not switch to selected chain'
+                                        });
+                                        setSubmitProceedsSourceChain(null);
+                                      }
+                                    }
+                                  }}
+                                >
+                                  <option value="">Current chain (Sepolia - direct submission)</option>
+                                  {SUPPORTED_CHAINS.filter(chain => chain.id !== 11155111).map((chain) => (
+                                    <option key={chain.id} value={chain.id}>
+                                      {chain.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                <p className="text-xs text-[#5D4E37]">
+                                  {!nexusSDK
+                                    ? 'Connect Avail Nexus to enable cross-chain submission'
+                                    : submitProceedsSourceChain
+                                    ? 'Funds will be bridged via Avail and submitted automatically'
+                                    : 'Submit directly from Sepolia'}
+                                </p>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  className={`${minecraftNeutralButtonClass} flex-1 h-12`}
+                                  onClick={() => {
+                                    setSubmitProceedsStep('approve');
+                                    setApprovedProceeds(false);
+                                  }}
+                                >
+                                  Back
+                                </Button>
+                                <Button
+                                  className={`${minecraftPrimaryButtonClass} flex-1 h-12`}
+                                  onClick={() => setSubmitProceedsStep('submit')}
+                                >
+                                  Continue
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Step 4: Submit */}
+                          {submitProceedsStep === 'submit' && (
+                            <div className="space-y-4">
+                              <div className={`${minecraftSubPanelClass} p-4 space-y-3`}>
+                                <div className="flex justify-between items-center">
+                                  <p className="text-sm font-semibold text-[#5D4E37]">Current Buffer:</p>
+                                  <p className="text-lg font-bold text-[#2D1B00]">
+                                    {realtimeData?.principalBuffer ? format(Number(fromStablecoin(realtimeData.principalBuffer))) : 0} {projectTokenConfig.symbol}
+                                  </p>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <p className="text-sm font-semibold text-[#5D4E37]">Adding Proceeds:</p>
+                                  <p className="text-xl font-bold text-[#2D1B00]">
+                                    +{proceedsAmount} {projectTokenConfig.symbol}
+                                  </p>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <p className="text-sm font-semibold text-[#5D4E37]">Source:</p>
+                                  <p className="text-sm font-bold text-[#2D1B00]">
+                                    {submitProceedsSourceChain
+                                      ? SUPPORTED_CHAINS.find(c => c.id === submitProceedsSourceChain)?.name
+                                      : 'Sepolia (Direct)'}
+                                  </p>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <p className="text-sm font-semibold text-[#5D4E37]">Method:</p>
+                                  <p className="text-sm font-bold text-[#2D1B00]">
+                                    {submitProceedsSourceChain ? 'Bridge & Submit' : 'Direct Submission'}
+                                  </p>
+                                </div>
+                                <div className="h-px bg-[#654321]" />
+                                <div className="flex justify-between items-center">
+                                  <p className="text-sm font-semibold text-[#5D4E37]">New Buffer:</p>
+                                  <p className="text-2xl font-bold text-[#2D1B00]">
+                                    {format((realtimeData?.principalBuffer ? Number(fromStablecoin(realtimeData.principalBuffer)) : 0) + Number(proceedsAmount))} {projectTokenConfig.symbol}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="rounded-lg border-4 border-blue-600 bg-blue-50 p-3">
+                                <div className="flex items-start gap-2">
+                                  <DollarSign className="h-5 w-5 text-blue-700 flex-shrink-0 mt-0.5" />
+                                  <div>
+                                    <p className="text-sm font-bold text-blue-900">Investor Redemptions</p>
+                                    <p className="text-xs text-blue-800 mt-1">
+                                      These proceeds will be available for investors to redeem their principal investments.
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  className={`${minecraftNeutralButtonClass} flex-1 h-12`}
+                                  onClick={() => setSubmitProceedsStep('chain')}
+                                >
+                                  Back
+                                </Button>
+                                <Button
+                                  className={`${minecraftSuccessButtonClass} flex-1 h-12`}
+                                  disabled={isSubmittingProceeds || isBridgingSubmitProceeds}
+                                  onClick={async () => {
+                                    try {
+                                      if (!projectAddress) return;
+                                      const amt = toStablecoin(proceedsAmount);
+                                      
+                                      if (submitProceedsSourceChain && submitProceedsSourceChain !== 11155111) {
+                                        setIsBridgingSubmitProceeds(true);
+                                        
+                                        if (!nexusSDK?.isInitialized()) {
+                                          toast.error('Please connect Avail Nexus first');
+                                          return;
+                                        }
+                                        
+                                        const tokenSymbol = 'USDC';
+                                        toast.info(`Bridging ${proceedsAmount} ${tokenSymbol}...`);
+                                        
+                                        const result = await nexusSDK.bridgeAndExecute({
+                                          token: tokenSymbol,
+                                          amount: proceedsAmount,
+                                          toChainId: 11155111,
+                                          sourceChains: [submitProceedsSourceChain],
+                                          execute: {
+                                            contractAddress: projectAddress,
+                                            contractAbi: CornerstoneProjectABI,
+                                            functionName: 'submitSalesProceeds',
+                                            buildFunctionParams: (token, amount, chainId, userAddress) => {
+                                              const decimals = 6;
+                                              const amountWei = ethers.parseUnits(amount, decimals);
+                                              return {
+                                                functionParams: [amountWei],
+                                              };
+                                            },
+                                            tokenApproval: {
+                                              token: tokenSymbol,
+                                              amount: proceedsAmount,
+                                            },
+                                          },
+                                          waitForReceipt: true,
+                                        });
+                                        
+                                        if (!result.success) {
+                                          throw new Error(result.error || 'Bridge and submit failed');
+                                        }
+                                        
+                                        toast.success(`Successfully submitted proceeds of ${proceedsAmount} ${tokenSymbol}!`);
+                                      } else {
+                                        setIsSubmittingProceeds(true);
+                                        const signer = await getSigner();
+                                        const proj = projectAt(projectAddress, signer);
+                                        const tx = await proj.submitSalesProceeds(amt);
+                                        await tx.wait();
+                                        toast.success('Proceeds submitted');
+                                      }
+                                      
+                                      resetSubmitProceedsModal();
+                                      refresh();
+                                    } catch (e: any) {
+                                      toast.error(e?.shortMessage || e?.message || 'Submit failed');
+                                    } finally {
+                                      setIsSubmittingProceeds(false);
+                                      setIsBridgingSubmitProceeds(false);
+                                    }
+                                  }}
+                                >
+                                  {isSubmittingProceeds ? 'Submitting...' : isBridgingSubmitProceeds ? 'Bridging...' : 'Confirm Submission'}
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </DialogContent>
+                    </Dialog>
                   </div>
                 </CardContent>
               </Card>
