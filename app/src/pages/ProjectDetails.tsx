@@ -13,7 +13,8 @@ import { toast } from '@/components/ui/sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Plus, Edit, Upload, DollarSign, AlertTriangle, MessageSquare, Banknote, DoorClosed, Wallet, FileText, Target, Users, ShieldCheck, HardHat } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@/components/ui/drawer';
-import { Address, erc20At, fromStablecoin, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toStablecoin, fetchProjectRealtimeState, fetchProjectStaticConfig, getWindowEthereum, ProjectRealtimeState, ProjectStaticConfig } from '@/lib/eth';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Address, erc20At, fromStablecoin, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toStablecoin, fetchProjectRealtimeState, fetchProjectStaticConfig, getWindowEthereum, ProjectRealtimeState, ProjectStaticConfig, switchToChain } from '@/lib/eth';
 import { getCompleteProjectData, Project } from '@/lib/envio';
 import { contractsConfig, TOKEN_CONFIG, getTokenConfigByAddress } from '@/config/contracts';
 import { NexusNetwork, NexusSDK, type SUPPORTED_CHAINS_IDS } from '@avail-project/nexus-core';
@@ -57,8 +58,11 @@ const ProjectDetails = () => {
   const [isSubmittingProceeds, setIsSubmittingProceeds] = useState(false);
   const [withdrawChainId, setWithdrawChainId] = useState<number | null>(null);
   const [isBridging, setIsBridging] = useState(false);
+  const [currentChain, setCurrentChain] = useState<number | null>(null);
   const [depositSourceChain, setDepositSourceChain] = useState<number | null>(null);
   const [isBridgingDeposit, setIsBridgingDeposit] = useState(false);
+  const [depositModalOpen, setDepositModalOpen] = useState(false);
+  const [depositStep, setDepositStep] = useState<'amount' | 'approve' | 'chain' | 'deposit'>('amount');
   const [nexusSDK, setNexusSDK] = useState(null);
 
   const projectAddress = useMemo<Address | null>(() => {
@@ -74,6 +78,14 @@ const ProjectDetails = () => {
   const [staticConfig, setStaticConfig] = useState<ProjectStaticConfig | null>(null);
   const [supporters, setSupporters] = useState<number>(0);
   const [loading, setLoading] = useState(true);
+
+  const resetDepositModal = () => {
+    setDepositModalOpen(false);
+    setDepositStep('amount');
+    setSupportAmount('');
+    setApprovedSupport(false);
+    setDepositSourceChain(null);
+  };
 
   // Dynamically determine which token this project uses
   const projectTokenConfig = useMemo(() => {
@@ -1215,168 +1227,402 @@ const ProjectDetails = () => {
                       <CardTitle className="text-lg font-bold uppercase tracking-[0.2em] text-[#2D1B00]">Support This Project</CardTitle>
                       <CardDescription className="text-sm font-semibold text-[#5D4E37]">Invest in this project using {projectTokenConfig.symbol}</CardDescription>
                     </CardHeader>
-                    <CardContent className="space-y-4 text-[#2D1B00]">
-                      <div className="space-y-2">
-                        <label className="text-sm font-bold text-[#2D1B00]" htmlFor="support-amount">Amount ({projectTokenConfig.symbol})</label>
-                        <Input
-                          id="support-amount"
-                          type="number"
-                          inputMode="decimal"
-                          placeholder="0.00"
-                          value={supportAmount}
-                          onChange={(e)=>{ setSupportAmount(e.target.value); setApprovedSupport(false); }}
-                          className="h-11 rounded-none border-4 border-[#654321] bg-[#FFF3C4] font-semibold text-[#2D1B00] placeholder:text-[#5D4E37] focus-visible:ring-[#FFD700]"
-                        />
-                      </div>
-                      <div className="grid gap-1">
-                        <Label htmlFor="depositSourceChain">Source Chain (Optional)</Label>
-                        <select
-                          id="depositSourceChain"
-                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                          value={depositSourceChain ?? ''}
-                          onChange={(e) => {
-                            setDepositSourceChain(e.target.value ? Number(e.target.value) : null);
-                            setApprovedSupport(false);
-                          }}
-                        >
-                          <option value="">Current chain (direct deposit)</option>
-                          {SUPPORTED_CHAINS.map((chain) => (
-                            <option key={chain.id} value={chain.id}>
-                              {chain.name}
-                            </option>
-                          ))}
-                        </select>
-                        <p className="text-xs text-[#5D4E37]">
-                          {depositSourceChain ? 'Funds will be bridged via Avail and deposited automatically' : 'Deposit directly from current chain'}
-                        </p>
-                      </div>
-                      {!approvedSupport && !depositSourceChain ? (
-                        <Button className={`${minecraftPrimaryButtonClass} w-full h-12`} size="lg" disabled={isApprovingSupport} onClick={async ()=>{
-                          try {
-                            if (!projectAddress || !staticConfig?.stablecoin) { toast.error('Addresses not loaded'); return; }
-                            if (!supportAmount || Number(supportAmount) <= 0) { toast.error('Enter amount'); return; }
-                            setIsApprovingSupport(true);
-                            const signer = await getSigner();
-                            const owner = await signer.getAddress();
-                            const amt = toStablecoin(supportAmount);
-                            const t = erc20At(staticConfig.stablecoin, signer);
-                            const tx = await t.approve(projectAddress, amt);
-                            await tx.wait();
-                            setApprovedSupport(true);
-                            toast.success('Approved');
-                          } catch(e:any) { toast.error(e?.shortMessage || e?.message || 'Approve failed'); }
-                          finally { setIsApprovingSupport(false); }
-                        }}>
-                          <Wallet className="mr-2 h-4 w-4" /> {isApprovingSupport ? 'Approving...' : 'Approve'}
-                        </Button>
-                      ) : (
-                        <Button className={`${minecraftSuccessButtonClass} w-full h-12`} size="lg" disabled={isDepositing} onClick={async ()=>{
-                          try {
-                            if (!projectAddress) return;
-                            const amt = toStablecoin(supportAmount);
-                            
-                            if (depositSourceChain && depositSourceChain !== 11155111) {
-                              // Cross-chain deposit via Avail Nexus bridgeAndExecute
-                              setIsBridgingDeposit(true);
-                              console.log(depositSourceChain);
-                              
-                              try {
-                                if (!nexusSDK?.isInitialized()) {
-                                  toast.error('Please connect Avail Nexus first');
-                                  return;
-                                }
-                                
-                                const tokenSymbol = 'USDC';
-                                const targetChainName = SUPPORTED_CHAINS.find(c => c.id === 11155111)?.name;
-                                console.log(tokenSymbol);
-                                
-                                
-                                toast.info(`Bridging ${supportAmount} ${tokenSymbol} from ${SUPPORTED_CHAINS.find(c => c.id === depositSourceChain)?.name}...`);
-                                const amount = parseUnits(supportAmount, 6);
-                                await nexusSDK.setAllowance(84532, ['USDC'], amount);
-                                
-                                const result = await nexusSDK.bridgeAndExecute({
-                                  token: tokenSymbol,
-                                  amount: supportAmount,
-                                  toChainId: 11155111, // Sepolia
-                                  sourceChains: [depositSourceChain],
-                                  execute: {
-                                    contractAddress: projectAddress,
-                                    contractAbi: CornerstoneProjectABI,
-                                    functionName: 'deposit',
-                                    buildFunctionParams: (token, amount, chainId, userAddress) => {
-                                      const decimals = 6; // USDC decimals
-                                      const amountWei = ethers.parseUnits(amount, decimals);
-                                      return {
-                                        functionParams: [amountWei],
-                                      };
-                                    },
-                                    tokenApproval: {
-                                      token: tokenSymbol,
-                                      amount: supportAmount,
-                                    },
-                                  },
-                                  waitForReceipt: true,
-                                });
-                                
-                                if (!result.success) {
-                                  throw new Error(result.error || 'Bridge and deposit failed');
-                                }
-                                
-                                toast.success(`Successfully deposited ${supportAmount} ${tokenSymbol}!`, {
-                                  description: `Bridged and deposited on ${targetChainName}`
-                                });
-                                
-                                // Check if this was user's first deposit
-                                const isFirstDeposit = !realtimeData?.userBalance || realtimeData.userBalance === 0n;
-                                if (isFirstDeposit) {
-                                  setSupporters(prev => prev + 1);
-                                }
-                                
-                              } catch (error: any) {
-                                console.error('Bridge and deposit error:', error);
-                                toast.error('Bridge and deposit failed', {
-                                  description: error?.message || 'Failed to bridge and deposit funds'
-                                });
-                                throw error;
-                              }
-                            } else {
-                              // Direct deposit on same chain
-                              setIsDepositing(true);
-                              const signer = await getSigner();
-                              const proj = projectAt(projectAddress, signer);
-                              
-                              const isFirstDeposit = !realtimeData?.userBalance || realtimeData.userBalance === 0n;
-                              
-                              const tx = await proj.deposit(amt);
-                              await tx.wait();
-                              toast.success('Deposited');
-                              
-                              if (isFirstDeposit) {
-                                setSupporters(prev => prev + 1);
-                              }
-                            }
-                            
-                            setApprovedSupport(false);
-                            setSupportAmount('');
-                            setDepositSourceChain(null);
-                            refresh();
-                          } catch(e:any) { 
-                            toast.error(e?.shortMessage || e?.message || 'Deposit failed'); 
-                          }
-                          finally { 
-                            setIsDepositing(false);
-                            setIsBridgingDeposit(false);
-                          }
-                        }}>
-                          <DollarSign className="mr-2 h-4 w-4" /> 
-                          {isDepositing ? 'Depositing...' : isBridgingDeposit ? 'Bridging & Depositing...' : depositSourceChain ? 'Bridge & Deposit' : 'Deposit'}
-                        </Button>
-                      )}
+                    <CardContent className="space-y-4 p-6 text-[#2D1B00]">
+                      <Dialog open={depositModalOpen} onOpenChange={(open) => {
+                        if (!open) resetDepositModal();
+                        setDepositModalOpen(open);
+                      }}>
+                        <DialogTrigger asChild>
+                          <Button className={`${minecraftSuccessButtonClass} w-full h-12`} size="lg">
+                            <DollarSign className="mr-2 h-4 w-4" />
+                            Deposit Funds
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className={`${minecraftPanelClass} max-w-md`}>
+                        <DialogHeader className="pb-4 border-b-4 border-[#654321]">
+                          <DialogTitle className="text-xl font-bold uppercase tracking-[0.2em] text-[#2D1B00]">
+                            Deposit Workflow
+                          </DialogTitle>
+                          <DialogDescription className="text-sm font-semibold text-[#5D4E37]">
+                            {depositStep === 'amount' && 'Step 1: Enter deposit amount'}
+                            {depositStep === 'approve' && 'Step 2: Approve token spending'}
+                            {depositStep === 'chain' && 'Step 3: Select source chain (optional)'}
+                            {depositStep === 'deposit' && 'Step 4: Complete deposit'}
+                          </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="space-y-4 py-4">
+                          {/* Avail Nexus Connection Status */}
+                          {!nexusSDK && (
+                            <div className={`${minecraftSubPanelClass} p-4 space-y-3`}>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <div className="h-3 w-3 rounded-full bg-red-500 animate-pulse" />
+                                  <p className="text-sm font-bold text-[#2D1B00]">Avail Nexus</p>
+                                </div>
+                                <Badge className="rounded-none border-2 border-red-600 bg-red-100 px-3 py-1 text-xs font-bold text-red-700">
+                                  Not Connected
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-[#5D4E37]">
+                                Connect Avail Nexus to enable cross-chain deposits from other networks.
+                              </p>
+                              <Button
+                                className={`${minecraftPrimaryButtonClass} w-full h-10`}
+                                onClick={async () => {
+                                  try {
+                                    await initializeNexus();
+                                    toast.success('Avail Nexus connected successfully');
+                                  } catch (error: any) {
+                                    toast.error('Failed to connect Avail Nexus', {
+                                      description: error?.message || 'Could not initialize Nexus SDK'
+                                    });
+                                  }
+                                }}
+                              >
+                                Connect Avail Nexus
+                              </Button>
+                            </div>
+                          )}
+
+                          {nexusSDK && (
+                            <div className={`${minecraftSubPanelClass} p-4`}>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <div className="h-3 w-3 rounded-full bg-green-500" />
+                                  <p className="text-sm font-bold text-[#2D1B00]">Avail Nexus</p>
+                                </div>
+                                <Badge className="rounded-none border-2 border-green-600 bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
+                                  Connected
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-[#5D4E37] mt-2">
+                                Cross-chain deposits are enabled via Avail Nexus bridging.
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Step Progress Indicator */}
+                          <div className="flex items-center justify-between mb-6">
+                            {['amount', 'approve', 'chain', 'deposit'].map((step, index) => (
+                              <div key={step} className="flex items-center">
+                                <div className={`flex h-8 w-8 items-center justify-center rounded-full border-4 font-bold text-sm ${
+                                  depositStep === step
+                                    ? 'border-[#AA7700] bg-[#FFD700] text-[#2D1B00]'
+                                    : ['amount', 'approve', 'chain', 'deposit'].indexOf(depositStep) > index
+                                    ? 'border-[#2D572D] bg-[#55AA55] text-white'
+                                    : 'border-[#654321] bg-[#8B7355] text-white'
+                                }`}>
+                                  {index + 1}
+                                </div>
+                                {index < 3 && (
+                                  <div className={`w-8 h-1 mx-1 ${
+                                    ['amount', 'approve', 'chain', 'deposit'].indexOf(depositStep) > index
+                                      ? 'bg-[#55AA55]'
+                                      : 'bg-[#8B7355]'
+                                  }`} />
+                                )}
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Step 1: Amount Input */}
+                          {depositStep === 'amount' && (
+                            <div className="space-y-4">
+                              <div className="space-y-2">
+                                <Label htmlFor="modal-support-amount" className="text-sm font-bold text-[#2D1B00]">
+                                  Amount ({projectTokenConfig.symbol})
+                                </Label>
+                                <Input
+                                  id="modal-support-amount"
+                                  type="number"
+                                  inputMode="decimal"
+                                  placeholder="0.00"
+                                  value={supportAmount}
+                                  onChange={(e) => setSupportAmount(e.target.value)}
+                                  className="h-11 rounded-none border-4 border-[#654321] bg-[#FFF3C4] font-semibold text-[#2D1B00] placeholder:text-[#5D4E37] focus-visible:ring-[#FFD700]"
+                                />
+                              </div>
+                              <Button
+                                className={`${minecraftPrimaryButtonClass} w-full h-12`}
+                                disabled={!supportAmount || Number(supportAmount) <= 0}
+                                onClick={() => setDepositStep('approve')}
+                              >
+                                Continue
+                              </Button>
+                            </div>
+                          )}
+
+                          {/* Step 2: Approve */}
+                          {depositStep === 'approve' && (
+                            <div className="space-y-4">
+                              <div className={`${minecraftSubPanelClass} p-4`}>
+                                <p className="text-sm font-semibold text-[#2D1B00] mb-2">Amount to deposit:</p>
+                                <p className="text-2xl font-bold text-[#2D1B00]">
+                                  {supportAmount} {projectTokenConfig.symbol}
+                                </p>
+                              </div>
+                              <p className="text-xs text-[#5D4E37]">
+                                You need to approve the contract to spend your tokens on Sepolia before proceeding.
+                              </p>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  className={`${minecraftNeutralButtonClass} flex-1 h-12`}
+                                  onClick={() => setDepositStep('amount')}
+                                >
+                                  Back
+                                </Button>
+                                <Button
+                                  className={`${minecraftPrimaryButtonClass} flex-1 h-12`}
+                                  disabled={isApprovingSupport}
+                                  onClick={async () => {
+                                    try {
+                                      if (!projectAddress || !staticConfig?.stablecoin) {
+                                        toast.error('Addresses not loaded');
+                                        return;
+                                      }
+                                      if (!supportAmount || Number(supportAmount) <= 0) {
+                                        toast.error('Enter amount');
+                                        return;
+                                      }
+                                      setIsApprovingSupport(true);
+                                      const signer = await getSigner();
+                                      const amt = toStablecoin(supportAmount);
+                                      const t = erc20At(staticConfig.stablecoin, signer);
+                                      const tx = await t.approve(projectAddress, amt);
+                                      await tx.wait();
+                                      setApprovedSupport(true);
+                                      toast.success('Approved');
+                                      setDepositStep('chain');
+                                    } catch (e: any) {
+                                      toast.error(e?.shortMessage || e?.message || 'Approve failed');
+                                    } finally {
+                                      setIsApprovingSupport(false);
+                                    }
+                                  }}
+                                >
+                                  {isApprovingSupport ? 'Approving...' : 'Approve'}
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Step 3: Chain Selection */}
+                          {depositStep === 'chain' && (
+                            <div className="space-y-4">
+                              <div className={`${minecraftSubPanelClass} p-4`}>
+                                <p className="text-sm font-semibold text-[#2D1B00] mb-2">Amount to deposit:</p>
+                                <p className="text-2xl font-bold text-[#2D1B00]">
+                                  {supportAmount} {projectTokenConfig.symbol}
+                                </p>
+                              </div>
+
+                              {/* Warning if Nexus not connected and trying to select different chain */}
+                              {!nexusSDK && (
+                                <div className="rounded-lg border-4 border-yellow-600 bg-yellow-50 p-3">
+                                  <div className="flex items-start gap-2">
+                                    <AlertTriangle className="h-5 w-5 text-yellow-700 flex-shrink-0 mt-0.5" />
+                                    <div>
+                                      <p className="text-sm font-bold text-yellow-900">Avail Nexus Required</p>
+                                      <p className="text-xs text-yellow-800 mt-1">
+                                        Connect Avail Nexus above to enable cross-chain deposits. You can still deposit directly from Sepolia.
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="space-y-2">
+                                <Label htmlFor="modal-depositSourceChain" className="text-sm font-bold text-[#2D1B00]">
+                                  Source Chain (Optional)
+                                </Label>
+                                <select
+                                  id="modal-depositSourceChain"
+                                  className="flex h-11 w-full rounded-none border-4 border-[#654321] bg-[#FFF3C4] px-3 py-2 text-sm font-semibold text-[#2D1B00] shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] disabled:opacity-50 disabled:cursor-not-allowed"
+                                  value={depositSourceChain ?? ''}
+                                  disabled={!nexusSDK}
+                                  onChange={async (e) => {
+                                    const selectedChain = e.target.value ? Number(e.target.value) : null;
+                                    setDepositSourceChain(selectedChain);
+                                    setCurrentChain(selectedChain);
+                                    
+                                    if (selectedChain) {
+                                      try {
+                                        await switchToChain(selectedChain);
+                                        toast.success(`Switched to ${SUPPORTED_CHAINS.find(c => c.id === selectedChain)?.name}`);
+                                      } catch (error: any) {
+                                        toast.error('Failed to switch chain', {
+                                          description: error?.message || 'Could not switch to selected chain'
+                                        });
+                                        setDepositSourceChain(null);
+                                      }
+                                    }
+                                  }}
+                                >
+                                  <option value="">Current chain (Sepolia - direct deposit)</option>
+                                  {SUPPORTED_CHAINS.filter(chain => chain.id !== 11155111).map((chain) => (
+                                    <option key={chain.id} value={chain.id}>
+                                      {chain.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                <p className="text-xs text-[#5D4E37]">
+                                  {!nexusSDK
+                                    ? 'Connect Avail Nexus to enable cross-chain deposits'
+                                    : depositSourceChain
+                                    ? 'Funds will be bridged via Avail and deposited automatically'
+                                    : 'Deposit directly from Sepolia'}
+                                </p>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  className={`${minecraftNeutralButtonClass} flex-1 h-12`}
+                                  onClick={() => {
+                                    setDepositStep('approve');
+                                    setApprovedSupport(false);
+                                  }}
+                                >
+                                  Back
+                                </Button>
+                                <Button
+                                  className={`${minecraftPrimaryButtonClass} flex-1 h-12`}
+                                  onClick={() => setDepositStep('deposit')}
+                                >
+                                  Continue
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Step 4: Final Deposit */}
+                          {depositStep === 'deposit' && (
+                            <div className="space-y-4">
+                              <div className={`${minecraftSubPanelClass} p-4 space-y-3`}>
+                                <div className="flex justify-between items-center">
+                                  <p className="text-sm font-semibold text-[#5D4E37]">Amount:</p>
+                                  <p className="text-xl font-bold text-[#2D1B00]">
+                                    {supportAmount} {projectTokenConfig.symbol}
+                                  </p>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <p className="text-sm font-semibold text-[#5D4E37]">Source:</p>
+                                  <p className="text-sm font-bold text-[#2D1B00]">
+                                    {depositSourceChain
+                                      ? SUPPORTED_CHAINS.find(c => c.id === depositSourceChain)?.name
+                                      : 'Sepolia (Direct)'}
+                                  </p>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <p className="text-sm font-semibold text-[#5D4E37]">Method:</p>
+                                  <p className="text-sm font-bold text-[#2D1B00]">
+                                    {depositSourceChain ? 'Bridge & Deposit' : 'Direct Deposit'}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  className={`${minecraftNeutralButtonClass} flex-1 h-12`}
+                                  onClick={() => setDepositStep('chain')}
+                                >
+                                  Back
+                                </Button>
+                                <Button
+                                  className={`${minecraftSuccessButtonClass} flex-1 h-12`}
+                                  disabled={isDepositing || isBridgingDeposit}
+                                  onClick={async () => {
+                                    try {
+                                      if (!projectAddress) return;
+                                      const amt = toStablecoin(supportAmount);
+                                      
+                                      if (depositSourceChain && depositSourceChain !== 11155111) {
+                                        setIsBridgingDeposit(true);
+                                        
+                                        if (!nexusSDK?.isInitialized()) {
+                                          toast.error('Please connect Avail Nexus first');
+                                          return;
+                                        }
+                                        
+                                        const tokenSymbol = 'USDC';
+                                        toast.info(`Bridging ${supportAmount} ${tokenSymbol}...`);
+                                        
+                                        const result = await nexusSDK.bridgeAndExecute({
+                                          token: tokenSymbol,
+                                          amount: supportAmount,
+                                          toChainId: 11155111,
+                                          sourceChains: [depositSourceChain],
+                                          execute: {
+                                            contractAddress: projectAddress,
+                                            contractAbi: CornerstoneProjectABI,
+                                            functionName: 'deposit',
+                                            buildFunctionParams: (token, amount, chainId, userAddress) => {
+                                              const decimals = 6;
+                                              const amountWei = ethers.parseUnits(amount, decimals);
+                                              return {
+                                                functionParams: [amountWei],
+                                              };
+                                            },
+                                            tokenApproval: {
+                                              token: tokenSymbol,
+                                              amount: supportAmount,
+                                            },
+                                          },
+                                          waitForReceipt: true,
+                                        });
+                                        
+                                        if (!result.success) {
+                                          throw new Error(result.error || 'Bridge and deposit failed');
+                                        }
+                                        
+                                        toast.success(`Successfully deposited ${supportAmount} ${tokenSymbol}!`);
+                                        
+                                        const isFirstDeposit = !realtimeData?.userBalance || realtimeData.userBalance === 0n;
+                                        if (isFirstDeposit) {
+                                          setSupporters(prev => prev + 1);
+                                        }
+                                      } else {
+                                        setIsDepositing(true);
+                                        const signer = await getSigner();
+                                        const proj = projectAt(projectAddress, signer);
+                                        
+                                        const isFirstDeposit = !realtimeData?.userBalance || realtimeData.userBalance === 0n;
+                                        
+                                        const tx = await proj.deposit(amt);
+                                        await tx.wait();
+                                        toast.success('Deposited');
+                                        
+                                        if (isFirstDeposit) {
+                                          setSupporters(prev => prev + 1);
+                                        }
+                                      }
+                                      
+                                      resetDepositModal();
+                                      refresh();
+                                    } catch (e: any) {
+                                      toast.error(e?.shortMessage || e?.message || 'Deposit failed');
+                                    } finally {
+                                      setIsDepositing(false);
+                                      setIsBridgingDeposit(false);
+                                    }
+                                  }}
+                                >
+                                  {isDepositing ? 'Depositing...' : isBridgingDeposit ? 'Bridging...' : 'Confirm Deposit'}
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </DialogContent>
+                      </Dialog>
+
+                      <p className="text-xs text-[#5D4E37] text-center">
+                        Click the button above to start the guided deposit process
+                      </p>
                     </CardContent>
                   </Card>
                 </RoleGate>
-
                 {/* Holder investment overview */}
                 <RoleGate currentRole={currentRole} allowedRoles={['holder']}>
                   <Card className={minecraftPanelClass}>
