@@ -79,6 +79,7 @@ const ProjectDetails = () => {
   const [submitProceedsSourceChain, setSubmitProceedsSourceChain] = useState<number | null>(null);
   const [isBridgingSubmitProceeds, setIsBridgingSubmitProceeds] = useState(false);
   const [nexusSDK, setNexusSDK] = useState(null);
+  const [chainBalances, setChainBalances] = useState<Record<number, string>>({});
 
   const projectAddress = useMemo<Address | null>(() => {
     const p = id as string | undefined;
@@ -156,6 +157,58 @@ const ProjectDetails = () => {
       });
       
       setNexusSDK(sdk);
+      // Fetch balances after SDK initialization
+      fetchChainBalances(sdk);
+  }
+
+  async function fetchChainBalances(sdk = nexusSDK) {
+    if (!sdk) {
+      console.log('No SDK available for fetching balances');
+      return;
+    }
+
+    try {
+      console.log('Fetching unified balances...');
+      const unifiedBalances = await sdk.getUnifiedBalances();
+      console.log('Unified balances:', unifiedBalances);
+
+      // Find USDC token in the balances
+      const usdcBalance = unifiedBalances.find((token: any) =>
+        token.symbol?.toUpperCase() === 'USDC'
+      );
+
+      console.log('USDC balance object:', usdcBalance);
+
+      if (usdcBalance && usdcBalance.breakdown) {
+        // Map chain IDs to balances directly from the breakdown
+        const balances: Record<number, string> = {};
+
+        usdcBalance.breakdown.forEach((chainData: any) => {
+          console.log('Chain data:', chainData);
+          const chainId = chainData.chain?.id;
+
+          // Check if this chain ID is in our SUPPORTED_CHAINS
+          const supportedChain = SUPPORTED_CHAINS.find(c => c.id === chainId);
+
+          if (supportedChain && chainId) {
+            console.log(`Matched chain ${chainId} (${chainData.chain?.name}) to ${supportedChain.name}, balance: ${chainData.balance}`);
+            balances[chainId] = chainData.balance || '0';
+          } else {
+            console.log(`Unsupported chain: ${chainData.chain?.name} (ID: ${chainId})`);
+          }
+        });
+
+        console.log('Final balances:', balances);
+        setChainBalances(balances);
+      } else {
+        console.log('No USDC balance found or no breakdown available');
+      }
+    } catch (error) {
+      console.error('Failed to fetch chain balances:', error);
+      toast.error('Failed to fetch chain balances', {
+        description: error?.message || 'Could not retrieve balances'
+      });
+    }
   }
 
   const insightsData = useMemo(
@@ -1258,7 +1311,12 @@ const ProjectDetails = () => {
                     </CardHeader>
                     <CardContent className="space-y-4 p-6 text-[#2D1B00]">
                       <Dialog open={depositModalOpen} onOpenChange={(open) => {
-                        if (!open) resetDepositModal();
+                        if (!open) {
+                          resetDepositModal();
+                        } else if (nexusSDK) {
+                          // Fetch fresh balances when modal opens
+                          fetchChainBalances();
+                        }
                         setDepositModalOpen(open);
                       }}>
                         <DialogTrigger asChild>
@@ -1463,9 +1521,22 @@ const ProjectDetails = () => {
                               )}
 
                               <div className="space-y-2">
-                                <Label htmlFor="modal-depositSourceChain" className="text-sm font-bold text-[#2D1B00]">
-                                  Source Chain (Optional)
-                                </Label>
+                                <div className="flex items-center justify-between">
+                                  <Label htmlFor="modal-depositSourceChain" className="text-sm font-bold text-[#2D1B00]">
+                                    Source Chain (Optional)
+                                  </Label>
+                                  {nexusSDK && (
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-6 px-2 text-xs"
+                                      onClick={() => fetchChainBalances()}
+                                    >
+                                      Refresh Balances
+                                    </Button>
+                                  )}
+                                </div>
                                 <select
                                   id="modal-depositSourceChain"
                                   className="flex h-11 w-full rounded-none border-4 border-[#654321] bg-[#FFF3C4] px-3 py-2 text-sm font-semibold text-[#2D1B00] shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700] disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1489,12 +1560,19 @@ const ProjectDetails = () => {
                                     }
                                   }}
                                 >
-                                  <option value="">Current chain (Sepolia - direct deposit)</option>
-                                  {SUPPORTED_CHAINS.filter(chain => chain.id !== 11155111).map((chain) => (
-                                    <option key={chain.id} value={chain.id}>
-                                      {chain.name}
-                                    </option>
-                                  ))}
+                                  <option value="">
+                                    Current chain (Sepolia - direct deposit)
+                                    {chainBalances[11155111] && ` (${parseFloat(chainBalances[11155111]).toFixed(2)} USDC)`}
+                                  </option>
+                                  {SUPPORTED_CHAINS.filter(chain => chain.id !== 11155111).map((chain) => {
+                                    const balance = chainBalances[chain.id];
+                                    const balanceText = balance ? ` (${parseFloat(balance).toFixed(2)} USDC)` : '';
+                                    return (
+                                      <option key={chain.id} value={chain.id}>
+                                        {chain.name}{balanceText}
+                                      </option>
+                                    );
+                                  })}
                                 </select>
                                 <p className="text-xs text-[#5D4E37]">
                                   {!nexusSDK
@@ -1989,12 +2067,19 @@ const ProjectDetails = () => {
                                     }
                                   }}
                                 >
-                                  <option value="">Current chain (Sepolia - direct funding)</option>
-                                  {SUPPORTED_CHAINS.filter(chain => chain.id !== 11155111).map((chain) => (
-                                    <option key={chain.id} value={chain.id}>
-                                      {chain.name}
-                                    </option>
-                                  ))}
+                                  <option value="">
+                                    Current chain (Sepolia - direct funding)
+                                    {chainBalances[11155111] && ` (${parseFloat(chainBalances[11155111]).toFixed(2)} USDC)`}
+                                  </option>
+                                  {SUPPORTED_CHAINS.filter(chain => chain.id !== 11155111).map((chain) => {
+                                    const balance = chainBalances[chain.id];
+                                    const balanceText = balance ? ` (${parseFloat(balance).toFixed(2)} USDC)` : '';
+                                    return (
+                                      <option key={chain.id} value={chain.id}>
+                                        {chain.name}{balanceText}
+                                      </option>
+                                    );
+                                  })}
                                 </select>
                                 <p className="text-xs text-[#5D4E37]">
                                   {!nexusSDK
@@ -2246,11 +2331,15 @@ const ProjectDetails = () => {
                           onChange={(e) => setWithdrawChainId(e.target.value ? Number(e.target.value) : null)}
                         >
                           <option value="">Same chain (direct withdraw)</option>
-                          {SUPPORTED_CHAINS.map((chain) => (
-                            <option key={chain.id} value={chain.id}>
-                              {chain.name}
-                            </option>
-                          ))}
+                          {SUPPORTED_CHAINS.map((chain) => {
+                            const balance = chainBalances[chain.id];
+                            const balanceText = balance ? ` (${parseFloat(balance).toFixed(2)} USDC)` : '';
+                            return (
+                              <option key={chain.id} value={chain.id}>
+                                {chain.name}{balanceText}
+                              </option>
+                            );
+                          })}
                         </select>
                         <p className="text-xs text-muted-foreground">
                           {withdrawChainId ? 'Funds will be bridged via Avail to the selected chain' : 'Withdraw directly to your wallet on current chain'}
@@ -2615,12 +2704,19 @@ const ProjectDetails = () => {
                                     }
                                   }}
                                 >
-                                  <option value="">Current chain (Sepolia - direct submission)</option>
-                                  {SUPPORTED_CHAINS.filter(chain => chain.id !== 11155111).map((chain) => (
-                                    <option key={chain.id} value={chain.id}>
-                                      {chain.name}
-                                    </option>
-                                  ))}
+                                  <option value="">
+                                    Current chain (Sepolia - direct submission)
+                                    {chainBalances[11155111] && ` (${parseFloat(chainBalances[11155111]).toFixed(2)} USDC)`}
+                                  </option>
+                                  {SUPPORTED_CHAINS.filter(chain => chain.id !== 11155111).map((chain) => {
+                                    const balance = chainBalances[chain.id];
+                                    const balanceText = balance ? ` (${parseFloat(balance).toFixed(2)} USDC)` : '';
+                                    return (
+                                      <option key={chain.id} value={chain.id}>
+                                        {chain.name}{balanceText}
+                                      </option>
+                                    );
+                                  })}
                                 </select>
                                 <p className="text-xs text-[#5D4E37]">
                                   {!nexusSDK
