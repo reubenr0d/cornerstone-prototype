@@ -60,6 +60,72 @@ async function ensureWalletNetwork(provider: ethers.BrowserProvider) {
   }
 }
 
+export async function switchToChain(chainId: number): Promise<void> {
+  const eth = getWindowEthereum();
+  if (!eth) throw new Error('No injected wallet found');
+  
+  const targetChainHex = `0x${chainId.toString(16)}`;
+  
+  try {
+    await eth.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: targetChainHex }],
+    });
+  } catch (switchError: any) {
+    // This error code indicates that the chain has not been added to MetaMask
+    if (switchError.code === 4902) {
+      // Get chain info based on chainId
+      const chainInfo = getChainInfo(chainId);
+      
+      try {
+        await eth.request({
+          method: 'wallet_addEthereumChain',
+          params: [chainInfo],
+        });
+      } catch (addError) {
+        throw new Error(`Failed to add chain: ${addError}`);
+      }
+    } else {
+      throw new Error(`Failed to switch chain: ${switchError.message}`);
+    }
+  }
+}
+
+function getChainInfo(chainId: number) {
+  const chainConfigs: Record<number, any> = {
+    11155111: {
+      chainId: '0xaa36a7',
+      chainName: 'Sepolia',
+      nativeCurrency: { name: 'Sepolia ETH', symbol: 'ETH', decimals: 18 },
+      rpcUrls: ['https://rpc.sepolia.org'],
+      blockExplorerUrls: ['https://sepolia.etherscan.io'],
+    },
+    84532: {
+      chainId: '0x14a34',
+      chainName: 'Base Sepolia',
+      nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+      rpcUrls: ['https://sepolia.base.org'],
+      blockExplorerUrls: ['https://sepolia.basescan.org'],
+    },
+    421614: {
+      chainId: '0x66eee',
+      chainName: 'Arbitrum Sepolia',
+      nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+      rpcUrls: ['https://sepolia-rollup.arbitrum.io/rpc'],
+      blockExplorerUrls: ['https://sepolia.arbiscan.io'],
+    },
+    11155420: {
+      chainId: '0xaa37dc',
+      chainName: 'Optimism Sepolia',
+      nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+      rpcUrls: ['https://sepolia.optimism.io'],
+      blockExplorerUrls: ['https://sepolia-optimism.etherscan.io'],
+    },
+  };
+  
+  return chainConfigs[chainId] || null;
+}
+
 export async function getSigner(): Promise<ethers.Signer> {
   const provider = await getProvider();
   await ensureWalletNetwork(provider);
