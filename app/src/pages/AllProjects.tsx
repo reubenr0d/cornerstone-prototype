@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 const AllProjects = () => {
   const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
+  const [supportersCounts, setSupportersCounts] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'funding' | 'active' | 'closed'>('all');
@@ -16,8 +17,9 @@ const AllProjects = () => {
   const fetchProjects = async () => {
     setLoading(true);
     try {
-      const { projects: fetchedProjects } = await getAllProjects();
+      const { projects: fetchedProjects, supportersCounts: counts } = await getAllProjects();
       setProjects(fetchedProjects);
+      setSupportersCounts(counts);
     } catch (error) {
       console.error('Error fetching projects:', error);
     } finally {
@@ -230,7 +232,7 @@ const AllProjects = () => {
                 <MinecraftProjectCard
                   key={project.id}
                   project={project}
-                  supportersCount={0} // You can fetch this separately if needed
+                  supportersCount={supportersCounts.get(project.address.toLowerCase()) || 0}
                 />
               ))}
             </div>
