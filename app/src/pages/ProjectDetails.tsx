@@ -1825,12 +1825,12 @@ const ProjectDetails = () => {
 
             {/* Developer actions */}
             <RoleGate currentRole={currentRole} allowedRoles={['developer']}>
-              <Card className={minecraftPanelClass}>
+              <Card className={`${minecraftPanelClass} overflow-visible`}>
                 <CardHeader className={minecraftHeaderClass}>
                   <CardTitle className="text-lg font-bold uppercase tracking-[0.2em] text-[#2D1B00]">Developer Actions</CardTitle>
                   <CardDescription className="text-sm font-semibold text-[#5D4E37]">Fund reserve, close phase, withdraw</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-6 text-[#2D1B00]">
+                <CardContent className="space-y-6 text-[#2D1B00] overflow-visible">
                   {/* Fund Reserve */}
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
@@ -2263,14 +2263,14 @@ const ProjectDetails = () => {
                           {loading ? <Skeleton className="inline-block h-4 w-32" /> : nextPhaseName}
                         </span>
                       </div>
-                      <div className="grid gap-1">
+                      <div className="grid gap-1 py-1">
                         <Label htmlFor="phaseDocs" className="text-sm font-bold text-[#2D1B00]">Upload Documents</Label>
                         <Input
                           id="phaseDocs"
                           type="file"
                           multiple
                           onChange={(e) => setUploadedDocs(Array.from(e.target.files || []))}
-                          className="rounded-none border-4 border-dashed border-[#654321] bg-[#FFF3C4] text-[#2D1B00] file:mr-4 file:rounded-none file:border-0 file:bg-[#8B7355] file:px-4 file:py-2 file:font-bold file:uppercase file:text-white hover:file:bg-[#715b3f]"
+                          className="rounded-none border-4 border-dashed border-[#654321] bg-[#FFF3C4] text-[#2D1B00] min-h-[60px] pt-2 pb-3 px-4 file:mr-4 file:rounded-none file:border-0 file:bg-[#8B7355] file:px-4 file:py-2 file:font-bold file:uppercase file:text-white hover:file:bg-[#715b3f]"
                         />
                         <p className="text-xs text-[#5D4E37]">Attach evidence to close the current phase.</p>
                       </div>
