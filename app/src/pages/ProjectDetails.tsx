@@ -299,10 +299,10 @@ const ProjectDetails = () => {
       setStaticConfig(staticResult);
       setSupporters(envioResult.supportersCount);
       
-      // Fetch metadata from IPFS if available
-      if (staticResult.metadataURI) {
+      // Fetch metadata from IPFS if available (from indexed data)
+      if (envioResult.project?.metadataURI) {
         try {
-          const projectMetadata = await fetchProjectMetadata(staticResult.metadataURI);
+          const projectMetadata = await fetchProjectMetadata(envioResult.project.metadataURI);
           setMetadata(projectMetadata);
         } catch (err) {
           console.error('Failed to fetch project metadata:', err);
@@ -413,7 +413,7 @@ const ProjectDetails = () => {
     supporters: supporters ?? 0,
     interestAccrued,
     description: metadata?.description || 'No description available',
-    imageUri: metadata?.imageURI || '',
+    imageUri: metadata?.image || '',
   };
 
   const raisedPercentage = project.target > 0 ? (project.raised / project.target) * 100 : 0;
@@ -1745,7 +1745,7 @@ const ProjectDetails = () => {
                         {loading ? (
                           <Skeleton className="inline-block h-4 w-20" />
                         ) : (() => {
-                            const interestValue = Number(fromStablecoin(realtimeData?.claimableInterest || 0));
+                            const interestValue = Number(fromStablecoin(realtimeData?.claimableInterest || 0n));
                             let displayValue;
 
                             if (interestValue === 0) {

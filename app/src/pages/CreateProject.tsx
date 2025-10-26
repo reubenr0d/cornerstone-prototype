@@ -101,12 +101,6 @@ const CreateProject = () => {
   // Metadata fields
   const [projectImage, setProjectImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
-  const [city, setCity] = useState('');
-  const [state, setState] = useState('');
-  const [country, setCountry] = useState('');
-  const [squareFeet, setSquareFeet] = useState('');
-  const [units, setUnits] = useState('');
-  const [propertyType, setPropertyType] = useState('');
 
   const tokenName = useMemo(() => `Cornerstone-${name || 'Project'}`, [name]);
   const tokenSymbol = useMemo(() => {
@@ -162,20 +156,9 @@ const CreateProject = () => {
         
         // Build metadata object
         const metadata: ProjectMetadata = {
-          version: '1.0',
           name: name || 'Untitled Project',
           description: description || '',
-          imageURI: imageIPFSUri,
-          location: {
-            city: city || '',
-            state: state || '',
-            country: country || ''
-          },
-          specifications: {
-            squareFeet: parseInt(squareFeet || '0', 10),
-            units: parseInt(units || '0', 10),
-            type: propertyType || 'residential'
-          }
+          image: imageIPFSUri
         };
         
         // Upload metadata JSON
@@ -477,63 +460,6 @@ const CreateProject = () => {
                   <p className="text-sm text-muted-foreground mt-1">
                     Upload a main image for your project
                   </p>
-                </div>
-                
-                {/* Location Fields */}
-                <div>
-                  <Label>Project Location</Label>
-                  <div className="grid grid-cols-3 gap-3 mt-2">
-                    <Input 
-                      placeholder="City" 
-                      value={city} 
-                      onChange={(e) => setCity(e.target.value)} 
-                    />
-                    <Input 
-                      placeholder="State/Province" 
-                      value={state} 
-                      onChange={(e) => setState(e.target.value)} 
-                    />
-                    <Input 
-                      placeholder="Country" 
-                      value={country} 
-                      onChange={(e) => setCountry(e.target.value)} 
-                    />
-                  </div>
-                </div>
-                
-                {/* Specifications */}
-                <div>
-                  <Label>Property Specifications</Label>
-                  <div className="grid grid-cols-3 gap-3 mt-2">
-                    <div>
-                      <Input 
-                        type="number" 
-                        placeholder="Square Feet" 
-                        value={squareFeet} 
-                        onChange={(e) => setSquareFeet(e.target.value)} 
-                      />
-                    </div>
-                    <div>
-                      <Input 
-                        type="number" 
-                        placeholder="Units" 
-                        value={units} 
-                        onChange={(e) => setUnits(e.target.value)} 
-                      />
-                    </div>
-                    <div>
-                      <Select value={propertyType} onValueChange={setPropertyType}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="residential">Residential</SelectItem>
-                          <SelectItem value="commercial">Commercial</SelectItem>
-                          <SelectItem value="mixed-use">Mixed-Use</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
                 </div>
               </div>
             )}

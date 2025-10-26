@@ -5,22 +5,9 @@ export type Uploaded = { cid: string; path: string; uri: string }[];
 
 // Project metadata schema
 export interface ProjectMetadata {
-  version?: string;
   name: string;
   description: string;
-  imageURI: string;        // Main project image
-  images?: string[];       // Additional gallery images
-  location?: {
-    address?: string;
-    city: string;
-    state: string;
-    country: string;
-  };
-  specifications?: {
-    squareFeet: number;
-    units: number;
-    type: string;          // "mixed-use", "residential", "commercial"
-  };
+  image: string;
 }
 
 let storachaClientPromise: Promise<Storacha.Client> | null = null;

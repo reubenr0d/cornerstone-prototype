@@ -225,7 +225,6 @@ export type ProjectStaticConfig = {
   maxRaise: bigint;
   fundraiseDeadline: bigint;
   perPhaseAprBps: number[];
-  metadataURI?: string;
 };
 
 /**
@@ -313,22 +312,6 @@ export async function fetchProjectStaticConfig(
     projectName = '';
   }
   
-  // Fetch metadataURI from Registry contract
-  let metadataURI = '';
-  try {
-    const { registry } = await import('@/config/contracts').then(m => ({ registry: m.contractsConfig.registry }));
-    if (registry) {
-      const registryContract = new ethers.Contract(
-        registry,
-        ['function projectMetadataURI(address) view returns (string)'],
-        provider
-      );
-      metadataURI = await registryContract.projectMetadataURI(projectAddress);
-    }
-  } catch (error) {
-    console.warn('Failed to fetch metadataURI from registry:', error);
-  }
-  
   return {
     token: token as Address,
     stablecoin: stablecoin as Address,
@@ -338,7 +321,6 @@ export async function fetchProjectStaticConfig(
     maxRaise,
     fundraiseDeadline,
     perPhaseAprBps: aprBps,
-    metadataURI,
   };
 }
 

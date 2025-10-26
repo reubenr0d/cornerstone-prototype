@@ -31,11 +31,8 @@ interface IProjectRegistry {
 
 contract ProjectRegistry is IProjectRegistry {
     uint256 public projectCount;
-    
-    // Mapping from project address to metadata URI (IPFS)
-    mapping(address => string) public projectMetadataURI;
 
-    event ProjectCreated(address indexed project, address indexed token, address indexed creator);
+    event ProjectCreated(address indexed project, address indexed token, address indexed creator, string metadataURI);
 
     constructor() {}
 
@@ -72,11 +69,8 @@ contract ProjectRegistry is IProjectRegistry {
 
         projectAddress = address(project);
         tokenAddress = project.token();
-        
-        // Store metadata URI
-        projectMetadataURI[projectAddress] = metadataURI;
 
-        emit ProjectCreated(projectAddress, tokenAddress, msg.sender);
+        emit ProjectCreated(projectAddress, tokenAddress, msg.sender, metadataURI);
     }
 
     function createProjectWithTokenMeta(
@@ -111,20 +105,7 @@ contract ProjectRegistry is IProjectRegistry {
         );
         projectAddress = address(project);
         tokenAddress = project.token();
-        
-        // Store metadata URI
-        projectMetadataURI[projectAddress] = metadataURI;
-        
-        emit ProjectCreated(projectAddress, tokenAddress, msg.sender);
-    }
-    
-    /// @notice Update metadata URI for a project (only callable by project owner)
-    /// @param projectAddress The address of the project contract
-    /// @param newMetadataURI The new IPFS metadata URI
-    function updateMetadataURI(address projectAddress, string calldata newMetadataURI) external {
-        CornerstoneProject project = CornerstoneProject(projectAddress);
-        require(msg.sender == project.owner(), "Only project owner");
-        projectMetadataURI[projectAddress] = newMetadataURI;
+        emit ProjectCreated(projectAddress, tokenAddress, msg.sender, metadataURI);
     }
 
     function _concat(string memory a, string memory b) internal pure returns (string memory) {
