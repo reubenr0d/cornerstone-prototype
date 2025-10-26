@@ -13,6 +13,7 @@ type Project {
   creator: Bytes!
   createdAtBlock: BigInt!
   createdAtTimestamp: BigInt!
+  metadataURI: String!
   projectState: ProjectState
   depositors: [DepositorMetrics!]! @derivedFrom(field: "project")
   events: [ProjectCreatedEvent!]! @derivedFrom(field: "project")

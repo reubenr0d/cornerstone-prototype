@@ -11,7 +11,8 @@ interface IProjectRegistry {
         uint256 fundraiseDeadline,
         uint256[6] calldata phaseAPRs, // includes phase 0 (fundraising)
         uint256[6] calldata phaseDurations, // includes phase 0 (fundraising)
-        uint256[6] calldata phaseWithdrawCaps // includes phase 0 (fundraising)
+        uint256[6] calldata phaseWithdrawCaps, // includes phase 0 (fundraising)
+        string calldata metadataURI
     ) external returns (address projectAddress, address tokenAddress);
 
     function createProjectWithTokenMeta(
@@ -23,14 +24,15 @@ interface IProjectRegistry {
         uint256 fundraiseDeadline,
         uint256[6] calldata phaseAPRs, // includes phase 0 (fundraising)
         uint256[6] calldata phaseDurations, // includes phase 0 (fundraising)
-        uint256[6] calldata phaseWithdrawCaps // includes phase 0 (fundraising)
+        uint256[6] calldata phaseWithdrawCaps, // includes phase 0 (fundraising)
+        string calldata metadataURI
     ) external returns (address projectAddress, address tokenAddress);
 }
 
 contract ProjectRegistry is IProjectRegistry {
     uint256 public projectCount;
 
-    event ProjectCreated(address indexed project, address indexed token, address indexed creator);
+    event ProjectCreated(address indexed project, address indexed token, address indexed creator, string metadataURI);
 
     constructor() {}
 
@@ -41,7 +43,8 @@ contract ProjectRegistry is IProjectRegistry {
         uint256 fundraiseDeadline,
         uint256[6] calldata phaseAPRs,
         uint256[6] calldata phaseDurations,
-        uint256[6] calldata phaseWithdrawCaps
+        uint256[6] calldata phaseWithdrawCaps,
+        string calldata metadataURI
     ) external returns (address projectAddress, address tokenAddress) {
         require(stablecoin != address(0), "stablecoin addr required");
         require(minRaise > 0 && maxRaise >= minRaise, "bad raise bounds");
@@ -67,7 +70,7 @@ contract ProjectRegistry is IProjectRegistry {
         projectAddress = address(project);
         tokenAddress = project.token();
 
-        emit ProjectCreated(projectAddress, tokenAddress, msg.sender);
+        emit ProjectCreated(projectAddress, tokenAddress, msg.sender, metadataURI);
     }
 
     function createProjectWithTokenMeta(
@@ -79,7 +82,8 @@ contract ProjectRegistry is IProjectRegistry {
         uint256 fundraiseDeadline,
         uint256[6] calldata phaseAPRs,
         uint256[6] calldata phaseDurations,
-        uint256[6] calldata phaseWithdrawCaps
+        uint256[6] calldata phaseWithdrawCaps,
+        string calldata metadataURI
     ) external returns (address projectAddress, address tokenAddress) {
         require(stablecoin != address(0), "stablecoin addr required");
         require(bytes(tokenName).length > 0 && bytes(tokenSymbol).length > 0, "name/symbol req");
@@ -101,7 +105,7 @@ contract ProjectRegistry is IProjectRegistry {
         );
         projectAddress = address(project);
         tokenAddress = project.token();
-        emit ProjectCreated(projectAddress, tokenAddress, msg.sender);
+        emit ProjectCreated(projectAddress, tokenAddress, msg.sender, metadataURI);
     }
 
     function _concat(string memory a, string memory b) internal pure returns (string memory) {

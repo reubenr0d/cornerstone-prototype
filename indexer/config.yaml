@@ -6,7 +6,7 @@ contracts:
     abi_file_path: ./abis/ProjectRegistry.json
     handler: src/EventHandlers.ts
     events:
-      - event: ProjectCreated(address indexed project, address indexed token, address indexed creator)
+      - event: ProjectCreated(address indexed project, address indexed token, address indexed creator, string metadataURI)
   
   - name: CornerstoneProject
     abi_file_path: ./abis/CornerstoneProject.json
@@ -26,10 +26,10 @@ contracts:
 
 networks:
   - id: 11155111
-    start_block: 9432377
+    start_block: 9493638
     contracts:
       - name: ProjectRegistry
-        address: "0x832d9D61E076791Ae7c625C27Ab1Ca4D7499f6cb"
+        address: "0x182d55B1e2Ea48d42EDe3192Ca768351C6C60b97"
       
       - name: CornerstoneProject
         address: "0x0000000000000000000000000000000000000000" # wildcard - indexes all instances

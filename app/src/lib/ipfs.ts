@@ -3,6 +3,13 @@ import { StoreMemory } from '@storacha/client/stores/memory';
 
 export type Uploaded = { cid: string; path: string; uri: string }[];
 
+// Project metadata schema
+export interface ProjectMetadata {
+  name: string;
+  description: string;
+  image: string;
+}
+
 let storachaClientPromise: Promise<Storacha.Client> | null = null;
 let decodedArchive: any;
 
@@ -165,4 +172,90 @@ export async function ipfsUpload(files: File[]): Promise<Uploaded> {
     throw e;
   }
   return files.map((f) => ({ cid: String(cid), path: f.name, uri: `ipfs://${cid}/${f.name}` }));
+}
+
+/**
+ * Upload project metadata JSON to IPFS/Storacha
+ * @param metadata Project metadata object
+ * @returns IPFS URI (e.g., ipfs://Qm...)
+ */
+export async function uploadProjectMetadata(metadata: ProjectMetadata): Promise<string> {
+  const client = await getStorachaClient();
+  await ensureStorachaReady(client);
+  
+  try {
+    // Convert metadata to JSON blob
+    const metadataJson = JSON.stringify(metadata, null, 2);
+    const blob = new Blob([metadataJson], { type: 'application/json' });
+    const file = new File([blob], 'metadata.json', { type: 'application/json' });
+    
+    log('Uploading project metadata:', metadata.name);
+    
+    // Upload to Storacha
+    try { await (client as any).capability?.access?.claim?.(); } catch {}
+    const cid = await client.uploadDirectory([file]);
+    
+    const uri = `ipfs://${cid}/metadata.json`;
+    log('Metadata uploaded. URI =', uri);
+    return uri;
+  } catch (e: any) {
+    const msg = e?.message || String(e);
+    console.error(LOG_PREFIX, 'Metadata upload error:', e);
+    if (/no proofs/i.test(msg) || /capability/i.test(msg)) {
+      throw new Error('Storacha is not authorized for this browser. Please complete the magic-link login, then retry.');
+    }
+    throw e;
+  }
+}
+
+/**
+ * Fetch project metadata from IPFS
+ * @param uri IPFS URI (e.g., ipfs://Qm.../metadata.json)
+ * @returns Parsed metadata object or null on error
+ */
+export async function fetchProjectMetadata(uri: string): Promise<ProjectMetadata | null> {
+  if (!uri) return null;
+  
+  try {
+    // Convert ipfs:// URI to HTTP gateway URL
+    const httpUrl = resolveImageUri(uri);
+    
+    log('Fetching project metadata from:', httpUrl);
+    const response = await fetch(httpUrl);
+    
+    if (!response.ok) {
+      console.warn('Failed to fetch metadata:', response.status, response.statusText);
+      return null;
+    }
+    
+    const metadata = await response.json();
+    log('Metadata fetched successfully');
+    return metadata as ProjectMetadata;
+  } catch (error) {
+    console.error('Error fetching project metadata:', error);
+    return null;
+  }
+}
+
+/**
+ * Convert IPFS URI to HTTP gateway URL
+ * @param uri IPFS URI or regular HTTP URL
+ * @returns HTTP URL for accessing the resource
+ */
+export function resolveImageUri(uri: string): string {
+  if (!uri) return '';
+  
+  // If already HTTP/HTTPS, return as-is
+  if (uri.startsWith('http://') || uri.startsWith('https://')) {
+    return uri;
+  }
+  
+  // Convert ipfs:// to gateway URL
+  if (uri.startsWith('ipfs://')) {
+    const path = uri.replace('ipfs://', '');
+    return `https://w3s.link/ipfs/${path}`;
+  }
+  
+  // If it's just a CID or path, prepend gateway
+  return `https://w3s.link/ipfs/${uri}`;
 }
