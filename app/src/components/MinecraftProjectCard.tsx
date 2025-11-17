@@ -1,7 +1,8 @@
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Project } from '@/lib/envio';
 import { Badge } from '@/components/ui/badge';
-import { Users, Target, TrendingUp } from 'lucide-react';
+import { Users, Target, TrendingUp, Loader2 } from 'lucide-react';
 import { ProjectMetadata, resolveImageUri } from '@/lib/ipfs';
 
 interface MinecraftProjectCardProps {
@@ -12,6 +13,7 @@ interface MinecraftProjectCardProps {
 
 export const MinecraftProjectCard = ({ project, supportersCount, metadata }: MinecraftProjectCardProps) => {
   const navigate = useNavigate();
+  const [imageLoaded, setImageLoaded] = React.useState(false);
   
   const totalRaised = project.projectState?.totalRaised 
     ? Number(BigInt(project.projectState.totalRaised) / 1_000_000n)
@@ -58,10 +60,19 @@ export const MinecraftProjectCard = ({ project, supportersCount, metadata }: Min
       <div className="bg-[#D2B48C] border-4 border-[#654321] overflow-hidden shadow-[4px_4px_0px_0px_rgba(0,0,0,0.3)] group-hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,0.3)] transition-all group-hover:-translate-y-1">
         {/* Project Image */}
         <div className="relative h-48 w-full overflow-hidden border-b-4 border-[#654321] bg-[#8B7355]">
+          {!imageLoaded && (
+            <div className="absolute inset-0 flex items-center justify-center bg-[#8B7355]">
+              <Loader2 className="w-8 h-8 animate-spin text-[#D2B48C]" />
+            </div>
+          )}
           <img
             src={projectImage}
             alt={projectName}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            className={`h-full w-full object-cover transition-all duration-300 ${
+              imageLoaded ? 'opacity-100 group-hover:scale-105' : 'opacity-0'
+            }`}
+            onLoad={() => setImageLoaded(true)}
+            onError={() => setImageLoaded(true)}
           />
           {/* Status Badge Overlay */}
           <div className="absolute top-3 right-3">
