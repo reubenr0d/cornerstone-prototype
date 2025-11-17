@@ -21,14 +21,14 @@ describe("ProjectRegistry", function () {
       now + 7 * 24 * 60 * 60,
       phaseAPRs,
       phaseDurations,
-      phaseCapsBps
+      phaseCapsBps,
+      "ipfs://test-metadata-1"
     );
     const receipt = await tx.wait();
     const ev = receipt.logs.find((l) => l.fragment && l.fragment.name === "ProjectCreated");
     expect(ev).to.not.be.undefined;
     const count = await registry.projectCount();
     expect(count).to.equal(1n);
-
     // Parse addresses from the emitted event
     const tx2 = await registry.createProject(
       await pyusd.getAddress(),
@@ -37,7 +37,8 @@ describe("ProjectRegistry", function () {
       now + 8 * 24 * 60 * 60,
       phaseAPRs,
       phaseDurations,
-      phaseCapsBps
+      phaseCapsBps,
+      "ipfs://test-metadata-2"
     );
     const rc2 = await tx2.wait();
     const ev2 = rc2.logs.find((l) => l.fragment && l.fragment.name === "ProjectCreated");
@@ -60,7 +61,8 @@ describe("ProjectRegistry", function () {
       now + 7 * 24 * 60 * 60,
       phaseAPRs,
       phaseDurations,
-      phaseCapsBps
+      phaseCapsBps,
+      "ipfs://custom-token-metadata"
     );
     const receipt = await tx.wait();
     const ev = receipt.logs.find((l) => l.fragment && l.fragment.name === "ProjectCreated");
@@ -79,7 +81,8 @@ describe("ProjectRegistry", function () {
         now + 1000,
         phaseAPRs,
         phaseDurations,
-        phaseCapsBps
+        phaseCapsBps,
+        "ipfs://test-metadata"
       )
     ).to.be.revertedWith("stablecoin addr required");
   });
@@ -97,7 +100,8 @@ describe("ProjectRegistry", function () {
         (await time.latest()) + 1000,
         phaseAPRs,
         phaseDurations,
-        phaseCapsBps
+        phaseCapsBps,
+        "ipfs://test-metadata"
       )
     ).to.be.revertedWith("bad raise bounds");
     
@@ -109,7 +113,8 @@ describe("ProjectRegistry", function () {
         (await time.latest()) - 1,
         phaseAPRs,
         phaseDurations,
-        phaseCapsBps
+        phaseCapsBps,
+        "ipfs://test-metadata"
       )
     ).to.be.revertedWith("deadline in past");
   });
