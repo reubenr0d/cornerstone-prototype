@@ -192,6 +192,7 @@ export type Project = {
   creator: string;
   createdAtBlock: string;
   createdAtTimestamp: string;
+  metadataURI: string;
   projectState?: ProjectState;
   deposits: DepositEvent[];
   interestClaims: InterestClaimedEvent[];
@@ -232,6 +233,7 @@ export async function getCompleteProjectData(
         creator
         createdAtBlock
         createdAtTimestamp
+        metadataURI
         projectState {
           id
           currentPhase
@@ -411,6 +413,7 @@ export async function getAllProjects(): Promise<{
         creator
         createdAtBlock
         createdAtTimestamp
+        metadataURI
         projectState {
           id
           currentPhase

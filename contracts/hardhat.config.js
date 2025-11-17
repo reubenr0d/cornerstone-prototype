@@ -9,6 +9,7 @@ module.exports = {
     version: "0.8.24",
     settings: {
       optimizer: { enabled: true, runs: 200 },
+      viaIR: true,  // Enable IR-based optimizer to fix "stack too deep" errors
     },
   },
   networks: {

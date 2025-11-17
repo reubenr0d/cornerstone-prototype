@@ -10,6 +10,9 @@ export const handleProjectCreated = ProjectRegistry.ProjectCreated.handler(
     const projectAddress = event.params.project.toLowerCase();
     const txHash = event.block.hash;
 
+    // Get metadataURI from event params
+    const metadataURI = event.params.metadataURI || "";
+
     context.Project.set({
       id: projectAddress,
       address: event.params.project,
@@ -17,6 +20,7 @@ export const handleProjectCreated = ProjectRegistry.ProjectCreated.handler(
       creator: event.params.creator,
       createdAtBlock: BigInt(event.block.number),
       createdAtTimestamp: BigInt(event.block.timestamp),
+      metadataURI: metadataURI,
       projectState_id: projectAddress,
     });
 
