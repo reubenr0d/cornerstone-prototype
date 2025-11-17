@@ -1,171 +1,145 @@
 import { useNavigate } from 'react-router-dom';
-import { Users, TrendingUp, CheckCircle, Clock } from 'lucide-react';
 import { Project } from '@/lib/envio';
+import { Badge } from '@/components/ui/badge';
+import { Users, Target, TrendingUp } from 'lucide-react';
+import { ProjectMetadata, resolveImageUri } from '@/lib/ipfs';
 
 interface MinecraftProjectCardProps {
   project: Project;
-  supportersCount?: number;
+  supportersCount: number;
+  metadata?: ProjectMetadata;
 }
 
-export const MinecraftProjectCard = ({ project, supportersCount = 0 }: MinecraftProjectCardProps) => {
+export const MinecraftProjectCard = ({ project, supportersCount, metadata }: MinecraftProjectCardProps) => {
   const navigate = useNavigate();
-  const state = project.projectState;
-
-  // Format raised amount (convert from wei to readable format)
-  const formatAmount = (amount: string) => {
-    const num = BigInt(amount || '0');
-    return (Number(num) / 1e6).toFixed(2); // Assuming 6 decimals (PYUSD)
+  
+  const totalRaised = project.projectState?.totalRaised 
+    ? Number(BigInt(project.projectState.totalRaised) / 1_000_000n)
+    : 0;
+  
+  const isFundraisingOpen = !project.projectState?.fundraiseClosed;
+  const isFundraiseSuccessful = project.projectState?.fundraiseSuccessful;
+  
+  let statusBadge = {
+    text: 'FUNDING',
+    color: 'bg-[#FFD700] text-[#2D1B00] border-[#AA7700]'
   };
+  
+  if (project.projectState?.fundraiseClosed) {
+    if (isFundraiseSuccessful) {
+      statusBadge = {
+        text: 'ACTIVE',
+        color: 'bg-[#55AA55] text-white border-[#2D572D]'
+      };
+    } else {
+      statusBadge = {
+        text: 'CLOSED',
+        color: 'bg-[#8B7355] text-white border-[#654321]'
+      };
+    }
+  }
 
-  // Calculate progress percentage
-  const calculateProgress = () => {
-    if (!state) return 0;
-    
-    const totalRaised = BigInt(state.totalRaised || '0');
-    
-    // If no funds raised, return 0
-    if (totalRaised === BigInt(0)) return 0;
-    
-    // If fundraise is closed, show 100% if successful
-    if (state.fundraiseClosed && state.fundraiseSuccessful) {
-      return 100;
-    }
-    
-    // Get phase caps from phaseConfigurations
-    const phaseConfig = project.phaseConfigurations?.[0];
-    
-    if (!phaseConfig || !phaseConfig.phaseCaps || phaseConfig.phaseCaps.length === 0) {
-      // Fallback: if no phase configuration, show progress based on a rough estimate
-      // Show some progress if funds are raised (rough estimate: 10% per 100k PYUSD)
-      const raisedInPYUSD = Number(totalRaised) / 1e6;
-      return Math.min(raisedInPYUSD / 10, 100);
-    }
-    
-    const currentPhase = state.currentPhase;
-    
-    // Calculate total cap up to and including current phase
-    let capUpToCurrent = BigInt(0);
-    for (let i = 0; i <= currentPhase && i < phaseConfig.phaseCaps.length; i++) {
-      capUpToCurrent += BigInt(phaseConfig.phaseCaps[i] || '0');
-    }
-    
-    if (capUpToCurrent === BigInt(0)) {
-      // If cap is 0, show progress based on rough estimate
-      const raisedInPYUSD = Number(totalRaised) / 1e6;
-      return Math.min(raisedInPYUSD / 10, 100);
-    }
-    
-    // Calculate percentage
-    const percentage = Number((totalRaised * BigInt(10000)) / capUpToCurrent) / 100;
-    return Math.min(percentage, 100);
-  };
+  const projectName = metadata?.name || 'Cornerstone Project';
+  const projectDescription = metadata?.description || 'No description available';
+  const projectImage = metadata?.image 
+    ? resolveImageUri(metadata.image)
+    : 'https://images.unsplash.com/photo-1501183638710-841dd1904471?w=600&q=60&auto=format&fit=crop';
 
-  const progress = calculateProgress();
+  // Truncate description to 100 characters
+  const truncatedDescription = projectDescription.length > 100 
+    ? projectDescription.substring(0, 100) + '...'
+    : projectDescription;
 
   return (
     <div
       onClick={() => navigate(`/projects/${project.address}`)}
-      className="group cursor-pointer transform transition-all duration-200 hover:scale-105 hover:translate-y-[-4px] w-full"
+      className="group cursor-pointer bg-gradient-to-b from-[#8B7355] to-[#6B5835] p-1 hover:from-[#9B8365] hover:to-[#7B6845] transition-all"
     >
-      {/* Minecraft-style pixelated card */}
-      <div className="relative bg-gradient-to-b from-[#8B4513] to-[#654321] p-1 w-full">
-        {/* Outer pixelated border */}
-        <div className="absolute inset-0 pointer-events-none">
-          {/* Top-left corner pixels */}
-          <div className="absolute top-0 left-0 w-2 h-2 bg-[#654321]"></div>
-          <div className="absolute top-0 right-0 w-2 h-2 bg-[#654321]"></div>
-          <div className="absolute bottom-0 left-0 w-2 h-2 bg-[#654321]"></div>
-          <div className="absolute bottom-0 right-0 w-2 h-2 bg-[#654321]"></div>
+      <div className="bg-[#D2B48C] border-4 border-[#654321] overflow-hidden shadow-[4px_4px_0px_0px_rgba(0,0,0,0.3)] group-hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,0.3)] transition-all group-hover:-translate-y-1">
+        {/* Project Image */}
+        <div className="relative h-48 w-full overflow-hidden border-b-4 border-[#654321] bg-[#8B7355]">
+          <img
+            src={projectImage}
+            alt={projectName}
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          />
+          {/* Status Badge Overlay */}
+          <div className="absolute top-3 right-3">
+            <Badge className={`rounded-none border-4 px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] shadow-[2px_2px_0_rgba(0,0,0,0.25)] ${statusBadge.color}`}>
+              {statusBadge.text}
+            </Badge>
+          </div>
         </div>
 
-        {/* Card content */}
-        <div className="relative bg-gradient-to-b from-[#D2B48C] via-[#C4A07A] to-[#B8956A] p-4 sm:p-6 border-4 border-[#654321] min-h-[300px] flex flex-col">
-          {/* Status badge */}
-          <div className="absolute top-4 right-4 z-10">
-            {state?.fundraiseClosed ? (
-              state?.fundraiseSuccessful ? (
-                <div className="flex items-center gap-1 bg-[#55AA55] border-2 border-[#2D572D] px-3 py-1 text-white font-bold text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)]">
-                  <CheckCircle className="w-3 h-3" />
-                  ACTIVE
-                </div>
-              ) : (
-                <div className="flex items-center gap-1 bg-[#AA5555] border-2 border-[#572D2D] px-3 py-1 text-white font-bold text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)]">
-                  CLOSED
-                </div>
-              )
-            ) : (
-              <div className="flex items-center gap-1 bg-[#FFAA00] border-2 border-[#AA7700] px-3 py-1 text-white font-bold text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)]">
-                <Clock className="w-3 h-3" />
-                FUNDING
-              </div>
-            )}
+        {/* Content */}
+        <div className="p-6 space-y-4">
+          {/* Project Name */}
+          <div>
+            <h3 className="text-xl font-bold text-[#2D1B00] mb-2 line-clamp-1 [text-shadow:_1px_1px_0_rgb(255_255_255_/_40%)]">
+              {projectName.toUpperCase()}
+            </h3>
+            <p className="text-sm text-[#5D4E37] line-clamp-2 leading-relaxed">
+              {truncatedDescription}
+            </p>
           </div>
 
-          {/* Project Icon/Avatar - Minecraft block style */}
-          <div className="mb-4">
-            <div className="w-20 h-20 bg-gradient-to-br from-[#55AA55] via-[#449944] to-[#338833] border-4 border-[#2D572D] shadow-[4px_4px_0px_0px_rgba(0,0,0,0.3)] flex items-center justify-center">
-              <div className="text-2xl font-bold text-white">
-                {project.id.slice(2, 4).toUpperCase()}
-              </div>
-            </div>
-          </div>
-
-          {/* Project Title */}
-          <h3 className="text-lg sm:text-xl font-bold text-[#2D1B00] mb-2 truncate group-hover:text-[#FF6B35] transition-colors">
-            Project #{project.id.slice(0, 8)}...
-          </h3>
-
-          {/* Creator Address */}
-          <p className="text-xs sm:text-sm text-[#5D4E37] mb-4 font-mono truncate">
-            by {project.creator.slice(0, 6)}...{project.creator.slice(-4)}
-          </p>
-
-          {/* Stats Grid - Minecraft style */}
-          <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-4 flex-1">
+          {/* Stats Grid */}
+          <div className="grid grid-cols-3 gap-2">
             {/* Total Raised */}
-            <div className="bg-[#8B7355] border-2 border-[#654321] p-2 sm:p-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.2)]">
-              <div className="flex items-center gap-1 sm:gap-2 mb-1">
-                <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4 text-[#FFD700]" />
-                <span className="text-xs font-bold text-[#FFD700]">RAISED</span>
+            <div className="bg-gradient-to-b from-[#F8E3B5] to-[#E8D3A5] border-2 border-[#654321] p-3 text-center">
+              <div className="flex justify-center mb-1">
+                <div className="flex h-6 w-6 items-center justify-center rounded border-2 border-[#654321] bg-[#FFD700]">
+                  <TrendingUp className="h-3 w-3 text-[#2D1B00]" />
+                </div>
               </div>
-              <p className="text-sm sm:text-lg font-bold text-white truncate">
-                ${formatAmount(state?.totalRaised || '0')}
+              <p className="text-[0.6rem] font-bold uppercase tracking-wider text-[#5D4E37] mb-1">
+                Raised
+              </p>
+              <p className="text-sm font-bold text-[#2D1B00]">
+                {totalRaised.toLocaleString()}
               </p>
             </div>
 
             {/* Supporters */}
-            <div className="bg-[#8B7355] border-2 border-[#654321] p-2 sm:p-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.2)]">
-              <div className="flex items-center gap-1 sm:gap-2 mb-1">
-                <Users className="w-3 h-3 sm:w-4 sm:h-4 text-[#55AAFF]" />
-                <span className="text-xs font-bold text-[#55AAFF]">BACKERS</span>
+            <div className="bg-gradient-to-b from-[#F8E3B5] to-[#E8D3A5] border-2 border-[#654321] p-3 text-center">
+              <div className="flex justify-center mb-1">
+                <div className="flex h-6 w-6 items-center justify-center rounded border-2 border-[#654321] bg-[#5599FF]">
+                  <Users className="h-3 w-3 text-white" />
+                </div>
               </div>
-              <p className="text-sm sm:text-lg font-bold text-white">{supportersCount}</p>
+              <p className="text-[0.6rem] font-bold uppercase tracking-wider text-[#5D4E37] mb-1">
+                Backers
+              </p>
+              <p className="text-sm font-bold text-[#2D1B00]">
+                {supportersCount}
+              </p>
+            </div>
+
+            {/* Current Phase */}
+            <div className="bg-gradient-to-b from-[#F8E3B5] to-[#E8D3A5] border-2 border-[#654321] p-3 text-center">
+              <div className="flex justify-center mb-1">
+                <div className="flex h-6 w-6 items-center justify-center rounded border-2 border-[#654321] bg-[#55AA55]">
+                  <Target className="h-3 w-3 text-white" />
+                </div>
+              </div>
+              <p className="text-[0.6rem] font-bold uppercase tracking-wider text-[#5D4E37] mb-1">
+                Phase
+              </p>
+              <p className="text-sm font-bold text-[#2D1B00]">
+                {project.projectState?.currentPhase !== undefined 
+                  ? project.projectState.currentPhase + 1 
+                  : 0}
+              </p>
             </div>
           </div>
 
-          {/* Progress Bar - Minecraft style */}
-          <div className="space-y-2 mt-auto">
-            <div className="flex justify-between items-center text-xs font-bold text-[#2D1B00]">
-              <span>Phase {state?.currentPhase || 1}</span>
-              <span>{progress.toFixed(0)}%</span>
-            </div>
-            <div className="h-4 sm:h-6 bg-[#654321] border-2 border-[#3D2817] overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-[#55AA55] to-[#77CC77] transition-all duration-500 relative"
-                style={{ width: `${progress}%` }}
-              >
-                {/* Pixelated shine effect */}
-                <div className="absolute inset-0 bg-gradient-to-t from-transparent via-white/20 to-transparent"></div>
-              </div>
-            </div>
-          </div>
-
-          {/* Hover effect overlay */}
-          <div className="absolute inset-0 border-4 border-[#FFD700] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
+          {/* View Details Button */}
+          <button
+            className="w-full py-3 px-4 bg-[#5599FF] hover:bg-[#4488EE] text-white font-bold text-sm uppercase tracking-wider border-4 border-[#2D5788] shadow-[3px_3px_0px_0px_rgba(0,0,0,0.3)] transition-all group-hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,0.3)] active:translate-y-1 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,0.3)]"
+          >
+            View Details →
+          </button>
         </div>
-
-        {/* Shadow effect */}
-        <div className="absolute inset-0 translate-y-1 -z-10 bg-[#3D2817]"></div>
       </div>
     </div>
   );

@@ -5,11 +5,13 @@ import { MinecraftProjectCard } from '@/components/MinecraftProjectCard';
 import { Button } from '@/components/ui/button';
 import { Plus, Loader2, Search, Filter, RefreshCw } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { fetchProjectMetadata, ProjectMetadata } from '@/lib/ipfs';
 
 const AllProjects = () => {
   const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
   const [supportersCounts, setSupportersCounts] = useState<Map<string, number>>(new Map());
+  const [projectMetadata, setProjectMetadata] = useState<Map<string, ProjectMetadata>>(new Map());
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'funding' | 'active' | 'closed'>('all');
@@ -20,6 +22,22 @@ const AllProjects = () => {
       const { projects: fetchedProjects, supportersCounts: counts } = await getAllProjects();
       setProjects(fetchedProjects);
       setSupportersCounts(counts);
+
+      // Fetch metadata for each project
+      const metadataMap = new Map<string, ProjectMetadata>();
+      await Promise.all(
+        fetchedProjects.map(async (project) => {
+          if (project.metadataURI) {
+            try {
+              const metadata = await fetchProjectMetadata(project.metadataURI);
+              metadataMap.set(project.address.toLowerCase(), metadata);
+            } catch (err) {
+              console.error(`Failed to fetch metadata for project ${project.address}:`, err);
+            }
+          }
+        })
+      );
+      setProjectMetadata(metadataMap);
     } catch (error) {
       console.error('Error fetching projects:', error);
     } finally {
@@ -233,6 +251,7 @@ const AllProjects = () => {
                   key={project.id}
                   project={project}
                   supportersCount={supportersCounts.get(project.address.toLowerCase()) || 0}
+                  metadata={projectMetadata.get(project.address.toLowerCase())}
                 />
               ))}
             </div>
