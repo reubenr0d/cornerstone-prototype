@@ -46,19 +46,9 @@ const AllProjects = () => {
   };
 
   useEffect(() => {
+    // Only fetch once on initial mount
     fetchProjects();
-
-    // Refetch when window gains focus (e.g., coming back from another tab)
-    const handleFocus = () => {
-      fetchProjects();
-    };
-
-    window.addEventListener('focus', handleFocus);
-
-    // Cleanup
-    return () => {
-      window.removeEventListener('focus', handleFocus);
-    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Filter projects based on search and status
