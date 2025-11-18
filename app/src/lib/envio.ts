@@ -198,6 +198,9 @@ export type Project = {
   imageURI?: string;                // NEW
   metadataFetched?: boolean;        // NEW
   metadataFetchError?: string;      // NEW
+  minRaise: string;
+  maxRaise: string;
+  withdrawableDevFunds: string;
   projectState?: ProjectState;
   deposits: DepositEvent[];
   interestClaims: InterestClaimedEvent[];
@@ -244,6 +247,9 @@ export async function getCompleteProjectData(
         imageURI          # ADD
         metadataFetched   # ADD
         metadataFetchError # ADD
+        minRaise
+        maxRaise
+        withdrawableDevFunds
         projectState {
           id
           currentPhase
@@ -429,6 +435,9 @@ export async function getAllProjects(): Promise<{
         imageURI          # ADD
         metadataFetched   # ADD
         metadataFetchError # ADD
+        minRaise
+        maxRaise
+        withdrawableDevFunds
         projectState {
           id
           currentPhase
