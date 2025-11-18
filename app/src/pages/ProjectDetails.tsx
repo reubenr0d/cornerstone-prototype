@@ -16,7 +16,7 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@
 import { Address, erc20At, fromStablecoin, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toStablecoin, fetchProjectRealtimeState, fetchProjectStaticConfig, getWindowEthereum, ProjectRealtimeState, ProjectStaticConfig } from '@/lib/eth';
 import { getCompleteProjectData, Project } from '@/lib/envio';
 import { TOKEN_CONFIG, getTokenConfigByAddress } from '@/config/contracts';
-import { ipfsUpload, fetchProjectMetadata, resolveImageUri, ProjectMetadata } from '@/lib/ipfs';
+import { ipfsUpload, resolveImageUri } from '@/lib/ipfs';
 import { ethers } from 'ethers';
 import { buildProjectInsightsData, type ProjectInsightsData } from '@/lib/project-insights';
 
@@ -54,7 +54,7 @@ const ProjectDetails = () => {
   const [staticConfig, setStaticConfig] = useState<ProjectStaticConfig | null>(null);
   const [supporters, setSupporters] = useState<number>(0);
   const [loading, setLoading] = useState(true);
-  const [metadata, setMetadata] = useState<ProjectMetadata | null>(null);
+  const [loadingRealtime, setLoadingRealtime] = useState(true);
 
   // Dynamically determine which token this project uses
   const projectTokenConfig = useMemo(() => {
@@ -106,6 +106,7 @@ const ProjectDetails = () => {
       if (!projectAddress) return;
       
       setLoading(true);
+      setLoadingRealtime(true); // Set both initially
       
       // Try injected provider first; fall back to RPC on failure
       let provider = getWindowEthereum() ? await getProvider() : getRpcProvider();
@@ -116,6 +117,7 @@ const ProjectDetails = () => {
         if (!code || code === '0x') {
           toast.error('No contract at this address on current network. Check RPC/network.');
           setLoading(false);
+          setLoadingRealtime(false);
           return;
         }
       } catch {
@@ -124,40 +126,32 @@ const ProjectDetails = () => {
         if (!code2 || code2 === '0x') {
           toast.error('No contract at this address on configured RPC. Set VITE_RPC_URL or switch network.');
           setLoading(false);
+          setLoadingRealtime(false);
           return;
         }
       }
-
-      // Fetch data in parallel: Single Envio query + Contract queries
-      const [envioResult, realtimeResult, staticResult] = await Promise.all([
-        getCompleteProjectData(projectAddress, account || undefined),
+  
+      // Fetch Envio data first (fast)
+      const envioResult = await getCompleteProjectData(projectAddress, account || undefined);
+      setEnvioData(envioResult.project);
+      setSupporters(envioResult.supportersCount);
+      setLoading(false); // Envio data loaded - show main UI
+      
+      // Then fetch real-time data (slower)
+      const [realtimeResult, staticResult] = await Promise.all([
         fetchProjectRealtimeState(projectAddress, provider, account || undefined),
         fetchProjectStaticConfig(projectAddress, provider),
       ]);
       
-      setEnvioData(envioResult.project);
       setRealtimeData(realtimeResult);
       setStaticConfig(staticResult);
-      setSupporters(envioResult.supportersCount);
-      
-      // Fetch metadata from IPFS if available (from indexed data)
-      if (envioResult.project?.metadataURI) {
-        try {
-          const projectMetadata = await fetchProjectMetadata(envioResult.project.metadataURI);
-          setMetadata(projectMetadata);
-        } catch (err) {
-          console.error('Failed to fetch project metadata:', err);
-          // Don't fail the whole page if metadata fetch fails
-          setMetadata(null);
-        }
-      } else {
-        setMetadata(null);
-      }
+      setLoadingRealtime(false); // Real-time data loaded - show user balances
     } catch (e) {
       console.error('Error refreshing project data:', e);
       toast.error('Failed to load project data');
     } finally {
       setLoading(false);
+      setLoadingRealtime(false);
     }
   }
 
@@ -199,7 +193,7 @@ const ProjectDetails = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectAddress]);
 
-  const withdrawableNow = Number(fromStablecoin(realtimeData?.withdrawableDevFunds ?? 0n));
+  const withdrawableNow = Number(fromStablecoin(BigInt(envioData?.withdrawableDevFunds || '0')));
 
   const fallbackTotalRaised =
     envioData?.deposits?.reduce<bigint>((acc, deposit) => {
@@ -234,17 +228,17 @@ const ProjectDetails = () => {
   const interestAccrued = Number(fromStablecoin(interestAccruedRaw > 0n ? interestAccruedRaw : 0n));
 
   const project = {
-    name: metadata?.name || staticConfig?.projectName?.trim() || 'Cornerstone Residences',
+    name: envioData?.name || staticConfig?.projectName?.trim() || 'Cornerstone Residences',
     status: 'Active',
     contractAddress: projectAddress ?? '0x',
     tokenAddress: envioData?.tokenAddress ?? staticConfig?.token ?? '0x',
-    owner: staticConfig?.owner ?? '0x',
+    owner: envioData?.creator ?? staticConfig?.owner ?? '0x',
     // From Envio (historical data)
     raised: Number(envioData?.projectState?.totalRaised ? fromStablecoin(BigInt(envioData.projectState.totalRaised)) : '0'),
     withdrawn: Number(envioData?.projectState?.totalDevWithdrawn ? fromStablecoin(BigInt(envioData.projectState.totalDevWithdrawn)) : '0'),
     // From static config
-    target: Number(staticConfig?.maxRaise ? fromStablecoin(staticConfig.maxRaise) : '0'),
-    minTarget: Number(staticConfig?.minRaise ? fromStablecoin(staticConfig.minRaise) : '0'),
+    target: Number(fromStablecoin(BigInt(envioData?.maxRaise || '0'))),
+    minTarget: Number(fromStablecoin(BigInt(envioData?.minRaise || '0'))),
     // From real-time contract
     escrow: Number(realtimeData?.reserveBalance ? fromStablecoin(realtimeData.reserveBalance) : '0'),
     withdrawable: withdrawableNow,
@@ -253,8 +247,8 @@ const ProjectDetails = () => {
     milestones: 0,
     supporters: supporters ?? 0,
     interestAccrued,
-    description: metadata?.description || 'No description available',
-    imageUri: metadata?.image || '',
+    description: envioData?.description || 'No description available',
+    imageUri: envioData?.imageURI || '',
   };
 
   const raisedPercentage = project.target > 0 ? (project.raised / project.target) * 100 : 0;
@@ -1214,13 +1208,13 @@ const ProjectDetails = () => {
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-[#5D4E37]">Your Balance</span>
                         <span className="font-bold">
-                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.userBalance ? Number(fromStablecoin(realtimeData.userBalance)).toLocaleString('en-US') : 0} ${projectTokenConfig.symbol}`}
+                          {loadingRealtime ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.userBalance ? Number(fromStablecoin(realtimeData.userBalance)).toLocaleString('en-US') : 0} ${projectTokenConfig.symbol}`}
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-[#5D4E37]">Claimable Interest</span>
                         <span className="font-bold">
-                        {loading ? (
+                        {loadingRealtime ? (
                           <Skeleton className="inline-block h-4 w-20" />
                         ) : (() => {
                             const interestValue = Number(fromStablecoin(realtimeData?.claimableInterest || 0n));
@@ -1260,7 +1254,7 @@ const ProjectDetails = () => {
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-[#5D4E37]">Principal Withdrawable</span>
                         <span className="font-bold">
-                          {loading ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.principalBuffer ? Number(fromStablecoin(realtimeData.principalBuffer)).toLocaleString('en-US') : 0} ${projectTokenConfig.symbol}`}
+                          {loadingRealtime ? <Skeleton className="inline-block h-4 w-20" /> : `${realtimeData?.principalBuffer ? Number(fromStablecoin(realtimeData.principalBuffer)).toLocaleString('en-US') : 0} ${projectTokenConfig.symbol}`}
                         </span>
                       </div>
                       {realtimeData?.principalBuffer && realtimeData?.userBalance && realtimeData.principalBuffer > 0n && (
@@ -1432,7 +1426,7 @@ const ProjectDetails = () => {
                         <div className={`${minecraftSubPanelClass} p-3`}>
                           <p className="text-xs font-semibold text-[#5D4E37] mb-1">Withdrawable Now:</p>
                           <p className="text-lg font-bold text-[#2D1B00]">
-                            {loading ? <Skeleton className="h-6 w-24" /> : `${withdrawableNow.toLocaleString('en-US')} ${projectTokenConfig.symbol}`}
+                            {loadingRealtime ? <Skeleton className="h-6 w-24" /> : `${withdrawableNow.toLocaleString('en-US')} ${projectTokenConfig.symbol}`}
                           </p>
                         </div>
                         <Input
