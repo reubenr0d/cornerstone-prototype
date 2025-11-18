@@ -16,7 +16,7 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@
 import { Address, erc20At, fromStablecoin, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toStablecoin, fetchProjectRealtimeState, fetchProjectStaticConfig, getWindowEthereum, ProjectRealtimeState, ProjectStaticConfig } from '@/lib/eth';
 import { getCompleteProjectData, Project } from '@/lib/envio';
 import { TOKEN_CONFIG, getTokenConfigByAddress } from '@/config/contracts';
-import { ipfsUpload, fetchProjectMetadata, resolveImageUri, ProjectMetadata } from '@/lib/ipfs';
+import { ipfsUpload, resolveImageUri } from '@/lib/ipfs';
 import { ethers } from 'ethers';
 import { buildProjectInsightsData, type ProjectInsightsData } from '@/lib/project-insights';
 
@@ -54,7 +54,6 @@ const ProjectDetails = () => {
   const [staticConfig, setStaticConfig] = useState<ProjectStaticConfig | null>(null);
   const [supporters, setSupporters] = useState<number>(0);
   const [loading, setLoading] = useState(true);
-  const [metadata, setMetadata] = useState<ProjectMetadata | null>(null);
 
   // Dynamically determine which token this project uses
   const projectTokenConfig = useMemo(() => {
@@ -139,20 +138,6 @@ const ProjectDetails = () => {
       setRealtimeData(realtimeResult);
       setStaticConfig(staticResult);
       setSupporters(envioResult.supportersCount);
-      
-      // Fetch metadata from IPFS if available (from indexed data)
-      if (envioResult.project?.metadataURI) {
-        try {
-          const projectMetadata = await fetchProjectMetadata(envioResult.project.metadataURI);
-          setMetadata(projectMetadata);
-        } catch (err) {
-          console.error('Failed to fetch project metadata:', err);
-          // Don't fail the whole page if metadata fetch fails
-          setMetadata(null);
-        }
-      } else {
-        setMetadata(null);
-      }
     } catch (e) {
       console.error('Error refreshing project data:', e);
       toast.error('Failed to load project data');
@@ -234,11 +219,11 @@ const ProjectDetails = () => {
   const interestAccrued = Number(fromStablecoin(interestAccruedRaw > 0n ? interestAccruedRaw : 0n));
 
   const project = {
-    name: metadata?.name || staticConfig?.projectName?.trim() || 'Cornerstone Residences',
+    name: envioData?.name || staticConfig?.projectName?.trim() || 'Cornerstone Residences',
     status: 'Active',
     contractAddress: projectAddress ?? '0x',
     tokenAddress: envioData?.tokenAddress ?? staticConfig?.token ?? '0x',
-    owner: staticConfig?.owner ?? '0x',
+    owner: envioData?.creator ?? staticConfig?.owner ?? '0x',
     // From Envio (historical data)
     raised: Number(envioData?.projectState?.totalRaised ? fromStablecoin(BigInt(envioData.projectState.totalRaised)) : '0'),
     withdrawn: Number(envioData?.projectState?.totalDevWithdrawn ? fromStablecoin(BigInt(envioData.projectState.totalDevWithdrawn)) : '0'),
@@ -253,8 +238,8 @@ const ProjectDetails = () => {
     milestones: 0,
     supporters: supporters ?? 0,
     interestAccrued,
-    description: metadata?.description || 'No description available',
-    imageUri: metadata?.image || '',
+    description: envioData?.description || 'No description available',
+    imageUri: envioData?.imageURI || '',
   };
 
   const raisedPercentage = project.target > 0 ? (project.raised / project.target) * 100 : 0;

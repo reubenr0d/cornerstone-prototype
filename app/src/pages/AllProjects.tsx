@@ -11,11 +11,14 @@ const AllProjects = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [supportersCounts, setSupportersCounts] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'funding' | 'active' | 'closed'>('all');
 
-  const fetchProjects = async () => {
-    setLoading(true);
+  const fetchProjects = async (showLoading = false) => {
+    if (showLoading) {
+      setLoading(true);
+    }
     try {
       const { projects: fetchedProjects, supportersCounts: counts } = await getAllProjects();
       setProjects(fetchedProjects);
@@ -23,13 +26,28 @@ const AllProjects = () => {
     } catch (error) {
       console.error('Error fetching projects:', error);
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
+      setIsInitialLoad(false);
     }
   };
 
   useEffect(() => {
-    // Only fetch once on initial mount
-    fetchProjects();
+    // Show loading on initial mount
+    fetchProjects(true);
+
+    // Refetch when window gains focus (e.g., coming back from another tab)
+    const handleFocus = () => {
+      fetchProjects(false); // Don't show loading on auto-refresh
+    };
+
+    window.addEventListener('focus', handleFocus);
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -110,7 +128,7 @@ const AllProjects = () => {
             <div className="flex flex-col sm:flex-row gap-3 flex-shrink-0">
               {/* Refresh Button */}
               <Button
-                onClick={fetchProjects}
+                onClick={() => fetchProjects(true)}
                 disabled={loading}
                 size="lg"
                 className="h-12 px-6 bg-[#5599FF] hover:bg-[#4488EE] text-white font-bold border-4 border-[#2D5788] shadow-[3px_3px_0px_0px_rgba(0,0,0,0.3)] hover:shadow-[5px_5px_0px_0px_rgba(0,0,0,0.3)] transition-all active:translate-y-1 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,0.3)] disabled:opacity-50 disabled:cursor-not-allowed"
@@ -155,7 +173,7 @@ const AllProjects = () => {
         </div>
 
         {/* Loading State */}
-        {loading && (
+        {isInitialLoad && loading && (
           <div className="flex flex-col items-center justify-center py-20">
             <div className="bg-gradient-to-b from-[#8B4513] to-[#654321] p-1 mb-4">
               <div className="bg-[#D2B48C] p-8 border-4 border-[#654321]">
