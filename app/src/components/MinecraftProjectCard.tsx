@@ -2,16 +2,15 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Project } from '@/lib/envio';
 import { Badge } from '@/components/ui/badge';
-import { Users, Target, TrendingUp, Loader2 } from 'lucide-react';
-import { ProjectMetadata, resolveImageUri } from '@/lib/ipfs';
+import { Users, Target, TrendingUp, Loader2, AlertCircle } from 'lucide-react';
+import { resolveImageUri } from '@/lib/ipfs';
 
 interface MinecraftProjectCardProps {
   project: Project;
   supportersCount: number;
-  metadata?: ProjectMetadata;
 }
 
-export const MinecraftProjectCard = ({ project, supportersCount, metadata }: MinecraftProjectCardProps) => {
+export const MinecraftProjectCard = ({ project, supportersCount }: MinecraftProjectCardProps) => {
   const navigate = useNavigate();
   const [imageLoaded, setImageLoaded] = React.useState(false);
   
@@ -41,11 +40,17 @@ export const MinecraftProjectCard = ({ project, supportersCount, metadata }: Min
     }
   }
 
-  const projectName = metadata?.name || 'Cornerstone Project';
-  const projectDescription = metadata?.description || 'No description available';
-  const projectImage = metadata?.image 
-    ? resolveImageUri(metadata.image)
+  // Use metadata from the project entity (indexed from IPFS)
+  const projectName = project.name || 'Cornerstone Project';
+  const projectDescription = project.description || 'No description available';
+  
+  // Resolve image URI - handle IPFS links
+  const projectImage = project.imageURI 
+    ? resolveImageUri(project.imageURI)
     : 'https://images.unsplash.com/photo-1501183638710-841dd1904471?w=600&q=60&auto=format&fit=crop';
+
+  // Show error indicator if metadata fetch failed
+  const hasMetadataError = project.metadataFetchError && !project.metadataFetched;
 
   // Truncate description to 100 characters
   const truncatedDescription = projectDescription.length > 100 
@@ -80,6 +85,19 @@ export const MinecraftProjectCard = ({ project, supportersCount, metadata }: Min
               {statusBadge.text}
             </Badge>
           </div>
+          
+          {/* Metadata Error Indicator */}
+          {hasMetadataError && (
+            <div className="absolute top-3 left-3">
+              <div 
+                className="bg-[#FF6B6B] border-2 border-[#AA0000] px-2 py-1 flex items-center gap-1"
+                title="Failed to load project metadata"
+              >
+                <AlertCircle className="w-3 h-3 text-white" />
+                <span className="text-[0.6rem] font-bold text-white uppercase">Metadata Error</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Content */}

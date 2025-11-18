@@ -193,6 +193,11 @@ export type Project = {
   createdAtBlock: string;
   createdAtTimestamp: string;
   metadataURI: string;
+  name?: string;                    // NEW
+  description?: string;             // NEW
+  imageURI?: string;                // NEW
+  metadataFetched?: boolean;        // NEW
+  metadataFetchError?: string;      // NEW
   projectState?: ProjectState;
   deposits: DepositEvent[];
   interestClaims: InterestClaimedEvent[];
@@ -234,6 +239,11 @@ export async function getCompleteProjectData(
         createdAtBlock
         createdAtTimestamp
         metadataURI
+        name              # ADD
+        description       # ADD
+        imageURI          # ADD
+        metadataFetched   # ADD
+        metadataFetchError # ADD
         projectState {
           id
           currentPhase
@@ -414,6 +424,11 @@ export async function getAllProjects(): Promise<{
         createdAtBlock
         createdAtTimestamp
         metadataURI
+        name              # ADD
+        description       # ADD
+        imageURI          # ADD
+        metadataFetched   # ADD
+        metadataFetchError # ADD
         projectState {
           id
           currentPhase
