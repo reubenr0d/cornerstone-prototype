@@ -1,6 +1,7 @@
 /* eslint-disable no-console */
 const { ethers } = require("ethers");
 const retry = require("p-retry").default || require("p-retry");
+const pdfParse = require("pdf-parse");
 require("dotenv").config();
 
 const RPC_URL = process.env.RPC_URL;
@@ -35,9 +36,22 @@ const signer = mnemonic
   ? ethers.Wallet.fromPhrase(mnemonic, provider)
   : new ethers.Wallet(pk, provider);
 
+// DocID enum mapping (must match contract)
+const DocID = {
+  TITLE_DOCUMENT: 0,
+  TITLE_INSURANCE: 1,
+  NEW_HOME_REGISTRATION: 2,
+  WARRANTY_ENROLMENT: 3,
+  DEMOLITION_PERMIT: 4,
+  ABATEMENT_PERMIT: 5,
+  BUILDING_PERMIT: 6,
+  OCCUPANCY_PERMIT: 7,
+  APPRAISER_REPORTS: 8,
+};
+
 const VERIFICATION_ABI = [
-  "event VerificationRequested(bytes32 indexed jobId, address indexed project, uint8 phaseId, uint256 docIndex, string docUri, bytes32 docHash)",
-  "function setVerificationResult(bytes32 jobId, bytes32 docHash, bool success) external",
+  "event VerificationRequested(bytes32 indexed jobId, address indexed project, uint8 docId, string docUri, bytes32 docHash)",
+  "function setVerificationResult(bytes32 jobId, bytes32 docHash, bool success, string extractedText) external",
 ];
 
 const REGISTRY_ABI = [
@@ -62,6 +76,30 @@ function gatewayUrl(uri, gateway) {
 }
 
 async function fetchPdf(uri) {
+  // If it's a direct HTTP/HTTPS URL, fetch it directly
+  if (uri.startsWith("http://") || uri.startsWith("https://")) {
+    return retry(
+      async () => {
+        try {
+          log("info", "fetching direct url", { url: uri });
+          const res = await fetch(uri);
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+          }
+          const arrayBuf = await res.arrayBuffer();
+          const buf = Buffer.from(arrayBuf);
+          log("info", "direct url fetch success", { url: uri, size: buf.length });
+          return buf;
+        } catch (err) {
+          log("error", "direct url fetch failed", { url: uri, error: err?.message });
+          throw err;
+        }
+      },
+      { retries: 3, minTimeout: 1500 }
+    );
+  }
+  
+  // For IPFS URLs, try multiple gateways
   return retry(
     async () => {
       let lastErr;
@@ -87,13 +125,94 @@ async function fetchPdf(uri) {
   );
 }
 
-// Placeholder verification hook; replace with real logic when available
-async function verifyDocument(_pdfBuf, _meta) {
-  return true;
+/**
+ * Extract address from PDF text
+ * Looks for pattern: "Registered owner" followed by address lines
+ * Stops at Canadian postal code (format: A1A 1A1)
+ */
+function extractAddress(text) {
+  try {
+    // Remove extra whitespace and normalize
+    const normalized = text.replace(/\r\n/g, "\n").replace(/\s+/g, " ");
+    
+    // Pattern: Registered Owner/Mailing Address up to and including Canadian postal code
+    // Canadian postal code format: Letter-Digit-Letter Space Digit-Letter-Digit
+    const addressPattern = /Registered Owner\/Mailing Address:\s*(.+?[A-Z]\d[A-Z]\s*\d[A-Z]\d)/i;
+    const match = normalized.match(addressPattern);
+    
+    if (match) {
+      let addressText = match[1].trim();
+      
+      // Clean up: remove multiple spaces, keep comma separation
+      addressText = addressText.replace(/\s+/g, " ");
+      
+      // If there are line breaks in the original, try to preserve structure
+      const lines = addressText.split(/\s{2,}|\n+/);
+      if (lines.length > 1) {
+        addressText = lines.map(l => l.trim()).filter(Boolean).join(", ");
+      }
+      
+      return addressText;
+    }
+    
+    // Fallback: Look for company name through postal code pattern
+    const fullPattern = /([A-Z\s&,.']+(?:INC\.|CORPORATION|LTD\.).*?[A-Z]\d[A-Z]\s*\d[A-Z]\d)/i;
+    const fallbackMatch = text.match(fullPattern);
+    
+    if (fallbackMatch) {
+      return fallbackMatch[0].replace(/\s+/g, " ").trim();
+    }
+    
+    return "";
+  } catch (err) {
+    log("error", "address.extraction.error", { error: err?.message });
+    return "";
+  }
+}
+
+/**
+ * Verify document and extract address
+ * Returns { success: boolean, extractedAddress: string }
+ */
+async function verifyDocument(pdfBuf, meta) {
+  try {
+    // Parse PDF to extract text
+    const data = await pdfParse(pdfBuf);
+    const text = data.text;
+    
+    log("debug", "pdf.text.extracted", { 
+      jobId: meta.jobId, 
+      textLength: text.length,
+      preview: text.substring(0, 200) 
+    });
+    
+    // Extract address from text
+    const extractedAddress = extractAddress(text);
+    
+    if (!extractedAddress) {
+      log("warn", "address.not.found", { jobId: meta.jobId });
+      return { success: false, extractedAddress: "" };
+    }
+    
+    log("info", "address.extracted", { 
+      jobId: meta.jobId, 
+      address: extractedAddress 
+    });
+    
+    // Verification succeeds if we found an address
+    return { success: true, extractedAddress };
+    
+  } catch (err) {
+    log("error", "verification.error", { 
+      jobId: meta.jobId, 
+      error: err?.message 
+    });
+    return { success: false, extractedAddress: "" };
+  }
 }
 
 async function processJob(contract, event) {
-  const [jobId, , phaseId, docIndex, docUri, docHash] = event.args;
+  const [jobId, , docId, docUri, docHash] = event.args;
   const jobKey = jobId.toLowerCase();
   if (handlers.get(jobKey)) {
     return;
@@ -102,8 +221,7 @@ async function processJob(contract, event) {
 
   const meta = {
     jobId,
-    phaseId: Number(phaseId),
-    docIndex: Number(docIndex),
+    docId: Number(docId),
     docUri,
     docHash,
   };
@@ -115,10 +233,20 @@ async function processJob(contract, event) {
     if (rehashed !== ethers.hexlify(docHash)) {
       throw new Error(`docHash mismatch: expected ${docHash}, got ${rehashed}`);
     }
-    const verificationSucceeded = await verifyDocument(pdfBuf, meta);
-    const tx = await contract.connect(signer).setVerificationResult(jobId, docHash, verificationSucceeded);
+    
+    const { success, extractedAddress } = await verifyDocument(pdfBuf, meta);
+    
+    const tx = await contract
+      .connect(signer)
+      .setVerificationResult(jobId, docHash, success, extractedAddress);
     await tx.wait();
-    log("info", "job.completed", { ...meta, txHash: tx.hash, success: verificationSucceeded });
+    
+    log("info", "job.completed", { 
+      ...meta, 
+      txHash: tx.hash, 
+      success, 
+      extractedAddress 
+    });
   } catch (err) {
     log("error", "job.failed", { ...meta, error: err?.message });
   } finally {
@@ -155,28 +283,56 @@ async function main() {
   // Discover from registry: backfill + live
   if (REGISTRY_ADDRESS) {
     const registry = new ethers.Contract(REGISTRY_ADDRESS, REGISTRY_ABI, provider);
-    // Backfill existing projects
+    
+    // Backfill existing projects in chunks to avoid Alchemy rate limits
     try {
       const filter = registry.filters.ProjectCreated();
-      const events = await registry.queryFilter(filter, START_BLOCK || undefined, "latest");
-      for (const ev of events) {
+      const latestBlock = await provider.getBlockNumber();
+      const startBlock = START_BLOCK || latestBlock;
+      const CHUNK_SIZE = 10; // Alchemy free tier limit
+      
+      let allEvents = [];
+      
+      // Only backfill if we're not starting from latest
+      if (startBlock < latestBlock) {
+        for (let from = startBlock; from <= latestBlock; from += CHUNK_SIZE) {
+          const to = Math.min(from + CHUNK_SIZE - 1, latestBlock);
+          try {
+            const events = await registry.queryFilter(filter, from, to);
+            allEvents = allEvents.concat(events);
+            if (LOG_LEVEL === "debug") {
+              log("debug", "registry.backfill.chunk", { from, to, count: events.length });
+            }
+          } catch (err) {
+            log("warn", "registry.backfill.chunk.error", { from, to, error: err?.message });
+          }
+          // Small delay to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+      
+      for (const ev of allEvents) {
         const addr = ev.args[0];
         await attachProject(addr);
       }
-      log("info", "registry.backfill.complete", { count: events.length });
+      log("info", "registry.backfill.complete", { count: allEvents.length });
     } catch (err) {
       log("warn", "registry.backfill.error", { error: err?.message });
     }
 
     // Live subscription
-    registry.on("ProjectCreated", async (project /*token, creator, uri*/, _token, _creator, _uri) => {
+    registry.on("ProjectCreated", async (project, _token, _creator, _uri) => {
       await attachProject(project);
     });
     log("info", "registry.listen", { address: REGISTRY_ADDRESS });
   }
 }
 
-main().catch((err) => {
-  log("error", "fatal", { error: err?.message });
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    log("error", "fatal", { error: err?.message });
+    process.exit(1);
+  });
+}
+
+module.exports = { extractAddress };

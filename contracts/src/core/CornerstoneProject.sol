@@ -9,6 +9,18 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 
 import {CornerstoneToken} from "./CornerstoneToken.sol";
 
+enum DocID {
+    TITLE_DOCUMENT,                    // 0
+    TITLE_INSURANCE,                   // 1
+    NEW_HOME_REGISTRATION,             // 2
+    WARRANTY_ENROLMENT,                // 3
+    DEMOLITION_PERMIT,                 // 4
+    ABATEMENT_PERMIT,                  // 5
+    BUILDING_PERMIT,                   // 6
+    OCCUPANCY_PERMIT,                  // 7
+    APPRAISER_REPORTS                  // 8
+}
+
 interface ICornerstoneProject {
     // ---- Deposits ----
     function deposit(uint256 amount) external;
@@ -24,6 +36,7 @@ interface ICornerstoneProject {
     // ---- Phase progression ----
     function closePhase(
         uint8 phaseId,
+        DocID[] calldata docIds,
         string[] calldata docTypes,
         bytes32[] calldata docHashes,
         string[] calldata metadataURIs
@@ -102,10 +115,10 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     address public verifier; // authorized worker
     struct VerificationJob {
         bytes32 docHash;
-        uint8 phaseId;
-        uint256 docIndex;
+        DocID docId;
         bool completed;
         bool success;
+        string extractedText;
     }
     mapping(bytes32 => VerificationJob) public verificationJobs; // jobId => job info/result
 
@@ -140,16 +153,14 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     event VerificationRequested(
         bytes32 indexed jobId,
         address indexed project,
-        uint8 phaseId,
-        uint256 docIndex,
+        DocID docId,
         string docUri,
         bytes32 docHash
     );
     event VerificationResult(
         bytes32 indexed jobId,
         address indexed project,
-        uint8 phaseId,
-        uint256 docIndex,
+        DocID docId,
         bytes32 docHash,
         bool success
     );
@@ -271,28 +282,32 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     // ---- Phases & fundraise lifecycle ----
     function closePhase(
         uint8 phaseId,
+        DocID[] calldata docIds,
         string[] calldata docTypes,
         bytes32[] calldata docHashes,
         string[] calldata metadataURIs
     ) external onlyDev whenNotPaused updateAccrual {
         require(phaseId <= NUM_PHASES, "invalid phase");
-        // Only allow closing the current active phase (0..5)
         require(phaseId == currentPhase, "not current phase");
-
-        // Docs are required for all phases, including phase 0
+        
         require(docTypes.length > 0, "docs required");
-        require(docTypes.length == docHashes.length && docTypes.length == metadataURIs.length, "docs length mismatch");
+        require(
+            docTypes.length == docHashes.length && 
+            docTypes.length == metadataURIs.length && 
+            docTypes.length == docIds.length, 
+            "docs length mismatch"
+        );
         emit PhaseClosed(phaseId, docTypes, docHashes, metadataURIs);
         for (uint256 i = 0; i < docHashes.length; i++) {
-            bytes32 jobId = _jobId(phaseId, i, docHashes[i]);
+            bytes32 jobId = _jobId(docIds[i], docHashes[i]);
             verificationJobs[jobId] = VerificationJob({
                 docHash: docHashes[i],
-                phaseId: phaseId,
-                docIndex: i,
+                docId: docIds[i],
                 completed: false,
-                success: false
+                success: false,
+                extractedText: ""
             });
-            emit VerificationRequested(jobId, address(this), phaseId, i, metadataURIs[i], docHashes[i]);
+            emit VerificationRequested(jobId, address(this), docIds[i], metadataURIs[i], docHashes[i]);
         }
 
         if (phaseId == 0) {
@@ -324,7 +339,8 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     function setVerificationResult(
         bytes32 jobId,
         bytes32 docHash,
-        bool success
+        bool success,
+        string calldata extractedText
     ) external onlyVerifier {
         VerificationJob storage job = verificationJobs[jobId];
         require(job.docHash != bytes32(0), "job not found");
@@ -333,8 +349,9 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
 
         job.completed = true;
         job.success = success;
+        job.extractedText = extractedText;
 
-        emit VerificationResult(jobId, address(this), job.phaseId, job.docIndex, docHash, success);
+        emit VerificationResult(jobId, address(this), job.docId, docHash, success);
     }
 
     // ---- Developer withdrawals under caps ----
@@ -606,8 +623,8 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     }
 
     // ---- Utils ----
-    function _jobId(uint8 phaseId, uint256 docIndex, bytes32 docHash) internal view returns (bytes32) {
-        return keccak256(abi.encodePacked(address(this), phaseId, docIndex, docHash));
+    function _jobId(DocID docId, bytes32 docHash) internal view returns (bytes32) {
+        return keccak256(abi.encodePacked(address(this), docId, docHash));
     }
 
     function _effectiveVerifier() internal view returns (address) {
