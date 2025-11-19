@@ -12,13 +12,14 @@ import {CornerstoneToken} from "./CornerstoneToken.sol";
 enum DocID {
     TITLE_DOCUMENT, // 0
     TITLE_INSURANCE, // 1
-    NEW_HOME_REGISTRATION, // 2
-    WARRANTY_ENROLMENT, // 3
-    DEMOLITION_PERMIT, // 4
-    ABATEMENT_PERMIT, // 5
-    BUILDING_PERMIT, // 6
-    OCCUPANCY_PERMIT, // 7
-    APPRAISER_REPORTS // 8
+    DESIGN_PLAN, // 2
+    NEW_HOME_REGISTRATION, // 3
+    WARRANTY_ENROLMENT, // 4
+    DEMOLITION_PERMIT, // 5
+    ABATEMENT_PERMIT, // 6
+    BUILDING_PERMIT, // 7
+    OCCUPANCY_PERMIT, // 8
+    APPRAISER_REPORTS // 9
 }
 
 interface ICornerstoneProject {

@@ -40,13 +40,22 @@ const signer = mnemonic
 const DocID = {
   TITLE_DOCUMENT: 0,
   TITLE_INSURANCE: 1,
-  NEW_HOME_REGISTRATION: 2,
-  WARRANTY_ENROLMENT: 3,
-  DEMOLITION_PERMIT: 4,
-  ABATEMENT_PERMIT: 5,
-  BUILDING_PERMIT: 6,
-  OCCUPANCY_PERMIT: 7,
-  APPRAISER_REPORTS: 8,
+  DESIGN_PLAN: 2,
+  NEW_HOME_REGISTRATION: 3,
+  WARRANTY_ENROLMENT: 4,
+  DEMOLITION_PERMIT: 5,
+  ABATEMENT_PERMIT: 6,
+  BUILDING_PERMIT: 7,
+  OCCUPANCY_PERMIT: 8,
+  APPRAISER_REPORTS: 9,
+};
+
+// Map DocID to Vancouver permit type
+const PERMIT_TYPE_MAPPING = {
+  [DocID.DEMOLITION_PERMIT]: "Demolition / Deconstruction",
+  [DocID.ABATEMENT_PERMIT]: "Salvage and Abatement",
+  [DocID.BUILDING_PERMIT]: "New Building",
+  [DocID.OCCUPANCY_PERMIT]: "Occupancy"
 };
 
 const VERIFICATION_ABI = [
@@ -171,10 +180,236 @@ function extractAddress(text) {
 }
 
 /**
- * Verify document and extract address
- * Returns { success: boolean, extractedAddress: string }
+ * Extract full address for permit lookup
+ * Extracts complete address including city and postal code from "Location of Permit" section
+ * Example: "2709 E 8TH AVENUE Vancouver, BC V5M 1W7"
  */
-async function verifyDocument(pdfBuf, meta) {
+function extractPermitAddress(text) {
+  try {
+    // Remove extra whitespace and normalize
+    const normalized = text.replace(/\r\n/g, "\n").replace(/\s+/g, " ");
+    
+    // Pattern 1: Look for "Location of Permit" section - captures full address with postal code
+    // More specific: looks for street pattern starting with 1-5 digit house number
+    const locationPattern = /Location of Permit[:\s]+(\d{1,5}\s+(?:[EWNS]\s+)?[0-9A-Z]+(?:TH|ST|ND|RD)?\s+(?:STREET|ST|AVENUE|AVE|ROAD|RD|DRIVE|DR|WAY|BOULEVARD|BLVD|LANE|LN)\s+Vancouver,\s*BC\s+[A-Z]\d[A-Z]\s*\d[A-Z]\d)/i;
+    let match = normalized.match(locationPattern);
+    
+    if (match) {
+      return match[1].trim();
+    }
+    
+    // Pattern 2: Look for address with directional prefix (E, W, N, S) before street name
+    // This pattern is more specific to avoid capturing extra numbers
+    const directionalPattern = /\b(\d{1,5}\s+[EWNS]\s+\d+(?:TH|ST|ND|RD)\s+(?:STREET|AVENUE|AVE|ROAD|RD|DRIVE|DR|WAY|BOULEVARD|BLVD|LANE|LN)\s+Vancouver,\s*BC\s+[A-Z]\d[A-Z]\s*\d[A-Z]\d)\b/i;
+    match = normalized.match(directionalPattern);
+    
+    if (match) {
+      return match[1].trim();
+    }
+    
+    // Pattern 3: Look for full address pattern with Vancouver, BC and postal code
+    // General pattern for addresses without directional prefix
+    const fullAddressPattern = /\b(\d{1,5}\s+[A-Z][A-Z0-9\s]+(?:STREET|ST|AVENUE|AVE|ROAD|RD|DRIVE|DR|WAY|BOULEVARD|BLVD|LANE|LN)\s+Vancouver,\s*BC\s+[A-Z]\d[A-Z]\s*\d[A-Z]\d)\b/i;
+    match = normalized.match(fullAddressPattern);
+    
+    if (match) {
+      return match[1].trim();
+    }
+    
+    return "";
+  } catch (err) {
+    console.error("street.address.extraction.error", err?.message);
+    return "";
+  }
+}
+
+// Test the function
+const testText = `
+Some text 1643 other info
+Location of Permit 2709 E 8TH AVENUE Vancouver, BC V5M 1W7
+More text
+`;
+
+console.log("Extracted:", extractPermitAddress(testText));
+
+/**
+ * Query Vancouver Open Data API for building permits
+ */
+async function queryVancouverPermits(address, permitType) {
+  try {
+    const baseUrl = "https://opendata.vancouver.ca/api/explore/v2.1/catalog/datasets/issued-building-permits/records";
+    
+    // Build WHERE clause conditions
+    const whereConditions = [];
+    
+    // Add permit type filter
+    if (permitType) {
+      whereConditions.push(`typeofwork="${permitType}"`);
+    }
+    
+    // Add address filter using wildcard operator
+    if (address) {
+      // Use * as wildcard for the API's FQL language
+      whereConditions.push(`address like '*${address}*'`);
+    }
+    
+    const whereClause = whereConditions.join(" AND ");
+    
+    // Build URL with proper encoding
+    let url = baseUrl + "?limit=10";
+    
+    if (whereClause) {
+      url += "&where=" + encodeURIComponent(whereClause);
+    }
+    
+    log("info", "querying vancouver api", { url, address, permitType });
+    
+    // Make the fetch request directly without retry wrapper
+    // to debug what's happening
+    const res = await fetch(url);
+    
+    if (!res.ok) {
+      log("error", "api http error", { 
+        status: res.status, 
+        statusText: res.statusText,
+        url 
+      });
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+    
+    let response;
+    try {
+      response = await res.json();
+    } catch (parseErr) {
+      log("error", "api json parse error", { 
+        error: parseErr?.message,
+        contentType: res.headers.get("content-type")
+      });
+      throw parseErr;
+    }
+    
+    log("debug", "api raw response", { response });
+    
+    if (!response) {
+      log("error", "api response is null/undefined", { response });
+      return { success: false, permits: [] };
+    }
+    
+    if (!Array.isArray(response.results)) {
+      log("warn", "invalid api response structure", { 
+        response,
+        hasResults: "results" in response,
+        resultsIsArray: Array.isArray(response.results)
+      });
+      return { success: false, permits: [] };
+    }
+    
+    const permits = response.results;
+    log("info", "api query result", { 
+      permitCount: permits.length,
+      address,
+      permitType
+    });
+    
+    return {
+      success: permits.length > 0,
+      permits: permits.map(p => ({
+        permitNumber: p.permitnumber || "",
+        permitType: p.typeofwork || "",
+        issueDate: p.issuedate || "",
+        address: p.address || "",
+        projectValue: p.projectvalue || 0
+      }))
+    };
+    
+  } catch (err) {
+    log("error", "vancouver api query failed", { 
+      error: err?.message,
+      stack: err?.stack,
+      address, 
+      permitType 
+    });
+    return { success: false, permits: [] };
+  }
+}
+
+/**
+ * Verify permit document by querying Vancouver API
+ */
+async function verifyPermitDocument(pdfBuf, docId, meta) {
+  try {
+    // Parse PDF to extract text
+    const data = await pdfParse(pdfBuf);
+    const text = data.text;
+    
+    log("debug", "pdf.text.extracted", { 
+      jobId: meta.jobId, 
+      docId,
+      textLength: text.length,
+      preview: text.substring(0, 200) 
+    });
+    
+    // Extract street address from PDF
+    const address = extractPermitAddress(text);
+    
+    if (!address) {
+      log("warn", "street.address.not.found", { jobId: meta.jobId, docId });
+      return { success: false, extractedText: "" };
+    }
+    
+    log("info", "street.address.extracted", { 
+      jobId: meta.jobId,
+      docId,
+      address: address 
+    });
+    
+    // Get permit type for this docId
+    const permitType = PERMIT_TYPE_MAPPING[docId];
+    
+    if (!permitType) {
+      log("warn", "unknown.permit.type", { jobId: meta.jobId, docId });
+      return { success: false, extractedText: address };
+    }
+    
+    // Query Vancouver API
+    const apiResult = await queryVancouverPermits(address, permitType);
+    
+    if (!apiResult.success || apiResult.permits.length === 0) {
+      log("warn", "permit.not.found.in.api", { 
+        jobId: meta.jobId,
+        docId,
+        address,
+        permitType
+      });
+      return { success: false, extractedText: address };
+    }
+    
+    // Format permit information
+    const permitInfo = apiResult.permits[0];
+    const extractedText = `Address: ${permitInfo.address}, Permit: ${permitInfo.permitNumber}, Type: ${permitInfo.permitType}, Issued: ${permitInfo.issueDate}`;
+    
+    log("info", "permit.verified", { 
+      jobId: meta.jobId,
+      docId,
+      permitInfo: extractedText
+    });
+    
+    return { success: true, extractedText };
+    
+  } catch (err) {
+    log("error", "permit.verification.error", { 
+      jobId: meta.jobId,
+      docId,
+      error: err?.message 
+    });
+    return { success: false, extractedText: "" };
+  }
+}
+
+/**
+ * Verify title/ownership document and extract address
+ */
+async function verifyTitleDocument(pdfBuf, meta) {
   try {
     // Parse PDF to extract text
     const data = await pdfParse(pdfBuf);
@@ -191,7 +426,7 @@ async function verifyDocument(pdfBuf, meta) {
     
     if (!extractedAddress) {
       log("warn", "address.not.found", { jobId: meta.jobId });
-      return { success: false, extractedAddress: "" };
+      return { success: false, extractedText: "" };
     }
     
     log("info", "address.extracted", { 
@@ -200,15 +435,28 @@ async function verifyDocument(pdfBuf, meta) {
     });
     
     // Verification succeeds if we found an address
-    return { success: true, extractedAddress };
+    return { success: true, extractedText: extractedAddress };
     
   } catch (err) {
     log("error", "verification.error", { 
       jobId: meta.jobId, 
       error: err?.message 
     });
-    return { success: false, extractedAddress: "" };
+    return { success: false, extractedText: "" };
   }
+}
+
+/**
+ * Route to appropriate verification function based on DocID
+ */
+async function verifyDocument(pdfBuf, docId, meta) {
+  // DocIDs 5-8 are permit documents that need API verification
+  if (docId >= DocID.DEMOLITION_PERMIT && docId <= DocID.OCCUPANCY_PERMIT) {
+    return verifyPermitDocument(pdfBuf, docId, meta);
+  }
+  
+  // DocIDs 0-3 and 8 use standard address extraction
+  return verifyTitleDocument(pdfBuf, meta);
 }
 
 async function processJob(contract, event) {
@@ -234,18 +482,18 @@ async function processJob(contract, event) {
       throw new Error(`docHash mismatch: expected ${docHash}, got ${rehashed}`);
     }
     
-    const { success, extractedAddress } = await verifyDocument(pdfBuf, meta);
+    const { success, extractedText } = await verifyDocument(pdfBuf, meta.docId, meta);
     
     const tx = await contract
       .connect(signer)
-      .setVerificationResult(jobId, docHash, success, extractedAddress);
+      .setVerificationResult(jobId, docHash, success, extractedText);
     await tx.wait();
     
     log("info", "job.completed", { 
       ...meta, 
       txHash: tx.hash, 
       success, 
-      extractedAddress 
+      extractedText 
     });
   } catch (err) {
     log("error", "job.failed", { ...meta, error: err?.message });
@@ -335,4 +583,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { extractAddress };
+module.exports = { extractAddress, extractPermitAddress, queryVancouverPermits };
