@@ -55,6 +55,10 @@ interface ITransferHook {
     function onTokenTransfer(address from, address to, uint256 amount) external;
 }
 
+interface IVerifierRegistry {
+    function verifier() external view returns (address);
+}
+
 contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, ReentrancyGuard, ITransferHook {
     using SafeERC20 for IERC20;
 
@@ -93,6 +97,18 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     uint256 public phase5PercentComplete; // 0..100
     bytes32 public lastAppraisalHash;
 
+    // Verification
+    address public verifierRegistry; // optional registry that defines global verifier
+    address public verifier; // authorized worker
+    struct VerificationJob {
+        bytes32 docHash;
+        uint8 phaseId;
+        uint256 docIndex;
+        bool completed;
+        bool success;
+    }
+    mapping(bytes32 => VerificationJob) public verificationJobs; // jobId => job info/result
+
     // Accounting buckets
     uint256 public reserveBalance; // developer-funded reserve for interest
     uint256 public poolBalance; // investors' pool balance (principal + proceeds + harvested interest - paid out)
@@ -121,6 +137,22 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     event ReserveFunded(uint256 amount, address indexed by);
     event FundraiseClosed(bool successful);
     event PhaseClosed(uint8 indexed phaseId, string[] docTypes, bytes32[] docHashes, string[] metadataURIs);
+    event VerificationRequested(
+        bytes32 indexed jobId,
+        address indexed project,
+        uint8 phaseId,
+        uint256 docIndex,
+        string docUri,
+        bytes32 docHash
+    );
+    event VerificationResult(
+        bytes32 indexed jobId,
+        address indexed project,
+        uint8 phaseId,
+        uint256 docIndex,
+        bytes32 docHash,
+        bool success
+    );
     event PhaseFundsWithdrawn(uint8 indexed phaseId, uint256 amount);
     event AppraisalSubmitted(uint256 percentComplete, bytes32 appraisalHash);
     event SalesProceedsSubmitted(uint256 amount);
@@ -138,6 +170,11 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         _;
     }
 
+    modifier onlyVerifier() {
+        require(msg.sender == _effectiveVerifier(), "verifier only");
+        _;
+    }
+
     constructor(
         address developer,
         address stablecoin_,
@@ -148,7 +185,8 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         uint256 fundraiseDeadline_,
         uint256[6] memory phaseAPRs_,
         uint256[6] memory phaseDurations_,
-        uint256[6] memory phaseCapsBps_
+        uint256[6] memory phaseCapsBps_,
+        address verifierRegistry_
     ) Ownable(developer) {
         require(stablecoin_ != address(0), "stablecoin required");
         stablecoin = IERC20(stablecoin_);
@@ -170,6 +208,8 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         currentPhase = 0;
         lastClosedPhase = 0;
         lastAccrualTs = block.timestamp;
+        verifierRegistry = verifierRegistry_;
+        verifier = developer; // default to project owner; can be updated
 
         // Deploy token with provided per-project name/symbol
         _token = new CornerstoneToken(name_, symbol_, address(this));
@@ -180,6 +220,11 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
             phaseCaps[i] = (maxRaise * phaseCapsBps_[i]) / BPS_DENOM;
         }
         emit PhaseConfiguration(phaseAPRs_, phaseDurations_, phaseCapsBps_, phaseCaps);
+    }
+
+    function setVerifier(address newVerifier) external onlyDev {
+        require(newVerifier != address(0), "verifier zero");
+        verifier = newVerifier;
     }
 
     // ---- View helpers ----
@@ -238,6 +283,17 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         require(docTypes.length > 0, "docs required");
         require(docTypes.length == docHashes.length && docTypes.length == metadataURIs.length, "docs length mismatch");
         emit PhaseClosed(phaseId, docTypes, docHashes, metadataURIs);
+        for (uint256 i = 0; i < docHashes.length; i++) {
+            bytes32 jobId = _jobId(phaseId, i, docHashes[i]);
+            verificationJobs[jobId] = VerificationJob({
+                docHash: docHashes[i],
+                phaseId: phaseId,
+                docIndex: i,
+                completed: false,
+                success: false
+            });
+            emit VerificationRequested(jobId, address(this), phaseId, i, metadataURIs[i], docHashes[i]);
+        }
 
         if (phaseId == 0) {
             require(totalRaised >= minRaise, "min raise not met");
@@ -263,6 +319,22 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
             // success status reflects whether minRaise was ever reached
             emit FundraiseClosed(fundraiseSuccessful);
         }
+    }
+
+    function setVerificationResult(
+        bytes32 jobId,
+        bytes32 docHash,
+        bool success
+    ) external onlyVerifier {
+        VerificationJob storage job = verificationJobs[jobId];
+        require(job.docHash != bytes32(0), "job not found");
+        require(job.docHash == docHash, "hash mismatch");
+        require(!job.completed, "already completed");
+
+        job.completed = true;
+        job.success = success;
+
+        emit VerificationResult(jobId, address(this), job.phaseId, job.docIndex, docHash, success);
     }
 
     // ---- Developer withdrawals under caps ----
@@ -534,6 +606,20 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     }
 
     // ---- Utils ----
+    function _jobId(uint8 phaseId, uint256 docIndex, bytes32 docHash) internal view returns (bytes32) {
+        return keccak256(abi.encodePacked(address(this), phaseId, docIndex, docHash));
+    }
+
+    function _effectiveVerifier() internal view returns (address) {
+        if (verifierRegistry != address(0)) {
+            address registryVerifier = IVerifierRegistry(verifierRegistry).verifier();
+            if (registryVerifier != address(0)) {
+                return registryVerifier;
+            }
+        }
+        return verifier;
+    }
+
     function _toHexString(address a) internal pure returns (string memory) {
         bytes20 data = bytes20(a);
         bytes memory hexChars = "0123456789abcdef";

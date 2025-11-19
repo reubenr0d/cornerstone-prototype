@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {CornerstoneProject} from "./CornerstoneProject.sol";
 
 interface IProjectRegistry {
@@ -27,14 +28,28 @@ interface IProjectRegistry {
         uint256[6] calldata phaseWithdrawCaps, // includes phase 0 (fundraising)
         string calldata metadataURI
     ) external returns (address projectAddress, address tokenAddress);
+
+    function verifier() external view returns (address);
+    function setVerifier(address newVerifier) external;
 }
 
-contract ProjectRegistry is IProjectRegistry {
+contract ProjectRegistry is IProjectRegistry, Ownable {
     uint256 public projectCount;
+    address public verifier;
 
     event ProjectCreated(address indexed project, address indexed token, address indexed creator, string metadataURI);
+    event VerifierUpdated(address indexed verifier);
 
-    constructor() {}
+    constructor() Ownable(msg.sender) {
+        verifier = msg.sender;
+        emit VerifierUpdated(msg.sender);
+    }
+
+    function setVerifier(address newVerifier) external onlyOwner {
+        require(newVerifier != address(0), "verifier zero");
+        verifier = newVerifier;
+        emit VerifierUpdated(newVerifier);
+    }
 
     function createProject(
         address stablecoin,
@@ -64,7 +79,8 @@ contract ProjectRegistry is IProjectRegistry {
             fundraiseDeadline,
             phaseAPRs,
             phaseDurations,
-            phaseWithdrawCaps
+            phaseWithdrawCaps,
+            address(this)
         );
 
         projectAddress = address(project);
@@ -101,7 +117,8 @@ contract ProjectRegistry is IProjectRegistry {
             fundraiseDeadline,
             phaseAPRs,
             phaseDurations,
-            phaseWithdrawCaps
+            phaseWithdrawCaps,
+            address(this)
         );
         projectAddress = address(project);
         tokenAddress = project.token();
