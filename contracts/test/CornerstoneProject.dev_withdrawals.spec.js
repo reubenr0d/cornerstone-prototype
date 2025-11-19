@@ -8,14 +8,14 @@ describe("CornerstoneProject - Dev Withdrawals and Caps", function () {
     // fund pool via deposits and close success
     await mintAndApprove(user1, params.minRaise);
     await project.connect(user1).deposit(params.minRaise);
-    await project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
+    await project.connect(dev).closePhase(0, [0], ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
 
     // Before closing any phase, nothing unlocked
     await expect(project.connect(dev).withdrawPhaseFunds(1)).to.be.revertedWith("exceeds caps");
 
     // Close phase 1, cap unlocks
     const cap1 = await project.getPhaseCap(1);
-    await project.connect(dev).closePhase(1, ["doc"], [ethers.ZeroHash], ["ipfs://a"]);
+    await project.connect(dev).closePhase(1, [0], ["doc"], [ethers.ZeroHash], ["ipfs://a"]);
     const poolBefore = await project.poolBalance();
     await expect(project.connect(dev).withdrawPhaseFunds(cap1 + 1n)).to.be.revertedWith("exceeds caps");
     await project.connect(dev).withdrawPhaseFunds(cap1);
@@ -40,7 +40,7 @@ describe("CornerstoneProject - Dev Withdrawals and Caps", function () {
     await project.connect(user1).deposit(minRaise);
     await project
       .connect(dev)
-      .closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
+      .closePhase(0, [0], ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
 
     const cap0 = await project.getPhaseCap(0);
     expect(cap0).to.equal(maxRaise);
@@ -60,10 +60,10 @@ describe("CornerstoneProject - Dev Withdrawals and Caps", function () {
     const { dev, user1, project, mintAndApprove, params } = await deployProjectFixture();
     await mintAndApprove(user1, params.minRaise);
     await project.connect(user1).deposit(params.minRaise);
-    await project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]); // -> phase 1
+    await project.connect(dev).closePhase(0, [0], ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]); // -> phase 1
     // Close phases 1..4 fully
     for (let p = 1; p <= 4; p++) {
-      await project.connect(dev).closePhase(p, ["doc"], [ethers.ZeroHash], ["ipfs://x"]);
+      await project.connect(dev).closePhase(p, [0], ["doc"], [ethers.ZeroHash], ["ipfs://x"]);
     }
     // Enter phase 5 (not closed)
     expect(await project.currentPhase()).to.equal(5n);

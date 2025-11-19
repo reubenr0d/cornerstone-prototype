@@ -10,15 +10,15 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {CornerstoneToken} from "./CornerstoneToken.sol";
 
 enum DocID {
-    TITLE_DOCUMENT,                    // 0
-    TITLE_INSURANCE,                   // 1
-    NEW_HOME_REGISTRATION,             // 2
-    WARRANTY_ENROLMENT,                // 3
-    DEMOLITION_PERMIT,                 // 4
-    ABATEMENT_PERMIT,                  // 5
-    BUILDING_PERMIT,                   // 6
-    OCCUPANCY_PERMIT,                  // 7
-    APPRAISER_REPORTS                  // 8
+    TITLE_DOCUMENT, // 0
+    TITLE_INSURANCE, // 1
+    NEW_HOME_REGISTRATION, // 2
+    WARRANTY_ENROLMENT, // 3
+    DEMOLITION_PERMIT, // 4
+    ABATEMENT_PERMIT, // 5
+    BUILDING_PERMIT, // 6
+    OCCUPANCY_PERMIT, // 7
+    APPRAISER_REPORTS // 8
 }
 
 interface ICornerstoneProject {
@@ -289,12 +289,12 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     ) external onlyDev whenNotPaused updateAccrual {
         require(phaseId <= NUM_PHASES, "invalid phase");
         require(phaseId == currentPhase, "not current phase");
-        
+
         require(docTypes.length > 0, "docs required");
         require(
-            docTypes.length == docHashes.length && 
-            docTypes.length == metadataURIs.length && 
-            docTypes.length == docIds.length, 
+            docTypes.length == docHashes.length &&
+                docTypes.length == metadataURIs.length &&
+                docTypes.length == docIds.length,
             "docs length mismatch"
         );
         emit PhaseClosed(phaseId, docTypes, docHashes, metadataURIs);

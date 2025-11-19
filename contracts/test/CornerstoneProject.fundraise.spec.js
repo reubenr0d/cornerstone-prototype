@@ -55,24 +55,24 @@ describe("CornerstoneProject - Fundraise", function () {
     expect(await pyusd.balanceOf(await project.getAddress())).to.equal(250_000n);
   });
 
-  it("closePhase(0) advances to phase 1 without closing fundraise; success once min met", async function () {
+  it("closePhase(0) [0], advances to phase 1 without closing fundraise; success once min met", async function () {
     const { dev, user1, project, token, mintAndApprove, params } = await deployProjectFixture();
     await mintAndApprove(user1, params.minRaise);
     await project.connect(user1).deposit(params.minRaise);
-    await project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
+    await project.connect(dev).closePhase(0, [0], ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
     expect(await project.currentPhase()).to.equal(1n);
     expect(await token.totalSupply()).to.equal(params.minRaise);
     // Fundraise should still be open
     expect(await project.fundraiseClosed()).to.equal(false);
   });
 
-  it("closePhase(0) reverts if min raise not met", async function () {
+  it("closePhase(0) [0], reverts if min raise not met", async function () {
     const { dev, user1, project, mintAndApprove, params } = await deployProjectFixture();
     const partialRaise = params.minRaise / 2n;
     await mintAndApprove(user1, partialRaise);
     await project.connect(user1).deposit(partialRaise);
     await expect(
-      project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"])
+      project.connect(dev).closePhase(0, [0], ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"])
     ).to.be.revertedWith("min raise not met");
   });
 
@@ -80,10 +80,10 @@ describe("CornerstoneProject - Fundraise", function () {
     const { dev, user1, project, mintAndApprove, params } = await deployProjectFixture();
     await mintAndApprove(user1, params.minRaise);
     await project.connect(user1).deposit(params.minRaise);
-    await project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]); // -> phase 1
+    await project.connect(dev).closePhase(0, [0], ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]); // -> phase 1
     // Close phases 1..4
     for (let p = 1; p <= 4; p++) {
-      await project.connect(dev).closePhase(p, ["doc"], [ethers.ZeroHash], ["ipfs://x"]);
+      await project.connect(dev).closePhase(p, [0], ["doc"], [ethers.ZeroHash], ["ipfs://x"]);
     }
     // now currentPhase should be 5
     expect(await project.currentPhase()).to.equal(5n);
@@ -102,7 +102,7 @@ describe("CornerstoneProject - Fundraise", function () {
     expect(await token.balanceOf(user1.address)).to.equal(100_000n);
 
     await expect(
-      project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"])
+      project.connect(dev).closePhase(0, [0], ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"])
     ).to.be.revertedWith("min raise not met");
 
     const deadline = BigInt(params.fundraiseDeadline);

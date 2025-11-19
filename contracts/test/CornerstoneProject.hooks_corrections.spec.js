@@ -6,7 +6,7 @@ describe("CornerstoneProject - Transfer Hook Corrections", function () {
     const { dev, user1, user2, project, token, pyusd, mintAndApprove, params } = await deployProjectFixture();
     await mintAndApprove(user1, params.minRaise);
     await project.connect(user1).deposit(params.minRaise);
-    await project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
+    await project.connect(dev).closePhase(0, [0], ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
 
     // Distribute revenue 100,000 (excess over outstanding principal)
     const outstanding = (await project.totalRaised()) - (await project.principalRedeemed());

@@ -17,7 +17,7 @@ describe("CornerstoneProject - Reserve & Interest", function () {
     expect(await project.interestPerShareX18()).to.equal(perShareBefore);
 
     // Close success -> phase 1
-    await project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
+    await project.connect(dev).closePhase(0, [0], ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
 
     // Fund reserve to cover interest (10% of 1,000,000 over 1 year = 100,000)
     await pyusd.mint(dev.address, 200_000);
@@ -45,7 +45,7 @@ describe("CornerstoneProject - Reserve & Interest", function () {
     const { dev, user1, project, token, pyusd, mintAndApprove, params } = await deployProjectFixture();
     await mintAndApprove(user1, params.minRaise);
     await project.connect(user1).deposit(params.minRaise);
-    await project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
+    await project.connect(dev).closePhase(0, [0], ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
 
     await pyusd.mint(dev.address, 200_000);
     await pyusd.connect(dev).approve(await project.getAddress(), 200_000);
@@ -78,7 +78,7 @@ describe("CornerstoneProject - Reserve & Interest", function () {
     const { dev, user1, user2, project, token, pyusd, mintAndApprove, params } = await deployProjectFixture();
     await mintAndApprove(user1, params.minRaise);
     await project.connect(user1).deposit(params.minRaise);
-    await project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
+    await project.connect(dev).closePhase(0, [0], ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
 
     const reserveTopUp = 400_000n;
     await pyusd.mint(dev.address, reserveTopUp);
@@ -119,7 +119,7 @@ describe("CornerstoneProject - Reserve & Interest", function () {
     const { dev, user1, project, mintAndApprove, params } = await deployProjectFixture();
     await mintAndApprove(user1, params.minRaise);
     await project.connect(user1).deposit(params.minRaise);
-    await project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
+    await project.connect(dev).closePhase(0, [0], ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
     await time.increase(365 * 24 * 60 * 60);
     await expect(project.accrueInterest()).to.be.revertedWith("reserve depleted");
   });
