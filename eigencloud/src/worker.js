@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
 const { ethers } = require("ethers");
-const retry = require("p-retry");
+const retry = require("p-retry").default || require("p-retry");
 require("dotenv").config();
 
 const RPC_URL = process.env.RPC_URL;
