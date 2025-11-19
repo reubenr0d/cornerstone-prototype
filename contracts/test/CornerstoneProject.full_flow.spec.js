@@ -7,6 +7,19 @@ const BPS_DENOM = 10_000n;
 const SCALE = 10n ** 18n;
 const YEAR_SECONDS = 365 * 24 * 60 * 60;
 
+// DocID enum values from the contract
+const DocID = {
+  TITLE_DOCUMENT: 0,
+  TITLE_INSURANCE: 1,
+  NEW_HOME_REGISTRATION: 2,
+  WARRANTY_ENROLMENT: 3,
+  DEMOLITION_PERMIT: 4,
+  ABATEMENT_PERMIT: 5,
+  BUILDING_PERMIT: 6,
+  OCCUPANCY_PERMIT: 7,
+  APPRAISER_REPORTS: 8,
+};
+
 describe("CornerstoneProject - Full Lifecycle Flow", function () {
   async function setupScenario() {
     const {
@@ -95,9 +108,12 @@ describe("CornerstoneProject - Full Lifecycle Flow", function () {
       return totalAccrued - info.claimed;
     };
 
+    // Updated to match contract's closePhase signature:
+    // closePhase(uint8 phaseId, DocID[] calldata docIds, string[] calldata docTypes, bytes32[] calldata docHashes, string[] calldata metadataURIs)
     ctx.docFor = (phase) => ({
+      docIds: [DocID.BUILDING_PERMIT], // Use appropriate DocID enum value
       types: [`phase-${phase}-doc`],
-      hashes: [ethers.ZeroHash],
+      hashes: [ethers.keccak256(ethers.toUtf8Bytes(`phase-${phase}-doc`))],
       uris: [`ipfs://phase-${phase}`],
     });
 
@@ -132,9 +148,10 @@ describe("CornerstoneProject - Full Lifecycle Flow", function () {
 
     ctx.closePhase = async (phase, expectedCurrent) => {
       const docs = ctx.docFor(phase);
+      // Contract signature: closePhase(uint8 phaseId, DocID[] docIds, string[] docTypes, bytes32[] docHashes, string[] metadataURIs)
       await ctx.project
         .connect(ctx.dev)
-        .closePhase(phase, docs.types, docs.hashes, docs.uris);
+        .closePhase(phase, docs.docIds, docs.types, docs.hashes, docs.uris);
       expect(await ctx.project.currentPhase()).to.equal(expectedCurrent);
       if (phase > 0) {
         expect(await ctx.project.lastClosedPhase()).to.equal(phase);
@@ -160,7 +177,7 @@ describe("CornerstoneProject - Full Lifecycle Flow", function () {
       const docs = ctx.docFor(5);
       await ctx.project
         .connect(ctx.dev)
-        .closePhase(5, docs.types, docs.hashes, docs.uris);
+        .closePhase(5, docs.docIds, docs.types, docs.hashes, docs.uris);
       expect(await ctx.project.lastClosedPhase()).to.equal(5);
       await ctx.expectState("after closing phase 5");
     };
@@ -202,7 +219,7 @@ describe("CornerstoneProject - Full Lifecycle Flow", function () {
     const phase0Docs = ctx.docFor(0);
     await ctx.project
       .connect(ctx.dev)
-      .closePhase(0, phase0Docs.types, phase0Docs.hashes, phase0Docs.uris);
+      .closePhase(0, phase0Docs.docIds, phase0Docs.types, phase0Docs.hashes, phase0Docs.uris);
     expect(await ctx.project.currentPhase()).to.equal(1);
     await ctx.expectState("after closing phase 0");
 

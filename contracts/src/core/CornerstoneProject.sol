@@ -9,6 +9,19 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 
 import {CornerstoneToken} from "./CornerstoneToken.sol";
 
+enum DocID {
+    TITLE_DOCUMENT, // 0
+    TITLE_INSURANCE, // 1
+    DESIGN_PLAN, // 2
+    NEW_HOME_REGISTRATION, // 3
+    WARRANTY_ENROLMENT, // 4
+    DEMOLITION_PERMIT, // 5
+    ABATEMENT_PERMIT, // 6
+    BUILDING_PERMIT, // 7
+    OCCUPANCY_PERMIT, // 8
+    APPRAISER_REPORTS // 9
+}
+
 interface ICornerstoneProject {
     // ---- Deposits ----
     function deposit(uint256 amount) external;
@@ -24,6 +37,7 @@ interface ICornerstoneProject {
     // ---- Phase progression ----
     function closePhase(
         uint8 phaseId,
+        DocID[] calldata docIds,
         string[] calldata docTypes,
         bytes32[] calldata docHashes,
         string[] calldata metadataURIs
@@ -53,6 +67,10 @@ interface ICornerstoneProject {
 
 interface ITransferHook {
     function onTokenTransfer(address from, address to, uint256 amount) external;
+}
+
+interface IVerifierRegistry {
+    function verifier() external view returns (address);
 }
 
 contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, ReentrancyGuard, ITransferHook {
@@ -93,6 +111,18 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     uint256 public phase5PercentComplete; // 0..100
     bytes32 public lastAppraisalHash;
 
+    // Verification
+    address public verifierRegistry; // optional registry that defines global verifier
+    address public verifier; // authorized worker
+    struct VerificationJob {
+        bytes32 docHash;
+        DocID docId;
+        bool completed;
+        bool success;
+        string extractedText;
+    }
+    mapping(bytes32 => VerificationJob) public verificationJobs; // jobId => job info/result
+
     // Accounting buckets
     uint256 public reserveBalance; // developer-funded reserve for interest
     uint256 public poolBalance; // investors' pool balance (principal + proceeds + harvested interest - paid out)
@@ -121,6 +151,20 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     event ReserveFunded(uint256 amount, address indexed by);
     event FundraiseClosed(bool successful);
     event PhaseClosed(uint8 indexed phaseId, string[] docTypes, bytes32[] docHashes, string[] metadataURIs);
+    event VerificationRequested(
+        bytes32 indexed jobId,
+        address indexed project,
+        DocID docId,
+        string docUri,
+        bytes32 docHash
+    );
+    event VerificationResult(
+        bytes32 indexed jobId,
+        address indexed project,
+        DocID docId,
+        bytes32 docHash,
+        bool success
+    );
     event PhaseFundsWithdrawn(uint8 indexed phaseId, uint256 amount);
     event AppraisalSubmitted(uint256 percentComplete, bytes32 appraisalHash);
     event SalesProceedsSubmitted(uint256 amount);
@@ -138,6 +182,11 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         _;
     }
 
+    modifier onlyVerifier() {
+        require(msg.sender == _effectiveVerifier(), "verifier only");
+        _;
+    }
+
     constructor(
         address developer,
         address stablecoin_,
@@ -148,7 +197,8 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         uint256 fundraiseDeadline_,
         uint256[6] memory phaseAPRs_,
         uint256[6] memory phaseDurations_,
-        uint256[6] memory phaseCapsBps_
+        uint256[6] memory phaseCapsBps_,
+        address verifierRegistry_
     ) Ownable(developer) {
         require(stablecoin_ != address(0), "stablecoin required");
         stablecoin = IERC20(stablecoin_);
@@ -170,6 +220,8 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         currentPhase = 0;
         lastClosedPhase = 0;
         lastAccrualTs = block.timestamp;
+        verifierRegistry = verifierRegistry_;
+        verifier = developer; // default to project owner; can be updated
 
         // Deploy token with provided per-project name/symbol
         _token = new CornerstoneToken(name_, symbol_, address(this));
@@ -180,6 +232,11 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
             phaseCaps[i] = (maxRaise * phaseCapsBps_[i]) / BPS_DENOM;
         }
         emit PhaseConfiguration(phaseAPRs_, phaseDurations_, phaseCapsBps_, phaseCaps);
+    }
+
+    function setVerifier(address newVerifier) external onlyDev {
+        require(newVerifier != address(0), "verifier zero");
+        verifier = newVerifier;
     }
 
     // ---- View helpers ----
@@ -226,18 +283,33 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     // ---- Phases & fundraise lifecycle ----
     function closePhase(
         uint8 phaseId,
+        DocID[] calldata docIds,
         string[] calldata docTypes,
         bytes32[] calldata docHashes,
         string[] calldata metadataURIs
     ) external onlyDev whenNotPaused updateAccrual {
         require(phaseId <= NUM_PHASES, "invalid phase");
-        // Only allow closing the current active phase (0..5)
         require(phaseId == currentPhase, "not current phase");
 
-        // Docs are required for all phases, including phase 0
         require(docTypes.length > 0, "docs required");
-        require(docTypes.length == docHashes.length && docTypes.length == metadataURIs.length, "docs length mismatch");
+        require(
+            docTypes.length == docHashes.length &&
+                docTypes.length == metadataURIs.length &&
+                docTypes.length == docIds.length,
+            "docs length mismatch"
+        );
         emit PhaseClosed(phaseId, docTypes, docHashes, metadataURIs);
+        for (uint256 i = 0; i < docHashes.length; i++) {
+            bytes32 jobId = _jobId(docIds[i], docHashes[i]);
+            verificationJobs[jobId] = VerificationJob({
+                docHash: docHashes[i],
+                docId: docIds[i],
+                completed: false,
+                success: false,
+                extractedText: ""
+            });
+            emit VerificationRequested(jobId, address(this), docIds[i], metadataURIs[i], docHashes[i]);
+        }
 
         if (phaseId == 0) {
             require(totalRaised >= minRaise, "min raise not met");
@@ -263,6 +335,24 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
             // success status reflects whether minRaise was ever reached
             emit FundraiseClosed(fundraiseSuccessful);
         }
+    }
+
+    function setVerificationResult(
+        bytes32 jobId,
+        bytes32 docHash,
+        bool success,
+        string calldata extractedText
+    ) external onlyVerifier {
+        VerificationJob storage job = verificationJobs[jobId];
+        require(job.docHash != bytes32(0), "job not found");
+        require(job.docHash == docHash, "hash mismatch");
+        require(!job.completed, "already completed");
+
+        job.completed = true;
+        job.success = success;
+        job.extractedText = extractedText;
+
+        emit VerificationResult(jobId, address(this), job.docId, docHash, success);
     }
 
     // ---- Developer withdrawals under caps ----
@@ -534,6 +624,20 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     }
 
     // ---- Utils ----
+    function _jobId(DocID docId, bytes32 docHash) internal view returns (bytes32) {
+        return keccak256(abi.encodePacked(address(this), docId, docHash));
+    }
+
+    function _effectiveVerifier() internal view returns (address) {
+        if (verifierRegistry != address(0)) {
+            address registryVerifier = IVerifierRegistry(verifierRegistry).verifier();
+            if (registryVerifier != address(0)) {
+                return registryVerifier;
+            }
+        }
+        return verifier;
+    }
+
     function _toHexString(address a) internal pure returns (string memory) {
         bytes20 data = bytes20(a);
         bytes memory hexChars = "0123456789abcdef";

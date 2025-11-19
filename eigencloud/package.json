@@ -1,0 +1,21 @@
+{
+  "name": "cornerstone-eigencloud-worker",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "main": "src/worker.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/worker.js",
+    "test": "jest"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "ethers": "^6.11.1",
+    "pdf-parse": "^1.1.1",
+    "p-retry": "^6.2.1"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}
