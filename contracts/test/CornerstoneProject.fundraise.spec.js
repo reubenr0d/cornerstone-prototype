@@ -12,22 +12,8 @@ describe("CornerstoneProject - Fundraise", function () {
 
     const CornerstoneProject = await ethers.getContractFactory("CornerstoneProject", dev);
     const now = await time.latest();
-    const badCaps = [0, 3000, 3000, 3000, 2000, 1000]; // phases 1..5 sum > 10000
-    await expect(
-      CornerstoneProject.deploy(
-        dev.address,
-        await pyusd.getAddress(),
-        "T",
-        "SYM",
-        1000,
-        2000,
-        now + 1000,
-        [0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0],
-        badCaps
-      )
-    ).to.be.revertedWith("caps sum > 100%");
-
+    
+    // Test that constructor requires non-zero stablecoin
     await expect(
       CornerstoneProject.deploy(
         dev.address,
@@ -42,6 +28,24 @@ describe("CornerstoneProject - Fundraise", function () {
         [0, 0, 0, 0, 0, 0]
       )
     ).to.be.revertedWith("stablecoin required");
+    
+    // Test that constructor enforces caps sum <= 100%
+    const badCaps = [0, 3000, 3000, 3000, 2000, 1000]; // phases 1..5 sum to 12000 > 10000
+    
+    await expect(
+      CornerstoneProject.deploy(
+        dev.address,
+        await pyusd.getAddress(),
+        "T2",
+        "SYM2",
+        1000,
+        2000,
+        now + 1000,
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        badCaps
+      )
+    ).to.be.revertedWith("caps sum > 100%");
   });
 
   it("deposit in phase 0 mints 1:1 shares and moves PYUSD", async function () {
@@ -79,6 +83,7 @@ describe("CornerstoneProject - Fundraise", function () {
     await mintAndApprove(user1, params.minRaise);
     await project.connect(user1).deposit(params.minRaise);
     await project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]); // -> phase 1
+    
     // Close phases 1..4
     for (let p = 1; p <= 4; p++) {
       await project.connect(dev).closePhase(p, ["doc"], [ethers.ZeroHash], ["ipfs://x"]);

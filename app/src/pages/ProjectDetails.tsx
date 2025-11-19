@@ -56,6 +56,10 @@ const ProjectDetails = () => {
   const [loading, setLoading] = useState(true);
   const [loadingRealtime, setLoadingRealtime] = useState(true);
 
+  // Initial appraisal state
+  const [appraisalFile, setAppraisalFile] = useState<File | null>(null);
+  const [isSubmittingAppraisal, setIsSubmittingAppraisal] = useState(false);
+
   // Dynamically determine which token this project uses
   const projectTokenConfig = useMemo(() => {
     if (staticConfig?.stablecoin) {
@@ -181,9 +185,11 @@ const ProjectDetails = () => {
         const handler = () => refresh();
         proj.on('FundraiseClosed', handler);
         proj.on('PhaseClosed', handler);
+        proj.on('InitialAppraisalSubmitted', handler);
         unsub = () => {
           try { proj.removeListener('FundraiseClosed', handler); } catch {}
           try { proj.removeListener('PhaseClosed', handler); } catch {}
+          try { proj.removeListener('InitialAppraisalSubmitted', handler); } catch {}
         };
       } catch {
         // ignore listener errors
@@ -193,7 +199,10 @@ const ProjectDetails = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectAddress]);
 
-  const withdrawableNow = Number(fromStablecoin(BigInt(envioData?.withdrawableDevFunds || '0')));
+  // Change this line in ProjectDetails.tsx
+const withdrawableNow = realtimeData?.withdrawableDevFunds 
+? Number(fromStablecoin(realtimeData.withdrawableDevFunds))
+: Number(fromStablecoin(BigInt(envioData?.withdrawableDevFunds || '0')));
 
   const fallbackTotalRaised =
     envioData?.deposits?.reduce<bigint>((acc, deposit) => {
@@ -530,49 +539,99 @@ const ProjectDetails = () => {
   const [phaseDocuments, setPhaseDocuments] = useState<Doc[][]>([[], [], [], [], [], []]);
 
   // Process phase documents from already-loaded Envio data
-  useEffect(() => {
-    if (!envioData?.phasesClosed) return;
+  // Process phase documents from already-loaded Envio data
+useEffect(() => {
+  if (!envioData) return;
+  
+  const phaseClosedEvents = envioData.phasesClosed || [];
+  const initialAppraisals = envioData.initialAppraisals || [];
+  
+  console.info('[docs] processing events from loaded data', { 
+    phasesClosed: phaseClosedEvents.length,
+    initialAppraisals: initialAppraisals.length,
+    initialAppraisalsData: initialAppraisals
+  });
+
+  const docsByPhase: Doc[][] = [[], [], [], [], [], []];
+
+  // Process initial appraisals for Phase 0 FIRST
+  for (const appraisal of initialAppraisals) {
+    const uri = appraisal.metadataURI || '';
+    const hash = appraisal.appraisalHash || '0x';
     
-    const phaseClosedEvents = envioData.phasesClosed || [];
-    console.info('[docs] processing PhaseClosed events from loaded data', { count: phaseClosedEvents.length });
+    console.info('[docs] processing initial appraisal', { uri, hash });
+    
+    // Determine if it's an image or PDF based on URI
+    const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].some(ext => 
+      uri.toLowerCase().includes(`.${ext}`)
+    );
+    
+    // Resolve IPFS URL
+    let resolvedUrl = uri;
+    if (uri.startsWith('ipfs://')) {
+      resolvedUrl = `https://ipfs.io/ipfs/${uri.replace('ipfs://', '')}`;
+    } else if (uri.startsWith('Qm') || uri.startsWith('bafy')) {
+      // Raw IPFS hash
+      resolvedUrl = `https://ipfs.io/ipfs/${uri}`;
+    }
+    
+    docsByPhase[0].push({
+      id: `phase0-initial-appraisal-${hash.slice(0, 10)}`,
+      name: 'Initial Appraisal',
+      type: isImage ? 'image' : 'pdf',
+      url: resolvedUrl || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+      hash: hash,
+    });
+    
+    console.info('[docs] added initial appraisal to phase 0', docsByPhase[0]);
+  }
 
-    const docsByPhase: Doc[][] = [[], [], [], [], [], []];
+  // Process phase closed events
+  for (const event of phaseClosedEvents) {
+    const phaseId = Number(event.phaseId);
+    if (phaseId < 0 || phaseId > 5) continue;
 
-    for (const event of phaseClosedEvents) {
-      const phaseId = Number(event.phaseId);
-      if (phaseId < 0 || phaseId > 5) continue;
+    const docTypes = event.docTypes || [];
+    const docHashes = event.docHashes || [];
+    const metadataURIs = event.metadataURIs || [];
 
-      const docTypes = event.docTypes || [];
-      const docHashes = event.docHashes || [];
-      const metadataURIs = event.metadataURIs || [];
-
-      const phaseDocs: Doc[] = [];
-      for (let i = 0; i < docTypes.length; i++) {
-        const docType = docTypes[i] || 'unknown';
-        const hash = docHashes[i] || '0x';
-        const uri = metadataURIs[i] || '';
-        
-        // Determine if it's an image or PDF based on type/URI
-        const isImage = docType.includes('image') || uri.includes('image') || 
-                       ['jpg', 'jpeg', 'png', 'gif', 'webp'].some(ext => uri.toLowerCase().includes(ext));
-        
-        phaseDocs.push({
-          id: `phase${phaseId}-doc${i}-${hash.slice(0, 10)}`,
-          name: uri.split('/').at(-1),
-          type: isImage ? 'image' : 'pdf',
-          url: uri.startsWith('ipfs://') 
-            ? `https://ipfs.io/ipfs/${uri.replace('ipfs://', '')}` 
-            : uri || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-          hash: hash,
-        });
+    const phaseDocs: Doc[] = [];
+    for (let i = 0; i < docTypes.length; i++) {
+      const docType = docTypes[i] || 'unknown';
+      const hash = docHashes[i] || '0x';
+      const uri = metadataURIs[i] || '';
+      
+      // Determine if it's an image or PDF based on type/URI
+      const isImage = docType.includes('image') || uri.includes('image') || 
+                     ['jpg', 'jpeg', 'png', 'gif', 'webp'].some(ext => uri.toLowerCase().includes(ext));
+      
+      // Resolve IPFS URL
+      let resolvedUrl = uri;
+      if (uri.startsWith('ipfs://')) {
+        resolvedUrl = `https://ipfs.io/ipfs/${uri.replace('ipfs://', '')}`;
+      } else if (uri.startsWith('Qm') || uri.startsWith('bafy')) {
+        resolvedUrl = `https://ipfs.io/ipfs/${uri}`;
       }
-
-      docsByPhase[phaseId] = phaseDocs;
+      
+      phaseDocs.push({
+        id: `phase${phaseId}-doc${i}-${hash.slice(0, 10)}`,
+        name: uri.split('/').pop() || `Document ${i + 1}`,
+        type: isImage ? 'image' : 'pdf',
+        url: resolvedUrl || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+        hash: hash,
+      });
     }
 
-    setPhaseDocuments(docsByPhase);
-    console.info('[docs] updated phaseDocuments state', { phaseDocuments: docsByPhase });
-  }, [envioData]);
+    // Append to existing docs for this phase (in case initial appraisal already added to phase 0)
+    docsByPhase[phaseId] = [...docsByPhase[phaseId], ...phaseDocs];
+  }
+  
+  console.log("IA: ",envioData?.initialAppraisals);
+  setPhaseDocuments(docsByPhase);
+  console.info('[docs] updated phaseDocuments state', { phaseDocuments: docsByPhase });
+  console.log(envioData.appraisalReportSubmitted);
+  
+}, [envioData]);
 
   const [activeDocPhase, setActiveDocPhase] = useState(0);
   const [docViewer, setDocViewer] = useState<Doc | null>(null);
@@ -1350,6 +1409,134 @@ const ProjectDetails = () => {
                       </div>
                     </div>
                   </div>
+                  {/* Initial Appraisal (Phase 0 only) */}
+{currentPhaseIndex === 0 && !envioData?.appraisalReportSubmitted && (
+  <div className="space-y-2 border-b-2 border-[#654321] pb-4">
+    <div className="flex items-center gap-2">
+      <FileText className="h-4 w-4 text-[#3D2817]" />
+      <span className="text-sm font-bold text-[#2D1B00]">Submit Initial Appraisal</span>
+    </div>
+    <div className="space-y-3">
+      <div className={`${minecraftSubPanelClass} p-3`}>
+        <p className="text-xs text-[#5D4E37] mb-2">
+          ⚠️ Submitting the initial appraisal will <strong>immediately unlock all raised funds</strong> for withdrawal.
+        </p>
+        <p className="text-xs text-[#5D4E37]">
+          This document will be permanently stored on IPFS and displayed in Phase 0 documentation.
+        </p>
+      </div>
+      
+      <div className="space-y-2">
+        <Label htmlFor="appraisalFile" className="text-sm font-bold text-[#2D1B00]">
+          Upload Appraisal Document
+        </Label>
+        <Input
+          id="appraisalFile"
+          type="file"
+          accept="image/*,.pdf"
+          onChange={(e) => setAppraisalFile(e.target.files?.[0] || null)}
+          className="rounded-none border-4 border-dashed border-[#654321] bg-[#FFF3C4] text-[#2D1B00] min-h-[60px] pt-2 pb-3 px-4 file:mr-4 file:rounded-none file:border-0 file:bg-[#8B7355] file:px-4 file:py-2 file:font-bold file:uppercase file:text-white hover:file:bg-[#715b3f]"
+        />
+        {appraisalFile && (
+          <div className="flex items-center justify-between text-xs text-[#5D4E37] bg-[#FFF3C4] border-2 border-[#654321] p-2 rounded">
+            <span className="flex items-center gap-2">
+              <FileText className="h-3 w-3" />
+              {appraisalFile.name}
+            </span>
+            <span className="font-semibold">
+              {(appraisalFile.size / 1024 / 1024).toFixed(2)} MB
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className={`${minecraftSubPanelClass} p-3 text-xs`}>
+        <p className="font-semibold text-[#2D1B00] mb-2">Requirements:</p>
+        <ul className="space-y-1 text-[#5D4E37] list-disc list-inside">
+          <li>Image (JPG, PNG, etc.) or PDF format</li>
+          <li>File size under 10MB recommended</li>
+          <li>Must meet minimum fundraise target first</li>
+        </ul>
+      </div>
+
+      <Button
+        size="sm"
+        className={`${minecraftPrimaryButtonClass} w-full h-10`}
+        disabled={isSubmittingAppraisal || !appraisalFile}
+        onClick={async () => {
+          try {
+            if (!projectAddress || !appraisalFile) {
+              toast.error('Please select an appraisal file');
+              return;
+            }
+            
+            // Check if min raise met
+            const minRaiseRaw = BigInt(envioData?.minRaise || '0');
+            const totalRaisedRaw = BigInt(envioData?.projectState?.totalRaised || '0');
+            if (totalRaisedRaw < minRaiseRaw) {
+              toast.error('Minimum fundraise target not met yet');
+              return;
+            }
+
+            setIsSubmittingAppraisal(true);
+            const signer = await getSigner();
+            const proj = projectAt(projectAddress, signer);
+
+            // Upload to IPFS
+            toast.info('Uploading document to IPFS...');
+            const uploaded = await ipfsUpload([appraisalFile]);
+            const uri = uploaded[0]?.uri || '';
+            
+            if (!uri) {
+              throw new Error('IPFS upload failed');
+            }
+
+            // Compute hash of file
+            toast.info('Computing document hash...');
+            const buf = new Uint8Array(await appraisalFile.arrayBuffer());
+            const hash = ethers.keccak256(buf);
+
+            // Submit transaction
+            toast.info('Submitting to blockchain...');
+            const tx = await proj.submitInitialAppraisal(hash, uri);
+            toast.info('Transaction sent, waiting for confirmation...');
+            await tx.wait();
+            
+            toast.success('Initial appraisal submitted successfully! All funds are now unlocked.');
+
+            setAppraisalFile(null);
+            refresh();
+          } catch (e: any) {
+            console.error('Initial appraisal submission error:', e);
+            toast.error(e?.shortMessage || e?.message || 'Submission failed');
+          } finally {
+            setIsSubmittingAppraisal(false);
+          }
+        }}
+      >
+        <FileText className="mr-2 h-4 w-4" />
+        {isSubmittingAppraisal ? 'Submitting...' : 'Submit Initial Appraisal'}
+      </Button>
+      
+      <p className="text-[0.6rem] text-[#3D2817] text-center font-semibold">
+        ⚠️ This action cannot be undone and will unlock all raised capital
+      </p>
+    </div>
+  </div>
+)}
+
+{/* Show confirmation if already submitted */}
+{currentPhaseIndex === 0 && envioData?.appraisalReportSubmitted && (
+  <div className={`${minecraftSubPanelClass} p-4 border-2 border-[#55AA55]`}>
+    <div className="flex items-center gap-2 text-[#55AA55] mb-2">
+      <ShieldCheck className="h-5 w-5" />
+      <span className="text-sm font-bold">Initial Appraisal Submitted</span>
+    </div>
+    <p className="text-xs text-[#5D4E37]">
+      All raised funds are now unlocked for withdrawal. View the appraisal document in Phase 0 documentation.
+    </p>
+  </div>
+)}
 
                   {/* Close Phase */}
                   <div className="space-y-2">

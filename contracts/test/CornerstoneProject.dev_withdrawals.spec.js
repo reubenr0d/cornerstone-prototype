@@ -10,7 +10,7 @@ describe("CornerstoneProject - Dev Withdrawals and Caps", function () {
     await project.connect(user1).deposit(params.minRaise);
     await project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
 
-    // Before closing any phase, nothing unlocked
+    // Before closing any phase, nothing unlocked (phase 0 cap is 0 by default)
     await expect(project.connect(dev).withdrawPhaseFunds(1)).to.be.revertedWith("exceeds caps");
 
     // Close phase 1, cap unlocks
@@ -27,7 +27,7 @@ describe("CornerstoneProject - Dev Withdrawals and Caps", function () {
     const phaseParams = {
       phaseAPRs: [0, 1000, 900, 800, 700, 600],
       phaseDurations: [0, 30, 30, 30, 30, 30],
-      phaseCapsBps: [10000, 0, 0, 0, 0, 0],
+      phaseCapsBps: [10000, 0, 0, 0, 0, 0], // Phase 0 cap = 100%
     };
     const minRaise = 1_000_000n;
     const maxRaise = 1_000_000n;
@@ -38,9 +38,12 @@ describe("CornerstoneProject - Dev Withdrawals and Caps", function () {
     });
     await mintAndApprove(user1, minRaise);
     await project.connect(user1).deposit(minRaise);
-    await project
-      .connect(dev)
-      .closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
+    
+    // Submit initial appraisal to unlock phase 0 funds
+    await project.connect(dev).submitInitialAppraisal(
+      ethers.keccak256(ethers.toUtf8Bytes("initial-appraisal")),
+      "ipfs://initial-appraisal"
+    );
 
     const cap0 = await project.getPhaseCap(0);
     expect(cap0).to.equal(maxRaise);
@@ -61,6 +64,7 @@ describe("CornerstoneProject - Dev Withdrawals and Caps", function () {
     await mintAndApprove(user1, params.minRaise);
     await project.connect(user1).deposit(params.minRaise);
     await project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]); // -> phase 1
+    
     // Close phases 1..4 fully
     for (let p = 1; p <= 4; p++) {
       await project.connect(dev).closePhase(p, ["doc"], [ethers.ZeroHash], ["ipfs://x"]);
