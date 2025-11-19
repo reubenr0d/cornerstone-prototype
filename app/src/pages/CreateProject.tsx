@@ -17,7 +17,6 @@ interface Milestone {
   summary: string;
   payout: string; // percent of max raise
   apr: string; // percent APR for this phase
-  dueDate: string;
 }
 
 const CreateProject = () => {
@@ -32,7 +31,6 @@ const CreateProject = () => {
         'Closes when plot reflects new owner and title docs provided. No interest during this stage; early entrants get a future interest bonus.',
       payout: '50',
       apr: '0',
-      dueDate: '',
     },
     {
       id: '2',
@@ -41,7 +39,6 @@ const CreateProject = () => {
         'Closes when design PDFs are submitted.',
       payout: '5',
       apr: '15',
-      dueDate: '',
     },
     {
       id: '3',
@@ -50,7 +47,6 @@ const CreateProject = () => {
         'Closes when permits are submitted (HPO registration, warranty, demo/abatement).',
       payout: '5',
       apr: '12',
-      dueDate: '',
     },
     {
       id: '4',
@@ -59,7 +55,6 @@ const CreateProject = () => {
         'Closes when abatement, demolition permits and the building permit is submitted.',
       payout: '10',
       apr: '9',
-      dueDate: '',
     },
     {
       id: '5',
@@ -68,7 +63,6 @@ const CreateProject = () => {
         'Appraisal reports unlock mid-phase payouts; final closure with occupancy permit.',
       payout: '30',
       apr: '5',
-      dueDate: '',
     },
     {
       id: '6',
@@ -76,7 +70,6 @@ const CreateProject = () => {
       summary: 'Final phase; sales proceeds distribute principal first, then revenue pro‑rata.',
       payout: '0',
       apr: '3',
-      dueDate: '',
     },
     
   ]);
@@ -221,20 +214,14 @@ const CreateProject = () => {
       // Pass all 6 phases including fundraising phase 0; registry maps 0..5 → 1..5 internally
       const allMilestones = milestones;
       const phaseAPRs = allMilestones.map(m => Math.round(parseFloat(m.apr || '0') * 100)); // % → bps
-      const phaseCaps = allMilestones.map(m => Math.round(parseFloat(m.payout || '0') * 100)); // % → bps
-      if (phaseAPRs.length !== 6 || phaseCaps.length !== 6) {
+      if (phaseAPRs.length !== 6) {
         toast.error('Exactly 6 phases required (including fundraising phase 0)');
         setIsPublishing(false);
         return;
       }
-      const sumCaps = phaseCaps.slice(1).reduce((a, b) => a + b, 0); // only development phases count toward caps
-      if (sumCaps > 10000) {
-        toast.error('Phase caps exceed 100% total');
-        setIsPublishing(false);
-        return;
-      }
-      // durations: include phase 0 for completeness; informational only
-      const phaseDurations = new Array(6).fill(0);
+
+      // Convert to tuples for Solidity fixed-size arrays
+      const phaseAPRsTuple = phaseAPRs as [number, number, number, number, number, number];
       // Debug params
       // eslint-disable-next-line no-console
       console.log('[CreateProject] params', {
@@ -247,8 +234,6 @@ const CreateProject = () => {
         deadline,
         deadlineISO: new Date(deadline * 1000).toISOString(),
         phaseAPRs,
-        phaseCaps,
-        sumCaps,
       });
       // Preflight simulation using staticCall
       try {
@@ -259,10 +244,9 @@ const CreateProject = () => {
           BigInt(Math.round(parseFloat(minRaise) * 1e6)),
           BigInt(Math.round(parseFloat(maxRaise) * 1e6)),
           BigInt(deadline),
-          phaseAPRs,
-          phaseDurations,
-          phaseCaps,
-          metadataURI
+          phaseAPRsTuple,
+          metadataURI,
+          
         );
         // eslint-disable-next-line no-console
         console.log('[CreateProject] simulate ok (project, token)', sim);
@@ -285,10 +269,9 @@ const CreateProject = () => {
           BigInt(Math.round(parseFloat(minRaise) * 1e6)),
           BigInt(Math.round(parseFloat(maxRaise) * 1e6)),
           BigInt(deadline),
-          phaseAPRs,
-          phaseDurations,
-          phaseCaps,
-          metadataURI
+          phaseAPRsTuple,
+          metadataURI,
+          
         );
         // eslint-disable-next-line no-console
         console.log('[CreateProject] estimateGas', est.toString());
@@ -306,9 +289,7 @@ const CreateProject = () => {
         BigInt(Math.round(parseFloat(minRaise) * 1e6)),
         BigInt(Math.round(parseFloat(maxRaise) * 1e6)),
         BigInt(deadline),
-        phaseAPRs,
-        phaseDurations,
-        phaseCaps,
+        phaseAPRsTuple,
         metadataURI,
         { gasLimit }
       );
@@ -520,28 +501,7 @@ const CreateProject = () => {
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <p className="text-sm text-muted-foreground">{milestone.summary}</p>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <Label htmlFor={`milestone-payout-${index}`}>Payout (% of Max Raise)</Label>
-                          <Input 
-                            id={`milestone-payout-${index}`}
-                            type="number"
-                            inputMode="decimal"
-                            min={0}
-                            max={100}
-                            step={0.1}
-                            placeholder="e.g., 15"
-                            value={milestone.payout}
-                            disabled={index === milestones.length - 1}
-                            onChange={(e)=>{
-                              const v = e.target.value;
-                              setMilestones(prev=> prev.map((m,i)=> (i === index ? { ...m, payout: v } : m)));
-                            }}
-                          />
-                          {index === milestones.length - 1 && (
-                            <p className="text-xs text-muted-foreground mt-1">Final phase payout is fixed.</p>
-                          )}
-                        </div>
+                      <div className="grid grid-cols-1 gap-4">
                         <div>
                           <Label htmlFor={`milestone-apr-${index}`}>APR (%)</Label>
                           <Input
@@ -560,18 +520,6 @@ const CreateProject = () => {
                             }}
                           />
                           {/* APRs are editable for all phases */}
-                        </div>
-                        <div>
-                          <Label htmlFor={`milestone-date-${index}`}>Due Date</Label>
-                          <Input 
-                            id={`milestone-date-${index}`}
-                            type="date"
-                            value={milestone.dueDate}
-                            onChange={(e)=>{
-                              const v = e.target.value;
-                              setMilestones(prev=> prev.map((m,i)=> i===index? { ...m, dueDate: v }: m));
-                            }}
-                          />
                         </div>
                       </div>
                     </CardContent>

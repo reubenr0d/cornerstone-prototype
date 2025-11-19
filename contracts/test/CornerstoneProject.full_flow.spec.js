@@ -1,11 +1,23 @@
-const { expect } = require("chai");
-const { ethers } = require("hardhat");
+const { expect: expect2 } = require("chai");
+const { ethers: ethers2 } = require("hardhat");
 const { time } = require("@nomicfoundation/hardhat-network-helpers");
-const { deployProjectFixture } = require("./fixtures");
+const { deployProjectFixture: deployProjectFixture2 } = require("./fixtures");
 
 const BPS_DENOM = 10_000n;
 const SCALE = 10n ** 18n;
 const YEAR_SECONDS = 365 * 24 * 60 * 60;
+
+const DocID = {
+  TITLE_DOCUMENT: 0,
+  TITLE_INSURANCE: 1,
+  NEW_HOME_REGISTRATION: 2,
+  WARRANTY_ENROLMENT: 3,
+  DEMOLITION_PERMIT: 4,
+  ABATEMENT_PERMIT: 5,
+  BUILDING_PERMIT: 6,
+  OCCUPANCY_PERMIT: 7,
+  APPRAISER_REPORTS: 8,
+};
 
 describe("CornerstoneProject - Full Lifecycle Flow", function () {
   async function setupScenario() {
@@ -18,7 +30,7 @@ describe("CornerstoneProject - Full Lifecycle Flow", function () {
       pyusd,
       mintAndApprove,
       params,
-    } = await deployProjectFixture();
+    } = await deployProjectFixture2();
 
     const projectAddr = await project.getAddress();
     const deposit1 = 700_000n;
@@ -32,7 +44,7 @@ describe("CornerstoneProject - Full Lifecycle Flow", function () {
     const share1 = await token.balanceOf(user1.address);
     const share2 = await token.balanceOf(user2.address);
     const totalShares = share1 + share2;
-    expect(totalShares).to.equal(deposit1 + deposit2);
+    expect2(totalShares).to.equal(deposit1 + deposit2);
 
     const state = {
       pool: await project.poolBalance(),
@@ -67,23 +79,23 @@ describe("CornerstoneProject - Full Lifecycle Flow", function () {
     };
 
     ctx.expectState = async (context) => {
-      expect(await project.poolBalance(), `${context}: pool`).to.equal(
+      expect2(await project.poolBalance(), `${context}: pool`).to.equal(
         ctx.state.pool
       );
-      expect(await project.accrualBase(), `${context}: base`).to.equal(
+      expect2(await project.accrualBase(), `${context}: base`).to.equal(
         ctx.state.base
       );
-      expect(
+      expect2(
         await project.interestPerShareX18(),
         `${context}: interestPerShare`
       ).to.equal(ctx.state.interestPerShare);
-      expect(await project.reserveBalance(), `${context}: reserve`).to.equal(
+      expect2(await project.reserveBalance(), `${context}: reserve`).to.equal(
         ctx.reserveBalance
       );
-      expect(await project.principalBuffer(), `${context}: buffer`).to.equal(
+      expect2(await project.principalBuffer(), `${context}: buffer`).to.equal(
         ctx.principalBuffer
       );
-      expect(await project.principalRedeemed(), `${context}: redeemed`).to.equal(
+      expect2(await project.principalRedeemed(), `${context}: redeemed`).to.equal(
         ctx.principalRedeemed
       );
     };
@@ -96,8 +108,9 @@ describe("CornerstoneProject - Full Lifecycle Flow", function () {
     };
 
     ctx.docFor = (phase) => ({
+      docIds: [DocID.BUILDING_PERMIT],
       types: [`phase-${phase}-doc`],
-      hashes: [ethers.ZeroHash],
+      hashes: [ethers2.keccak256(ethers2.toUtf8Bytes(`phase-${phase}-doc`))],
       uris: [`ipfs://phase-${phase}`],
     });
 
@@ -124,7 +137,7 @@ describe("CornerstoneProject - Full Lifecycle Flow", function () {
       ctx.state.pool -= bnAmount;
       ctx.userStates.get(addr).claimed += bnAmount;
       await ctx.expectState(context);
-      expect(
+      expect2(
         await ctx.project.claimableInterest(addr),
         `${context}: claimable`
       ).to.equal(ctx.expectedClaimable(addr));
@@ -135,9 +148,9 @@ describe("CornerstoneProject - Full Lifecycle Flow", function () {
       await ctx.project
         .connect(ctx.dev)
         .closePhase(phase, docs.types, docs.hashes, docs.uris);
-      expect(await ctx.project.currentPhase()).to.equal(expectedCurrent);
+      expect2(await ctx.project.currentPhase()).to.equal(expectedCurrent);
       if (phase > 0) {
-        expect(await ctx.project.lastClosedPhase()).to.equal(phase);
+        expect2(await ctx.project.lastClosedPhase()).to.equal(phase);
       }
       await ctx.expectState(`after closing phase ${phase}`);
     };
@@ -161,7 +174,7 @@ describe("CornerstoneProject - Full Lifecycle Flow", function () {
       await ctx.project
         .connect(ctx.dev)
         .closePhase(5, docs.types, docs.hashes, docs.uris);
-      expect(await ctx.project.lastClosedPhase()).to.equal(5);
+      expect2(await ctx.project.lastClosedPhase()).to.equal(5);
       await ctx.expectState("after closing phase 5");
     };
 
@@ -176,7 +189,7 @@ describe("CornerstoneProject - Full Lifecycle Flow", function () {
       ctx.principalRedeemed += shares;
       ctx.userStates.get(addr).share = 0n;
       const balAfter = await ctx.pyusd.balanceOf(addr);
-      expect(balAfter - balBefore).to.equal(shares);
+      expect2(balAfter - balBefore).to.equal(shares);
       await ctx.expectState(context);
     };
 
@@ -184,13 +197,13 @@ describe("CornerstoneProject - Full Lifecycle Flow", function () {
       for (const [addr, deposit] of ctx.deposits.entries()) {
         const info = ctx.userStates.get(addr);
         const finalBal = await ctx.pyusd.balanceOf(addr);
-        expect(finalBal).to.equal(deposit + info.claimed);
+        expect2(finalBal).to.equal(deposit + info.claimed);
       }
     };
 
     ctx.assertReserveMatchesAccrued = async () => {
       const expected = ctx.reserveTopUp - ctx.totalInterestAccrued;
-      expect(await ctx.project.reserveBalance()).to.equal(expected);
+      expect2(await ctx.project.reserveBalance()).to.equal(expected);
     };
 
     await ctx.pyusd.mint(ctx.dev.address, ctx.reserveTopUp);
@@ -199,11 +212,27 @@ describe("CornerstoneProject - Full Lifecycle Flow", function () {
     ctx.reserveBalance += ctx.reserveTopUp;
     await ctx.expectState("after reserve funding");
 
+    // Use closePhase0 to set configuration and close phase 0
+    const now = await time.latest();
+    const phaseDurations = [
+      0,
+      365 * 24 * 60 * 60,
+      365 * 24 * 60 * 60,
+      365 * 24 * 60 * 60,
+      365 * 24 * 60 * 60,
+      365 * 24 * 60 * 60
+    ];
     const phase0Docs = ctx.docFor(0);
     await ctx.project
       .connect(ctx.dev)
-      .closePhase(0, phase0Docs.types, phase0Docs.hashes, phase0Docs.uris);
-    expect(await ctx.project.currentPhase()).to.equal(1);
+      .closePhase0(
+        ctx.params.phaseCapsBps,
+        phaseDurations,
+        phase0Docs.types,
+        phase0Docs.hashes,
+        phase0Docs.uris
+      );
+    expect2(await ctx.project.currentPhase()).to.equal(1);
     await ctx.expectState("after closing phase 0");
 
     return ctx;
@@ -211,10 +240,10 @@ describe("CornerstoneProject - Full Lifecycle Flow", function () {
 
   async function runInterestSequence(ctx) {
     await ctx.accruePhase(1);
-    expect(await ctx.project.claimableInterest(ctx.user1.address)).to.equal(
+    expect2(await ctx.project.claimableInterest(ctx.user1.address)).to.equal(
       ctx.expectedClaimable(ctx.user1.address)
     );
-    expect(await ctx.project.claimableInterest(ctx.user2.address)).to.equal(
+    expect2(await ctx.project.claimableInterest(ctx.user2.address)).to.equal(
       ctx.expectedClaimable(ctx.user2.address)
     );
     await ctx.claimInterestFor(
@@ -225,7 +254,7 @@ describe("CornerstoneProject - Full Lifecycle Flow", function () {
     await ctx.closePhase(1, 2);
 
     await ctx.accruePhase(2);
-    expect(await ctx.project.claimableInterest(ctx.user2.address)).to.equal(
+    expect2(await ctx.project.claimableInterest(ctx.user2.address)).to.equal(
       ctx.expectedClaimable(ctx.user2.address)
     );
     await ctx.claimInterestFor(
@@ -254,12 +283,12 @@ describe("CornerstoneProject - Full Lifecycle Flow", function () {
     await ctx.accruePhase(5);
     const user1Remaining = ctx.expectedClaimable(ctx.user1.address);
     const user2Remaining = ctx.expectedClaimable(ctx.user2.address);
-    expect(user1Remaining).to.be.gt(0n);
-    expect(user2Remaining).to.be.gt(0n);
-    expect(await ctx.project.claimableInterest(ctx.user1.address)).to.equal(
+    expect2(user1Remaining).to.be.gt(0n);
+    expect2(user2Remaining).to.be.gt(0n);
+    expect2(await ctx.project.claimableInterest(ctx.user1.address)).to.equal(
       user1Remaining
     );
-    expect(await ctx.project.claimableInterest(ctx.user2.address)).to.equal(
+    expect2(await ctx.project.claimableInterest(ctx.user2.address)).to.equal(
       user2Remaining
     );
 
@@ -270,14 +299,14 @@ describe("CornerstoneProject - Full Lifecycle Flow", function () {
     const ctx = await setupScenario();
     const { user1Remaining, user2Remaining } = await runInterestSequence(ctx);
 
-    expect(user1Remaining).to.be.gt(0n);
-    expect(user2Remaining).to.be.gt(0n);
+    expect2(user1Remaining).to.be.gt(0n);
+    expect2(user2Remaining).to.be.gt(0n);
     const claimedTotals = [
       ctx.userStates.get(ctx.user1.address).claimed,
       ctx.userStates.get(ctx.user2.address).claimed,
     ];
-    expect(claimedTotals[0]).to.equal(150_000n); // 50k + 100k
-    expect(claimedTotals[1]).to.equal(210_000n); // 120k + 90k
+    expect2(claimedTotals[0]).to.equal(150_000n);
+    expect2(claimedTotals[1]).to.equal(210_000n);
     await ctx.assertReserveMatchesAccrued();
   });
 
@@ -287,10 +316,10 @@ describe("CornerstoneProject - Full Lifecycle Flow", function () {
 
     await ctx.returnOutstandingProceeds("after sales proceeds returned");
 
-    expect(await ctx.project.claimableInterest(ctx.user1.address)).to.equal(
+    expect2(await ctx.project.claimableInterest(ctx.user1.address)).to.equal(
       user1Remaining
     );
-    expect(await ctx.project.claimableInterest(ctx.user2.address)).to.equal(
+    expect2(await ctx.project.claimableInterest(ctx.user2.address)).to.equal(
       user2Remaining
     );
     await ctx.assertReserveMatchesAccrued();
@@ -311,8 +340,8 @@ describe("CornerstoneProject - Full Lifecycle Flow", function () {
       user2Remaining,
       "after user2 final claim post proceeds"
     );
-    expect(await ctx.project.claimableInterest(ctx.user1.address)).to.equal(0n);
-    expect(await ctx.project.claimableInterest(ctx.user2.address)).to.equal(0n);
+    expect2(await ctx.project.claimableInterest(ctx.user1.address)).to.equal(0n);
+    expect2(await ctx.project.claimableInterest(ctx.user2.address)).to.equal(0n);
 
     await ctx.finalizePhaseFive();
     await ctx.withdrawPrincipalFor(
@@ -324,8 +353,8 @@ describe("CornerstoneProject - Full Lifecycle Flow", function () {
       "after user2 principal withdrawal"
     );
 
-    expect(await ctx.token.totalSupply()).to.equal(0n);
-    expect(await ctx.project.principalBuffer()).to.equal(0n);
+    expect2(await ctx.token.totalSupply()).to.equal(0n);
+    expect2(await ctx.project.principalBuffer()).to.equal(0n);
     await ctx.assertFinalBalances();
     await ctx.assertReserveMatchesAccrued();
   });
