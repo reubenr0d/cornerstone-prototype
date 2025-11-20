@@ -12,14 +12,15 @@ describe("ProjectRegistry", function () {
 
   it("createProject auto names and increments count", async function () {
     const { registry, pyusd } = await deployRegistryFixture();
-    const { phaseAPRs, phaseDurations, phaseCapsBps } = defaultPhaseParams();
+    const { bracketMinAPR, bracketMaxAPR, phaseDurations, phaseCapsBps } = defaultPhaseParams();
     const now = await time.latest();
     const tx = await registry.createProject(
       await pyusd.getAddress(),
       1000,
       2000,
       now + 7 * 24 * 60 * 60,
-      phaseAPRs,
+      bracketMinAPR,
+      bracketMaxAPR,
       phaseDurations,
       phaseCapsBps,
       "ipfs://test-metadata-1"
@@ -29,13 +30,15 @@ describe("ProjectRegistry", function () {
     expect(ev).to.not.be.undefined;
     const count = await registry.projectCount();
     expect(count).to.equal(1n);
-    // Parse addresses from the emitted event
+    
+    // Create second project
     const tx2 = await registry.createProject(
       await pyusd.getAddress(),
       1000,
       2000,
       now + 8 * 24 * 60 * 60,
-      phaseAPRs,
+      bracketMinAPR,
+      bracketMaxAPR,
       phaseDurations,
       phaseCapsBps,
       "ipfs://test-metadata-2"
@@ -50,7 +53,7 @@ describe("ProjectRegistry", function () {
 
   it("createProjectWithTokenMeta uses provided name/symbol", async function () {
     const { registry, pyusd } = await deployRegistryFixture();
-    const { phaseAPRs, phaseDurations, phaseCapsBps } = defaultPhaseParams();
+    const { bracketMinAPR, bracketMaxAPR, phaseDurations, phaseCapsBps } = defaultPhaseParams();
     const now = await time.latest();
     const tx = await registry.createProjectWithTokenMeta(
       await pyusd.getAddress(),
@@ -59,7 +62,8 @@ describe("ProjectRegistry", function () {
       1000,
       2000,
       now + 7 * 24 * 60 * 60,
-      phaseAPRs,
+      bracketMinAPR,
+      bracketMaxAPR,
       phaseDurations,
       phaseCapsBps,
       "ipfs://custom-token-metadata"
@@ -71,7 +75,7 @@ describe("ProjectRegistry", function () {
 
   it("reverts on zero stablecoin address", async function () {
     const { registry } = await deployRegistryFixture();
-    const { phaseAPRs, phaseDurations, phaseCapsBps } = defaultPhaseParams();
+    const { bracketMinAPR, bracketMaxAPR, phaseDurations, phaseCapsBps } = defaultPhaseParams();
     const now = await time.latest();
     await expect(
       registry.createProject(
@@ -79,7 +83,8 @@ describe("ProjectRegistry", function () {
         1000,
         2000,
         now + 1000,
-        phaseAPRs,
+        bracketMinAPR,
+        bracketMaxAPR,
         phaseDurations,
         phaseCapsBps,
         "ipfs://test-metadata"
@@ -89,7 +94,7 @@ describe("ProjectRegistry", function () {
 
   it("reverts on bad bounds or deadline in past", async function () {
     const { registry, pyusd } = await deployRegistryFixture();
-    const { phaseAPRs, phaseDurations, phaseCapsBps } = defaultPhaseParams();
+    const { bracketMinAPR, bracketMaxAPR, phaseDurations, phaseCapsBps } = defaultPhaseParams();
     const stablecoinAddr = await pyusd.getAddress();
     
     await expect(
@@ -98,7 +103,8 @@ describe("ProjectRegistry", function () {
         0,
         0,
         (await time.latest()) + 1000,
-        phaseAPRs,
+        bracketMinAPR,
+        bracketMaxAPR,
         phaseDurations,
         phaseCapsBps,
         "ipfs://test-metadata"
@@ -111,7 +117,8 @@ describe("ProjectRegistry", function () {
         1000,
         1000,
         (await time.latest()) - 1,
-        phaseAPRs,
+        bracketMinAPR,
+        bracketMaxAPR,
         phaseDurations,
         phaseCapsBps,
         "ipfs://test-metadata"

@@ -9,9 +9,10 @@ interface IProjectRegistry {
         uint256 minRaise,
         uint256 maxRaise,
         uint256 fundraiseDeadline,
-        uint256[6] calldata phaseAPRs, // includes phase 0 (fundraising)
-        uint256[6] calldata phaseDurations, // includes phase 0 (fundraising)
-        uint256[6] calldata phaseWithdrawCaps, // includes phase 0 (fundraising)
+        uint256[2] calldata bracketMinAPR,
+        uint256[2] calldata bracketMaxAPR,
+        uint256[6] calldata phaseDurations,
+        uint256[6] calldata phaseWithdrawCaps,
         string calldata metadataURI
     ) external returns (address projectAddress, address tokenAddress);
 
@@ -22,9 +23,10 @@ interface IProjectRegistry {
         uint256 minRaise,
         uint256 maxRaise,
         uint256 fundraiseDeadline,
-        uint256[6] calldata phaseAPRs, // includes phase 0 (fundraising)
-        uint256[6] calldata phaseDurations, // includes phase 0 (fundraising)
-        uint256[6] calldata phaseWithdrawCaps, // includes phase 0 (fundraising)
+        uint256[2] calldata bracketMinAPR,
+        uint256[2] calldata bracketMaxAPR,
+        uint256[6] calldata phaseDurations,
+        uint256[6] calldata phaseWithdrawCaps,
         string calldata metadataURI
     ) external returns (address projectAddress, address tokenAddress);
 }
@@ -41,7 +43,8 @@ contract ProjectRegistry is IProjectRegistry {
         uint256 minRaise,
         uint256 maxRaise,
         uint256 fundraiseDeadline,
-        uint256[6] calldata phaseAPRs,
+        uint256[2] calldata bracketMinAPR,
+        uint256[2] calldata bracketMaxAPR,
         uint256[6] calldata phaseDurations,
         uint256[6] calldata phaseWithdrawCaps,
         string calldata metadataURI
@@ -62,7 +65,8 @@ contract ProjectRegistry is IProjectRegistry {
             minRaise,
             maxRaise,
             fundraiseDeadline,
-            phaseAPRs,
+            bracketMinAPR,
+            bracketMaxAPR,
             phaseDurations,
             phaseWithdrawCaps
         );
@@ -80,7 +84,8 @@ contract ProjectRegistry is IProjectRegistry {
         uint256 minRaise,
         uint256 maxRaise,
         uint256 fundraiseDeadline,
-        uint256[6] calldata phaseAPRs,
+        uint256[2] calldata bracketMinAPR,
+        uint256[2] calldata bracketMaxAPR,
         uint256[6] calldata phaseDurations,
         uint256[6] calldata phaseWithdrawCaps,
         string calldata metadataURI
@@ -99,7 +104,8 @@ contract ProjectRegistry is IProjectRegistry {
             minRaise,
             maxRaise,
             fundraiseDeadline,
-            phaseAPRs,
+            bracketMinAPR,
+            bracketMaxAPR,
             phaseDurations,
             phaseWithdrawCaps
         );

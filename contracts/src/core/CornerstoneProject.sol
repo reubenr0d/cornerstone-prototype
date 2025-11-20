@@ -73,7 +73,8 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     uint256 public immutable fundraiseDeadline;
 
     // Phase config (0..5)
-    uint256[6] public phaseAPRsBps; // per phase (0..5) APR in bps (phase 0 typically 0)
+    uint256[2] public bracketMinAPR; // [bracket0_min, bracket1_min] in bps
+    uint256[2] public bracketMaxAPR; // [bracket0_max, bracket1_max] in bps
     uint256[6] public phaseDurations; // informational only
     uint256[6] public phaseCapsBps; // withdraw caps per phase in bps of maxRaise (phase 0 typically 0)
 
@@ -126,7 +127,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     event SalesProceedsSubmitted(uint256 amount);
     event PrincipalClaimed(address indexed user, uint256 amount);
     event RevenueClaimed(address indexed user, uint256 amount);
-    event PhaseConfiguration(uint256[6] aprBps, uint256[6] durations, uint256[6] capBps, uint256[6] phaseCaps);
+    event PhaseConfiguration(uint256[4] aprBps, uint256[6] durations, uint256[6] capBps, uint256[6] phaseCaps);
 
     modifier onlyDev() {
         require(msg.sender == owner(), "dev only");
@@ -146,7 +147,8 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         uint256 minRaise_,
         uint256 maxRaise_,
         uint256 fundraiseDeadline_,
-        uint256[6] memory phaseAPRs_,
+        uint256[2] memory bracketMinAPR_,
+        uint256[2] memory bracketMaxAPR_,
         uint256[6] memory phaseDurations_,
         uint256[6] memory phaseCapsBps_
     ) Ownable(developer) {
@@ -155,9 +157,13 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         minRaise = minRaise_;
         maxRaise = maxRaise_;
         fundraiseDeadline = fundraiseDeadline_;
-        phaseAPRsBps = phaseAPRs_;
+        bracketMinAPR = bracketMinAPR_;
+        bracketMaxAPR = bracketMaxAPR_;
         phaseDurations = phaseDurations_;
         phaseCapsBps = phaseCapsBps_;
+
+        require(bracketMaxAPR_[0] >= bracketMinAPR_[0], "bracket 0: max < min");
+        require(bracketMaxAPR_[1] >= bracketMinAPR_[1], "bracket 1: max < min");
 
         // enforce sum of development phase caps (1..5) ≤ 100%
         uint256 sumCaps;
@@ -179,7 +185,12 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         for (uint8 i = 0; i <= NUM_PHASES; i++) {
             phaseCaps[i] = (maxRaise * phaseCapsBps_[i]) / BPS_DENOM;
         }
-        emit PhaseConfiguration(phaseAPRs_, phaseDurations_, phaseCapsBps_, phaseCaps);
+        uint256[4] memory aprBpsForEvent;
+        aprBpsForEvent[0] = bracketMaxAPR_[0]; // bracket 0 max
+        aprBpsForEvent[1] = bracketMinAPR_[0]; // bracket 0 min
+        aprBpsForEvent[2] = bracketMaxAPR_[1]; // bracket 1 max
+        aprBpsForEvent[3] = bracketMinAPR_[1]; // bracket 1 min
+        emit PhaseConfiguration(aprBpsForEvent, phaseDurations_, phaseCapsBps_, phaseCaps);
     }
 
     // ---- View helpers ----
@@ -491,7 +502,54 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     }
 
     function _currentAPR() internal view returns (uint256) {
-        return phaseAPRsBps[currentPhase];
+        // Phase 5: no interest
+        if (currentPhase == 5) return 0;
+
+        // Phase 0 (fundraising): Bracket 0
+        // Range: 0 → minRaise
+        // Starts at bracketMaxAPR[0], decreases to bracketMinAPR[0]
+        if (currentPhase == 0) {
+            uint256 maxAPR = bracketMaxAPR[0];
+            uint256 minAPR = bracketMinAPR[0];
+
+            // If minRaise already met, use minAPR
+            if (totalRaised >= minRaise) {
+                return minAPR;
+            }
+
+            if (minRaise == 0) return maxAPR;
+
+            // Linear interpolation: APY = maxAPR - (maxAPR - minAPR) * (totalRaised / minRaise)
+            uint256 range = maxAPR - minAPR;
+            uint256 reduction = (range * totalRaised) / minRaise;
+            return maxAPR - reduction;
+        }
+
+        // Phases 1-4 (development): Bracket 1
+        // Range: minRaise → maxRaise
+        // Starts at bracketMaxAPR[1], decreases to bracketMinAPR[1]
+        if (currentPhase >= 1 && currentPhase <= 4) {
+            uint256 maxAPR = bracketMaxAPR[1];
+            uint256 minAPR = bracketMinAPR[1];
+
+            // If maxRaise already met, use minAPR
+            if (totalRaised >= maxRaise) {
+                return minAPR;
+            }
+
+            // Calculate raise within bracket 1 range
+            uint256 raiseInBracket = totalRaised > minRaise ? totalRaised - minRaise : 0;
+            uint256 bracketRange = maxRaise - minRaise;
+
+            if (bracketRange == 0) return maxAPR;
+
+            // Linear interpolation: APY = maxAPR - (maxAPR - minAPR) * (raiseInBracket / bracketRange)
+            uint256 aprRange = maxAPR - minAPR;
+            uint256 reduction = (aprRange * raiseInBracket) / bracketRange;
+            return maxAPR - reduction;
+        }
+
+        return 0;
     }
 
     // ---- Internal: Revenue distribution ----

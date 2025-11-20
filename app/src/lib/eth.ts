@@ -224,7 +224,8 @@ export type ProjectStaticConfig = {
   minRaise: bigint;
   maxRaise: bigint;
   fundraiseDeadline: bigint;
-  perPhaseAprBps: number[];
+  bracketMinAPR: [number, number]; // [bracket0_min, bracket1_min]
+  bracketMaxAPR: [number, number]; // [bracket0_max, bracket1_max]
 };
 
 /**
@@ -283,26 +284,39 @@ export async function fetchProjectRealtimeState(
  * Fetch static configuration that rarely changes
  * This data can be cached or supplemented from Envio
  */
+/**
+ * Fetch static configuration that rarely changes
+ * This data can be cached or supplemented from Envio
+ */
 export async function fetchProjectStaticConfig(
   projectAddress: Address,
   provider: ethers.Provider
 ): Promise<ProjectStaticConfig> {
   const proj = projectAt(projectAddress, provider);
   
-  const [token, stablecoin, owner, minRaise, maxRaise, fundraiseDeadline] = await Promise.all([
+  const [
+    token,
+    stablecoin,
+    owner,
+    minRaise,
+    maxRaise,
+    fundraiseDeadline,
+    bracketMinAPR0,
+    bracketMinAPR1,
+    bracketMaxAPR0,
+    bracketMaxAPR1
+  ] = await Promise.all([
     proj.token(),
     proj.stablecoin(),
     proj.owner(),
     proj.minRaise(),
     proj.maxRaise(),
     proj.fundraiseDeadline(),
+    proj.bracketMinAPR(0),
+    proj.bracketMinAPR(1),
+    proj.bracketMaxAPR(0),
+    proj.bracketMaxAPR(1),
   ]);
-  
-  const aprBps: number[] = [];
-  for (let i = 0; i <= 5; i++) {
-    const bps = await proj.phaseAPRsBps(i);
-    aprBps.push(Number(bps));
-  }
   
   let projectName = '';
   try {
@@ -320,7 +334,8 @@ export async function fetchProjectStaticConfig(
     minRaise,
     maxRaise,
     fundraiseDeadline,
-    perPhaseAprBps: aprBps,
+    bracketMinAPR: [Number(bracketMinAPR0), Number(bracketMinAPR1)],
+    bracketMaxAPR: [Number(bracketMaxAPR0), Number(bracketMaxAPR1)],
   };
 }
 

@@ -13,6 +13,10 @@ describe("CornerstoneProject - Fundraise", function () {
     const CornerstoneProject = await ethers.getContractFactory("CornerstoneProject", dev);
     const now = await time.latest();
     const badCaps = [0, 3000, 3000, 3000, 2000, 1000]; // phases 1..5 sum > 10000
+    const bracketMinAPR = [1000, 1000];
+    const bracketMaxAPR = [1000, 1000];
+    const phaseDurations = [0, 30, 30, 30, 30, 30];
+    
     await expect(
       CornerstoneProject.deploy(
         dev.address,
@@ -22,8 +26,9 @@ describe("CornerstoneProject - Fundraise", function () {
         1000,
         2000,
         now + 1000,
-        [0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0],
+        bracketMinAPR,
+        bracketMaxAPR,
+        phaseDurations,
         badCaps
       )
     ).to.be.revertedWith("caps sum > 100%");
@@ -37,8 +42,9 @@ describe("CornerstoneProject - Fundraise", function () {
         1000,
         2000,
         now + 1000,
-        [0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0],
+        bracketMinAPR,
+        bracketMaxAPR,
+        phaseDurations,
         [0, 0, 0, 0, 0, 0]
       )
     ).to.be.revertedWith("stablecoin required");

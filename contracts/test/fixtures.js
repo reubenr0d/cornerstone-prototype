@@ -10,20 +10,26 @@ async function deployPYUSD() {
 }
 
 function defaultPhaseParams() {
-  // APRs in bps per phase 0..5 (phase 0 fundraising typically 0)
-  const phaseAPRs = [0, 1000, 900, 800, 700, 600];
+  // APRs in bps - using flat rates (min = max) for predictable test calculations
+  // Bracket 0: fundraising phase (phase 0)
+  // Bracket 1: development phases (phases 1-4)
+  const bracketMinAPR = [1000, 1000]; // [bracket0_min, bracket1_min] - 10% each
+  const bracketMaxAPR = [1000, 1000]; // [bracket0_max, bracket1_max] - 10% each
+  
   // durations informational only (phase 0 included)
   const phaseDurations = [0, 30, 30, 30, 30, 30];
+  
   // withdraw caps per phase in bps; development phases 1..5 sum <= 10000; phase 0 typically 0
   const phaseCapsBps = [0, 1500, 1500, 1500, 2500, 2500]; // sums to 9500 over 1..5
-  return { phaseAPRs, phaseDurations, phaseCapsBps };
+  
+  return { bracketMinAPR, bracketMaxAPR, phaseDurations, phaseCapsBps };
 }
 
 async function deployProjectFixture(opts = {}) {
   const [dev, user1, user2, other] = await ethers.getSigners();
   const { pyusd } = await deployPYUSD();
 
-  const { phaseAPRs, phaseDurations, phaseCapsBps } =
+  const { bracketMinAPR, bracketMaxAPR, phaseDurations, phaseCapsBps } =
     opts.phaseParams || defaultPhaseParams();
 
   const now = await time.latest();
@@ -43,7 +49,8 @@ async function deployProjectFixture(opts = {}) {
     minRaise,
     maxRaise,
     fundraiseDeadline,
-    phaseAPRs,
+    bracketMinAPR,
+    bracketMaxAPR,
     phaseDurations,
     phaseCapsBps
   );
@@ -66,7 +73,7 @@ async function deployProjectFixture(opts = {}) {
     pyusd,
     project,
     token,
-    params: { minRaise, maxRaise, fundraiseDeadline, phaseAPRs, phaseDurations, phaseCapsBps },
+    params: { minRaise, maxRaise, fundraiseDeadline, bracketMinAPR, bracketMaxAPR, phaseDurations, phaseCapsBps },
     mintAndApprove,
   };
 }

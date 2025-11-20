@@ -103,15 +103,28 @@ describe("CornerstoneProject - Full Lifecycle Flow", function () {
 
     ctx.accruePhase = async (phase) => {
       await time.increase(YEAR_SECONDS);
-      const aprBps = BigInt(ctx.params.phaseAPRs[phase]);
+      
+      // Phase 5 has no interest accrual per contract design
+      if (phase === 5) {
+        await ctx.project.accrueInterest();
+        await ctx.expectState(`after phase ${phase} accrual`);
+        return 0n;
+      }
+      
+      // Use bracket 1 APR for phases 1-4 (development phases)
+      const aprBps = BigInt(ctx.params.bracketMaxAPR[1]); // bracket 1 max APR
       const baseBefore = ctx.state.base;
       const interest = (baseBefore * aprBps) / BPS_DENOM;
+      
       await ctx.project.accrueInterest();
+      
+      // After accrual: base and pool both increase by interest
       ctx.state.base = baseBefore + interest;
       ctx.state.pool += interest;
       ctx.state.interestPerShare += (interest * SCALE) / ctx.totalShares;
       ctx.reserveBalance -= interest;
       ctx.totalInterestAccrued += interest;
+      
       await ctx.expectState(`after phase ${phase} accrual`);
       return interest;
     };
@@ -120,9 +133,12 @@ describe("CornerstoneProject - Full Lifecycle Flow", function () {
       const addr = signer.address;
       const bnAmount = BigInt(amount);
       await ctx.project.connect(signer).claimInterest(bnAmount);
+      
+      // Claiming reduces both base and pool
       ctx.state.base -= bnAmount;
       ctx.state.pool -= bnAmount;
       ctx.userStates.get(addr).claimed += bnAmount;
+      
       await ctx.expectState(context);
       expect(
         await ctx.project.claimableInterest(addr),
