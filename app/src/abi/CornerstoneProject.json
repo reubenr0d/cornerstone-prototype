@@ -37,9 +37,14 @@
         "type": "uint256"
       },
       {
-        "internalType": "uint256[6]",
-        "name": "phaseAPRs_",
-        "type": "uint256[6]"
+        "internalType": "uint256[2]",
+        "name": "bracketMinAPR_",
+        "type": "uint256[2]"
+      },
+      {
+        "internalType": "uint256[2]",
+        "name": "bracketMaxAPR_",
+        "type": "uint256[2]"
       },
       {
         "internalType": "uint256[6]",
@@ -246,29 +251,10 @@
     "anonymous": false,
     "inputs": [
       {
-        "indexed": true,
-        "internalType": "uint8",
-        "name": "phaseId",
-        "type": "uint8"
-      },
-      {
         "indexed": false,
-        "internalType": "uint256",
-        "name": "amount",
-        "type": "uint256"
-      }
-    ],
-    "name": "PhaseFundsWithdrawn",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": false,
-        "internalType": "uint256[6]",
+        "internalType": "uint256[4]",
         "name": "aprBps",
-        "type": "uint256[6]"
+        "type": "uint256[4]"
       },
       {
         "indexed": false,
@@ -290,6 +276,25 @@
       }
     ],
     "name": "PhaseConfiguration",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint8",
+        "name": "phaseId",
+        "type": "uint8"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "PhaseFundsWithdrawn",
     "type": "event"
   },
   {
@@ -406,6 +411,44 @@
     "name": "accrueInterest",
     "outputs": [],
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "bracketMaxAPR",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "bracketMinAPR",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   },
   {
@@ -766,25 +809,6 @@
   {
     "inputs": [],
     "name": "phase5PercentComplete",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "name": "phaseAPRsBps",
     "outputs": [
       {
         "internalType": "uint256",

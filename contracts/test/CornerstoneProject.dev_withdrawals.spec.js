@@ -25,7 +25,8 @@ describe("CornerstoneProject - Dev Withdrawals and Caps", function () {
 
   it("allows withdrawing phase 0 cap once fundraising closes", async function () {
     const phaseParams = {
-      phaseAPRs: [0, 1000, 900, 800, 700, 600],
+      bracketMinAPR: [1200, 1000],
+      bracketMaxAPR: [1200, 1000],
       phaseDurations: [0, 30, 30, 30, 30, 30],
       phaseCapsBps: [10000, 0, 0, 0, 0, 0],
     };
