@@ -40,16 +40,6 @@
         "internalType": "uint256[6]",
         "name": "phaseAPRs_",
         "type": "uint256[6]"
-      },
-      {
-        "internalType": "uint256[6]",
-        "name": "phaseDurations_",
-        "type": "uint256[6]"
-      },
-      {
-        "internalType": "uint256[6]",
-        "name": "phaseCapsBps_",
-        "type": "uint256[6]"
       }
     ],
     "stateMutability": "nonpayable",
@@ -246,25 +236,6 @@
     "anonymous": false,
     "inputs": [
       {
-        "indexed": true,
-        "internalType": "uint8",
-        "name": "phaseId",
-        "type": "uint8"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "amount",
-        "type": "uint256"
-      }
-    ],
-    "name": "PhaseFundsWithdrawn",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
         "indexed": false,
         "internalType": "uint256[6]",
         "name": "aprBps",
@@ -290,6 +261,25 @@
       }
     ],
     "name": "PhaseConfiguration",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint8",
+        "name": "phaseId",
+        "type": "uint8"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "PhaseFundsWithdrawn",
     "type": "event"
   },
   {
@@ -509,6 +499,39 @@
       }
     ],
     "name": "closePhase",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256[6]",
+        "name": "capsBps_",
+        "type": "uint256[6]"
+      },
+      {
+        "internalType": "uint256[6]",
+        "name": "durations_",
+        "type": "uint256[6]"
+      },
+      {
+        "internalType": "string[]",
+        "name": "docTypes",
+        "type": "string[]"
+      },
+      {
+        "internalType": "bytes32[]",
+        "name": "docHashes",
+        "type": "bytes32[]"
+      },
+      {
+        "internalType": "string[]",
+        "name": "metadataURIs",
+        "type": "string[]"
+      }
+    ],
+    "name": "closePhase0",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -809,6 +832,19 @@
         "internalType": "uint256",
         "name": "",
         "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "phaseConfigSet",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
       }
     ],
     "stateMutability": "view",

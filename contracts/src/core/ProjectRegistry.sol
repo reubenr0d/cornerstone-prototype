@@ -10,8 +10,6 @@ interface IProjectRegistry {
         uint256 maxRaise,
         uint256 fundraiseDeadline,
         uint256[6] calldata phaseAPRs, // includes phase 0 (fundraising)
-        uint256[6] calldata phaseDurations, // includes phase 0 (fundraising)
-        uint256[6] calldata phaseWithdrawCaps, // includes phase 0 (fundraising)
         string calldata metadataURI
     ) external returns (address projectAddress, address tokenAddress);
 
@@ -23,8 +21,6 @@ interface IProjectRegistry {
         uint256 maxRaise,
         uint256 fundraiseDeadline,
         uint256[6] calldata phaseAPRs, // includes phase 0 (fundraising)
-        uint256[6] calldata phaseDurations, // includes phase 0 (fundraising)
-        uint256[6] calldata phaseWithdrawCaps, // includes phase 0 (fundraising)
         string calldata metadataURI
     ) external returns (address projectAddress, address tokenAddress);
 }
@@ -42,8 +38,6 @@ contract ProjectRegistry is IProjectRegistry {
         uint256 maxRaise,
         uint256 fundraiseDeadline,
         uint256[6] calldata phaseAPRs,
-        uint256[6] calldata phaseDurations,
-        uint256[6] calldata phaseWithdrawCaps,
         string calldata metadataURI
     ) external returns (address projectAddress, address tokenAddress) {
         require(stablecoin != address(0), "stablecoin addr required");
@@ -62,9 +56,7 @@ contract ProjectRegistry is IProjectRegistry {
             minRaise,
             maxRaise,
             fundraiseDeadline,
-            phaseAPRs,
-            phaseDurations,
-            phaseWithdrawCaps
+            phaseAPRs
         );
 
         projectAddress = address(project);
@@ -81,8 +73,6 @@ contract ProjectRegistry is IProjectRegistry {
         uint256 maxRaise,
         uint256 fundraiseDeadline,
         uint256[6] calldata phaseAPRs,
-        uint256[6] calldata phaseDurations,
-        uint256[6] calldata phaseWithdrawCaps,
         string calldata metadataURI
     ) external returns (address projectAddress, address tokenAddress) {
         require(stablecoin != address(0), "stablecoin addr required");
@@ -99,9 +89,7 @@ contract ProjectRegistry is IProjectRegistry {
             minRaise,
             maxRaise,
             fundraiseDeadline,
-            phaseAPRs,
-            phaseDurations,
-            phaseWithdrawCaps
+            phaseAPRs
         );
         projectAddress = address(project);
         tokenAddress = project.token();

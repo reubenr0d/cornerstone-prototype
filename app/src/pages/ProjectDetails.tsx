@@ -41,6 +41,14 @@ const ProjectDetails = () => {
   const [isWithdrawingFunds, setIsWithdrawingFunds] = useState(false);
   const [isSubmittingProceeds, setIsSubmittingProceeds] = useState(false);
 
+  // Phase configuration state
+  // Phase 0 closing state
+  const [showClosePhase0Modal, setShowClosePhase0Modal] = useState(false);
+  const [phaseCapsPct, setPhaseCapsPct] = useState<string[]>(['0', '0', '0', '0', '0']);
+  const [phaseDurations, setPhaseDurations] = useState<string[]>(['0', '0', '0', '0', '0', '0']); // Add durations for all 6 phases
+  const [isClosingPhase0, setIsClosingPhase0] = useState(false);
+  const [phase0Docs, setPhase0Docs] = useState<File[]>([]);
+
   const projectAddress = useMemo<Address | null>(() => {
     const p = id as string | undefined;
     return (p && p.startsWith('0x') ? (p as Address) : null);
@@ -155,6 +163,79 @@ const ProjectDetails = () => {
     }
   }
 
+  async function closePhase0() {
+    try {
+      if (!projectAddress) return;
+      
+      // Validate caps (now in percentages)
+      const capsPct = phaseCapsPct.map(c => Number(c));
+      if (capsPct.some(c => isNaN(c) || c < 0)) {
+        toast.error('All caps must be valid numbers');
+        return;
+      }
+      
+      // Sum phases 1-5 (array indices 0-4 now represent phases 1-5)
+      const sumCaps = capsPct.reduce((a, b) => a + b, 0);
+      if (sumCaps > 100) {
+        toast.error('Total caps for phases 1-5 cannot exceed 100%');
+        return;
+      }
+      
+      // Validate durations
+      const durationsNum = phaseDurations.map(d => Number(d));
+      if (durationsNum.some(d => isNaN(d) || d < 0)) {
+        toast.error('All durations must be valid numbers');
+        return;
+      }
+      
+      // Validate documents
+      if (!phase0Docs.length) {
+        toast.error('Please upload at least one document');
+        return;
+      }
+      
+      setIsClosingPhase0(true);
+      const signer = await getSigner();
+      const proj = projectAt(projectAddress, signer);
+      
+      // Convert percentages to basis points and prepend 0 for phase 0
+      const capsInBps = [0, ...capsPct.map(pct => Math.round(pct * 100))];
+      
+      // Convert durations to uint256 array (6 phases)
+      const durationsArray = durationsNum;
+      
+      // Upload documents to IPFS
+      const uploaded = await ipfsUpload(phase0Docs);
+      const nameByPath = Object.fromEntries(uploaded.map(u => [u.path, u]));
+      const docTypes: string[] = [];
+      const docHashes: string[] = [];
+      const metadataURIs: string[] = [];
+      
+      for (const f of phase0Docs) {
+        const buf = new Uint8Array(await f.arrayBuffer());
+        const hash = ethers.keccak256(buf);
+        docTypes.push(f.type || (f.name.split('.').pop() || 'file'));
+        docHashes.push(hash);
+        const up = nameByPath[f.name];
+        metadataURIs.push(up?.uri || '');
+      }
+      
+      const tx = await proj.closePhase0(capsInBps, durationsArray, docTypes, docHashes, metadataURIs);
+      await tx.wait();
+      
+      toast.success('Phase 0 closed successfully');
+      setShowClosePhase0Modal(false);
+      setPhaseCapsPct(['0', '0', '0', '0', '0']);
+      setPhaseDurations(['0', '0', '0', '0', '0', '0']);
+      setPhase0Docs([]);
+      refresh();
+    } catch (e: any) {
+      toast.error(e?.shortMessage || e?.message || 'Failed to close Phase 0');
+    } finally {
+      setIsClosingPhase0(false);
+    }
+  }
+
   useEffect(() => {
     getAccount().then((a) => {
       if (a) {
@@ -194,6 +275,8 @@ const ProjectDetails = () => {
   }, [projectAddress]);
 
   const withdrawableNow = Number(fromStablecoin(BigInt(envioData?.withdrawableDevFunds || '0')));
+  console.log(envioData);
+  
 
   const fallbackTotalRaised =
     envioData?.deposits?.reduce<bigint>((acc, deposit) => {
@@ -1350,7 +1433,33 @@ const ProjectDetails = () => {
                       </div>
                     </div>
                   </div>
-
+                  {/* Close Phase 0 */}
+{envioData?.projectState?.currentPhase === 0 && !staticConfig?.phaseConfigSet && (
+  <div className="space-y-2">
+    <div className="flex items-center gap-2">
+      <Target className="h-4 w-4 text-[#3D2817]" />
+      <span className="text-sm font-bold text-[#2D1B00]">Close Phase 0</span>
+    </div>
+    <div className="space-y-2">
+      <div className={`${minecraftSubPanelClass} p-3`}>
+        <p className="text-xs text-[#5D4E37] mb-2">
+          Close fundraising phase and set withdrawal caps & durations for development phases.
+        </p>
+        <p className="text-xs font-bold text-[#fb542b]">
+          ⚠ Can only be done once
+        </p>
+      </div>
+      <Button
+        size="sm"
+        className={`${minecraftPrimaryButtonClass} w-full h-10`}
+        onClick={() => setShowClosePhase0Modal(true)}
+      >
+        <DoorClosed className="mr-2 h-4 w-4" />
+        Close Phase 0 & Configure
+      </Button>
+    </div>
+  </div>
+)}
                   {/* Close Phase */}
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
@@ -1601,6 +1710,164 @@ const ProjectDetails = () => {
           </div>
         </div>
       </div>
+      {/* Close Phase 0 Modal */}
+<Drawer open={showClosePhase0Modal} onOpenChange={setShowClosePhase0Modal}>
+  <DrawerContent className="border-4 border-[#654321] bg-[#F8E3B5] shadow-[8px_8px_0_rgba(0,0,0,0.35)]">
+    <DrawerHeader className={`${minecraftHeaderClass} flex items-center justify-between`}>
+      <DrawerTitle className="text-lg font-bold uppercase tracking-[0.2em] text-[#2D1B00]">
+        Close Phase 0 & Configure Phases
+      </DrawerTitle>
+      <DrawerClose asChild>
+        <Button size="sm" className={`${minecraftNeutralButtonClass} h-10 px-4`}>
+          Close
+        </Button>
+      </DrawerClose>
+    </DrawerHeader>
+    
+    <div className="max-h-[70vh] overflow-y-auto bg-[#FFF3C4] px-6 pb-6 text-[#2D1B00]">
+      <div className="space-y-4 py-4">
+        <p className="text-sm text-[#5D4E37]">
+          Set withdrawal caps (as percentages) and durations (in days) for each development phase. Upload closing documents for Phase 0.
+        </p>
+        
+        <div className={`${minecraftSubPanelClass} p-4`}>
+          <p className="text-xs font-bold uppercase tracking-wider text-[#5D4E37] mb-2">
+            ⚠ This action is irreversible
+          </p>
+          <p className="text-xs text-[#5D4E37]">
+            Phase 0 (Fundraising) cap is automatically 0. Define caps and durations for phases 1-5 below.
+          </p>
+        </div>
+
+        {/* Phase 0 Duration */}
+        <div className={`${minecraftSubPanelClass} p-4 space-y-2`}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-[#5D4E37]">
+                Phase 0
+              </p>
+              <p className="text-sm font-bold text-[#2D1B00]">Fundraising and Acquisition</p>
+            </div>
+          </div>
+          
+          <div className="space-y-1">
+            <Label htmlFor="phase-0-duration" className="text-xs font-semibold text-[#5D4E37]">
+              Duration (days, informational)
+            </Label>
+            <Input
+              id="phase-0-duration"
+              type="number"
+              placeholder="0"
+              min="0"
+              step="1"
+              value={phaseDurations[0]}
+              onChange={(e) => {
+                const newDurations = [...phaseDurations];
+                newDurations[0] = e.target.value;
+                setPhaseDurations(newDurations);
+              }}
+              className="h-10 rounded-none border-4 border-[#654321] bg-[#FFF3C4] text-sm"
+            />
+          </div>
+        </div>
+
+        {/* Phases 1-5 */}
+        {phaseNames.slice(1).map((name, idx) => (
+          <div key={idx} className={`${minecraftSubPanelClass} p-4 space-y-2`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-[#5D4E37]">
+                  Phase {idx + 1}
+                </p>
+                <p className="text-sm font-bold text-[#2D1B00]">{name}</p>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor={`phase-${idx + 1}-cap`} className="text-xs font-semibold text-[#5D4E37]">
+                  Cap (%, 0-100)
+                </Label>
+                <Input
+                  id={`phase-${idx + 1}-cap`}
+                  type="number"
+                  placeholder="0"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={phaseCapsPct[idx]}
+                  onChange={(e) => {
+                    const newCaps = [...phaseCapsPct];
+                    newCaps[idx] = e.target.value;
+                    setPhaseCapsPct(newCaps);
+                  }}
+                  className="h-10 rounded-none border-4 border-[#654321] bg-[#FFF3C4] text-sm"
+                />
+              </div>
+              
+              <div className="space-y-1">
+                <Label htmlFor={`phase-${idx + 1}-duration`} className="text-xs font-semibold text-[#5D4E37]">
+                  Duration (days)
+                </Label>
+                <Input
+                  id={`phase-${idx + 1}-duration`}
+                  type="number"
+                  placeholder="0"
+                  min="0"
+                  step="1"
+                  value={phaseDurations[idx + 1]}
+                  onChange={(e) => {
+                    const newDurations = [...phaseDurations];
+                    newDurations[idx + 1] = e.target.value;
+                    setPhaseDurations(newDurations);
+                  }}
+                  className="h-10 rounded-none border-4 border-[#654321] bg-[#FFF3C4] text-sm"
+                />
+              </div>
+            </div>
+          </div>
+        ))}
+
+        <div className={`${minecraftSubPanelClass} p-4`}>
+          <p className="text-xs font-bold uppercase tracking-wider text-[#5D4E37] mb-1">
+            Total Caps (Phases 1-5)
+          </p>
+          <p className="text-lg font-bold text-[#2D1B00]">
+            {phaseCapsPct.reduce((sum, cap) => sum + (Number(cap) || 0), 0).toFixed(2)}%
+          </p>
+          <p className="text-xs text-[#5D4E37] mt-1">
+            Must not exceed 100%
+          </p>
+        </div>
+
+        {/* Document Upload */}
+        <div className={`${minecraftSubPanelClass} p-4 space-y-2`}>
+          <Label htmlFor="phase0-docs" className="text-sm font-bold text-[#2D1B00]">
+            Upload Phase 0 Closing Documents
+          </Label>
+          <Input
+            id="phase0-docs"
+            type="file"
+            multiple
+            onChange={(e) => setPhase0Docs(Array.from(e.target.files || []))}
+            className="rounded-none border-4 border-dashed border-[#654321] bg-[#FFF3C4] text-[#2D1B00] min-h-[60px] pt-2 pb-3 px-4 file:mr-4 file:rounded-none file:border-0 file:bg-[#8B7355] file:px-4 file:py-2 file:font-bold file:uppercase file:text-white hover:file:bg-[#715b3f]"
+          />
+          <p className="text-xs text-[#5D4E37]">
+            {phase0Docs.length > 0 ? `${phase0Docs.length} file(s) selected` : 'Required: At least one document'}
+          </p>
+        </div>
+
+        <Button
+          className={`${minecraftPrimaryButtonClass} w-full h-12`}
+          disabled={isClosingPhase0}
+          onClick={closePhase0}
+        >
+          {isClosingPhase0 ? 'Closing Phase 0...' : 'Close Phase 0 & Set Configuration'}
+        </Button>
+      </div>
+    </div>
+  </DrawerContent>
+</Drawer>
       {/* Documents Viewer */}
         <Drawer open={!!docViewer} onOpenChange={(o) => !o && setDocViewer(null)}>
           <DrawerContent className="h-[90vh] border-4 border-[#654321] bg-[#F8E3B5] shadow-[8px_8px_0_rgba(0,0,0,0.35)]">

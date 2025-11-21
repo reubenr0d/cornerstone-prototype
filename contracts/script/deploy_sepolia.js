@@ -40,8 +40,7 @@ async function main() {
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 14 * 86400);
     const aprs = [0, 800, 1000, 1200, 1000, 0];
     const durations = [0, 0, 0, 0, 0, 0];
-    const caps = [0, 1500, 1500, 2000, 3000, 2000];
-    const tx = await reg.createProjectWithTokenMeta(stablecoin, name, sym, minRaise, maxRaise, deadline, aprs, durations, caps);
+    const tx = await reg.createProjectWithTokenMeta(stablecoin, name, sym, minRaise, maxRaise, deadline, aprs, durations);
     const rc = await tx.wait();
     const evt = rc.logs.find(l => l.fragment && l.fragment.name === 'ProjectCreated');
     const project = evt?.args?.project || '0x';

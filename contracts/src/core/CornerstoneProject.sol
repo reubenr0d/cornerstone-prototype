@@ -22,6 +22,14 @@ interface ICornerstoneProject {
     function refundIfMinNotMet(address user) external;
 
     // ---- Phase progression ----
+    function closePhase0(
+        uint256[6] calldata capsBps_,
+        uint256[6] calldata durations_,
+        string[] calldata docTypes,
+        bytes32[] calldata docHashes,
+        string[] calldata metadataURIs
+    ) external;
+
     function closePhase(
         uint8 phaseId,
         string[] calldata docTypes,
@@ -80,6 +88,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     // State
     uint8 public currentPhase; // 0 = fundraising open; 1..5 = active development phases
     uint8 public lastClosedPhase; // highest fully closed phase; 0 initially
+    bool public phaseConfigSet; // flag to ensure caps/deadlines set once
     bool public fundraiseClosed;
     bool public fundraiseSuccessful;
 
@@ -146,9 +155,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         uint256 minRaise_,
         uint256 maxRaise_,
         uint256 fundraiseDeadline_,
-        uint256[6] memory phaseAPRs_,
-        uint256[6] memory phaseDurations_,
-        uint256[6] memory phaseCapsBps_
+        uint256[6] memory phaseAPRs_
     ) Ownable(developer) {
         require(stablecoin_ != address(0), "stablecoin required");
         stablecoin = IERC20(stablecoin_);
@@ -156,15 +163,6 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         maxRaise = maxRaise_;
         fundraiseDeadline = fundraiseDeadline_;
         phaseAPRsBps = phaseAPRs_;
-        phaseDurations = phaseDurations_;
-        phaseCapsBps = phaseCapsBps_;
-
-        // enforce sum of development phase caps (1..5) ≤ 100%
-        uint256 sumCaps;
-        for (uint8 i = 1; i <= NUM_PHASES; i++) {
-            sumCaps += phaseCapsBps_[i];
-        }
-        require(sumCaps <= BPS_DENOM, "caps sum > 100%");
 
         // Start in fundraising pseudo-phase 0
         currentPhase = 0;
@@ -173,13 +171,6 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
 
         // Deploy token with provided per-project name/symbol
         _token = new CornerstoneToken(name_, symbol_, address(this));
-
-        // Emit consolidated phase configuration for indexer
-        uint256[6] memory phaseCaps;
-        for (uint8 i = 0; i <= NUM_PHASES; i++) {
-            phaseCaps[i] = (maxRaise * phaseCapsBps_[i]) / BPS_DENOM;
-        }
-        emit PhaseConfiguration(phaseAPRs_, phaseDurations_, phaseCapsBps_, phaseCaps);
     }
 
     // ---- View helpers ----
@@ -194,6 +185,39 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
 
     function getPhaseWithdrawn(uint8 phaseId) external view returns (uint256) {
         return phaseWithdrawn[phaseId];
+    }
+
+    function closePhase0(
+        uint256[6] calldata capsBps_,
+        uint256[6] calldata durations_,
+        string[] calldata docTypes,
+        bytes32[] calldata docHashes,
+        string[] calldata metadataURIs
+    ) external onlyDev whenNotPaused updateAccrual {
+        require(!phaseConfigSet, "already configured");
+        require(currentPhase == 0, "not in phase 0");
+        require(totalRaised >= minRaise, "min raise not met");
+
+        // Validate caps sum (phases 1-5 only)
+        uint256 sumCaps;
+        for (uint8 i = 1; i <= NUM_PHASES; i++) {
+            sumCaps += capsBps_[i];
+        }
+        require(sumCaps <= BPS_DENOM, "caps sum > 100%");
+
+        phaseCapsBps = capsBps_;
+        phaseDurations = durations_;
+        phaseConfigSet = true;
+
+        // Emit configuration
+        uint256[6] memory phaseCaps;
+        for (uint8 i = 0; i <= NUM_PHASES; i++) {
+            phaseCaps[i] = (maxRaise * capsBps_[i]) / BPS_DENOM;
+        }
+        emit PhaseConfiguration(phaseAPRsBps, phaseDurations, capsBps_, phaseCaps);
+
+        // Now close phase 0 using internal function
+        _closePhase(0, docTypes, docHashes, metadataURIs);
     }
 
     // ---- Deposits ----
@@ -223,6 +247,41 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         emit Deposit(msg.sender, amount, amount);
     }
 
+    // ---- Internal phase closing logic ----
+    function _closePhase(
+        uint8 phaseId,
+        string[] calldata docTypes,
+        bytes32[] calldata docHashes,
+        string[] calldata metadataURIs
+    ) internal {
+        // Docs are required for all phases, including phase 0
+        require(docTypes.length > 0, "docs required");
+        require(docTypes.length == docHashes.length && docTypes.length == metadataURIs.length, "docs length mismatch");
+        emit PhaseClosed(phaseId, docTypes, docHashes, metadataURIs);
+
+        if (phaseId == 0) {
+            // Mark success flag opportunistically if threshold already met.
+            if (!fundraiseSuccessful && totalRaised >= minRaise) {
+                fundraiseSuccessful = true;
+            }
+            currentPhase = 1; // Phase 1 begins
+            lastClosedPhase = 0;
+            return;
+        }
+
+        // For phases 1..5, mark closed and advance to next phase
+        lastClosedPhase = phaseId;
+        if (currentPhase < NUM_PHASES) {
+            currentPhase += 1;
+        }
+
+        // Close fundraising when final stage (5) starts, i.e., after closing phase 4
+        if (phaseId == 4 && !fundraiseClosed) {
+            fundraiseClosed = true;
+            emit FundraiseClosed(fundraiseSuccessful);
+        }
+    }
+
     // ---- Phases & fundraise lifecycle ----
     function closePhase(
         uint8 phaseId,
@@ -234,40 +293,17 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         // Only allow closing the current active phase (0..5)
         require(phaseId == currentPhase, "not current phase");
 
-        // Docs are required for all phases, including phase 0
-        require(docTypes.length > 0, "docs required");
-        require(docTypes.length == docHashes.length && docTypes.length == metadataURIs.length, "docs length mismatch");
-        emit PhaseClosed(phaseId, docTypes, docHashes, metadataURIs);
-
         if (phaseId == 0) {
             require(totalRaised >= minRaise, "min raise not met");
-            // Start Phase 1 with required docs. Fundraising remains open beyond phase 0.
-            // Mark success flag opportunistically if threshold already met.
-            if (!fundraiseSuccessful && totalRaised >= minRaise) {
-                fundraiseSuccessful = true;
-            }
-            currentPhase = 1; // Phase 1 begins
-            lastClosedPhase = 0;
-            return;
         }
 
-        // For phases 1..5, mark closed and advance to next phase (phase 5 remains current once closed)
-        lastClosedPhase = phaseId;
-        if (currentPhase < NUM_PHASES) {
-            currentPhase += 1;
-        }
-
-        // Close fundraising when final stage (5) starts, i.e., after closing phase 4
-        if (phaseId == 4 && !fundraiseClosed) {
-            fundraiseClosed = true;
-            // success status reflects whether minRaise was ever reached
-            emit FundraiseClosed(fundraiseSuccessful);
-        }
+        _closePhase(phaseId, docTypes, docHashes, metadataURIs);
     }
 
     // ---- Developer withdrawals under caps ----
     function withdrawPhaseFunds(uint256 amount) external onlyDev nonReentrant whenNotPaused updateAccrual {
         require(fundraiseSuccessful, "fundraise failed");
+
         require(amount > 0, "amount=0");
 
         uint256 unlocked = _cumulativeUnlocked();
@@ -531,33 +567,5 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
 
     function claimableRevenue(address user) external view returns (uint256) {
         return _claimableRevenue(user);
-    }
-
-    // ---- Utils ----
-    function _toHexString(address a) internal pure returns (string memory) {
-        bytes20 data = bytes20(a);
-        bytes memory hexChars = "0123456789abcdef";
-        bytes memory str = new bytes(2 + 40);
-        str[0] = "0";
-        str[1] = "x";
-        for (uint256 i = 0; i < 20; i++) {
-            str[2 + i * 2] = hexChars[uint8(data[i] >> 4)];
-            str[3 + i * 2] = hexChars[uint8(data[i] & 0x0f)];
-        }
-        return string(str);
-    }
-
-    function _shortHex(address a) internal pure returns (string memory) {
-        bytes20 data = bytes20(a);
-        bytes memory hexChars = "0123456789abcdef";
-        bytes memory str = new bytes(4);
-        // last two bytes
-        uint8 b1 = uint8(data[18]);
-        uint8 b2 = uint8(data[19]);
-        str[0] = hexChars[b1 >> 4];
-        str[1] = hexChars[b1 & 0x0f];
-        str[2] = hexChars[b2 >> 4];
-        str[3] = hexChars[b2 & 0x0f];
-        return string(str);
     }
 }

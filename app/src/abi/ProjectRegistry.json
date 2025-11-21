@@ -67,16 +67,6 @@
           "type": "uint256[6]"
         },
         {
-          "internalType": "uint256[6]",
-          "name": "phaseDurations",
-          "type": "uint256[6]"
-        },
-        {
-          "internalType": "uint256[6]",
-          "name": "phaseWithdrawCaps",
-          "type": "uint256[6]"
-        },
-        {
           "internalType": "string",
           "name": "metadataURI",
           "type": "string"
@@ -133,16 +123,6 @@
         {
           "internalType": "uint256[6]",
           "name": "phaseAPRs",
-          "type": "uint256[6]"
-        },
-        {
-          "internalType": "uint256[6]",
-          "name": "phaseDurations",
-          "type": "uint256[6]"
-        },
-        {
-          "internalType": "uint256[6]",
-          "name": "phaseWithdrawCaps",
           "type": "uint256[6]"
         },
         {

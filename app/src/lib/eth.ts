@@ -225,6 +225,7 @@ export type ProjectStaticConfig = {
   maxRaise: bigint;
   fundraiseDeadline: bigint;
   perPhaseAprBps: number[];
+  phaseConfigSet: boolean;
 };
 
 /**
@@ -289,13 +290,14 @@ export async function fetchProjectStaticConfig(
 ): Promise<ProjectStaticConfig> {
   const proj = projectAt(projectAddress, provider);
   
-  const [token, stablecoin, owner, minRaise, maxRaise, fundraiseDeadline] = await Promise.all([
+  const [token, stablecoin, owner, minRaise, maxRaise, fundraiseDeadline, phaseConfigSet] = await Promise.all([
     proj.token(),
     proj.stablecoin(),
     proj.owner(),
     proj.minRaise(),
     proj.maxRaise(),
     proj.fundraiseDeadline(),
+    proj.phaseConfigSet(),
   ]);
   
   const aprBps: number[] = [];
@@ -317,6 +319,7 @@ export async function fetchProjectStaticConfig(
     stablecoin: stablecoin as Address,
     owner: owner as Address,
     projectName,
+    phaseConfigSet,
     minRaise,
     maxRaise,
     fundraiseDeadline,
