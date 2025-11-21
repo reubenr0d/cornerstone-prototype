@@ -62,19 +62,14 @@
           "type": "uint256"
         },
         {
-          "internalType": "uint256[6]",
-          "name": "phaseAPRs",
-          "type": "uint256[6]"
+          "internalType": "uint256[2]",
+          "name": "bracketMinAPR",
+          "type": "uint256[2]"
         },
         {
-          "internalType": "uint256[6]",
-          "name": "phaseDurations",
-          "type": "uint256[6]"
-        },
-        {
-          "internalType": "uint256[6]",
-          "name": "phaseWithdrawCaps",
-          "type": "uint256[6]"
+          "internalType": "uint256[2]",
+          "name": "bracketMaxAPR",
+          "type": "uint256[2]"
         },
         {
           "internalType": "string",
@@ -131,19 +126,14 @@
           "type": "uint256"
         },
         {
-          "internalType": "uint256[6]",
-          "name": "phaseAPRs",
-          "type": "uint256[6]"
+          "internalType": "uint256[2]",
+          "name": "bracketMinAPR",
+          "type": "uint256[2]"
         },
         {
-          "internalType": "uint256[6]",
-          "name": "phaseDurations",
-          "type": "uint256[6]"
-        },
-        {
-          "internalType": "uint256[6]",
-          "name": "phaseWithdrawCaps",
-          "type": "uint256[6]"
+          "internalType": "uint256[2]",
+          "name": "bracketMaxAPR",
+          "type": "uint256[2]"
         },
         {
           "internalType": "string",

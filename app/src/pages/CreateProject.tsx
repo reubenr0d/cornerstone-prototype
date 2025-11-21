@@ -16,8 +16,6 @@ interface Milestone {
   title: string;
   summary: string;
   payout: string; // percent of max raise
-  apr: string; // percent APR for this phase
-  dueDate: string;
 }
 
 const CreateProject = () => {
@@ -31,8 +29,6 @@ const CreateProject = () => {
       summary:
         'Closes when plot reflects new owner and title docs provided. No interest during this stage; early entrants get a future interest bonus.',
       payout: '50',
-      apr: '0',
-      dueDate: '',
     },
     {
       id: '2',
@@ -40,8 +36,6 @@ const CreateProject = () => {
       summary:
         'Closes when design PDFs are submitted.',
       payout: '5',
-      apr: '15',
-      dueDate: '',
     },
     {
       id: '3',
@@ -49,8 +43,6 @@ const CreateProject = () => {
       summary:
         'Closes when permits are submitted (HPO registration, warranty, demo/abatement).',
       payout: '5',
-      apr: '12',
-      dueDate: '',
     },
     {
       id: '4',
@@ -58,8 +50,6 @@ const CreateProject = () => {
       summary:
         'Closes when abatement, demolition permits and the building permit is submitted.',
       payout: '10',
-      apr: '9',
-      dueDate: '',
     },
     {
       id: '5',
@@ -67,16 +57,12 @@ const CreateProject = () => {
       summary:
         'Appraisal reports unlock mid-phase payouts; final closure with occupancy permit.',
       payout: '30',
-      apr: '5',
-      dueDate: '',
     },
     {
       id: '6',
       title: 'Revenue and Sales',
       summary: 'Final phase; sales proceeds distribute principal first, then revenue pro‑rata.',
       payout: '0',
-      apr: '3',
-      dueDate: '',
     },
     
   ]);
@@ -97,6 +83,12 @@ const CreateProject = () => {
   const [maxRaise, setMaxRaise] = useState('');
   const [fundingDurationDays, setFundingDurationDays] = useState('30');
   const [selectedToken, setSelectedToken] = useState<'USDC' | 'PYUSD'>('USDC');
+
+  // Add new state for bracket APRs
+  const [bracket0MaxAPR, setBracket0MaxAPR] = useState('15'); // Phase 0 max
+  const [bracket0MinAPR, setBracket0MinAPR] = useState('10'); // Phase 0 min
+  const [bracket1MaxAPR, setBracket1MaxAPR] = useState('12'); // Phases 1-4 max
+  const [bracket1MinAPR, setBracket1MinAPR] = useState('5');  // Phases 1-4 min
   
   // Metadata fields
   const [projectImage, setProjectImage] = useState<File | null>(null);
@@ -220,20 +212,20 @@ const CreateProject = () => {
       const deadline = now + (parseInt(fundingDurationDays || '0', 10) * 86400);
       // Pass all 6 phases including fundraising phase 0; registry maps 0..5 → 1..5 internally
       const allMilestones = milestones;
-      const phaseAPRs = allMilestones.map(m => Math.round(parseFloat(m.apr || '0') * 100)); // % → bps
-      const phaseCaps = allMilestones.map(m => Math.round(parseFloat(m.payout || '0') * 100)); // % → bps
-      if (phaseAPRs.length !== 6 || phaseCaps.length !== 6) {
-        toast.error('Exactly 6 phases required (including fundraising phase 0)');
-        setIsPublishing(false);
-        return;
-      }
-      const sumCaps = phaseCaps.slice(1).reduce((a, b) => a + b, 0); // only development phases count toward caps
-      if (sumCaps > 10000) {
-        toast.error('Phase caps exceed 100% total');
-        setIsPublishing(false);
-        return;
-      }
-      // durations: include phase 0 for completeness; informational only
+      // Convert APRs from percentage to basis points (1% = 100 bps)
+      const bracketMinAPR = [
+        Math.round(parseFloat(bracket0MinAPR || '0') * 100), // bracket 0 min
+        Math.round(parseFloat(bracket1MinAPR || '0') * 100)  // bracket 1 min
+      ];
+      const bracketMaxAPR = [
+        Math.round(parseFloat(bracket0MaxAPR || '0') * 100), // bracket 0 max
+        Math.round(parseFloat(bracket1MaxAPR || '0') * 100)  // bracket 1 max
+      ];
+
+      // Phase caps: % → bps (include phase 0 which is typically 0)
+      const phaseCaps = milestones.map(m => Math.round(parseFloat(m.payout || '0') * 100));
+
+      // Durations (informational only)
       const phaseDurations = new Array(6).fill(0);
       // Debug params
       // eslint-disable-next-line no-console
@@ -246,9 +238,10 @@ const CreateProject = () => {
         maxRaiseUSDC: Math.round(parseFloat(maxRaise) * 1e6),
         deadline,
         deadlineISO: new Date(deadline * 1000).toISOString(),
-        phaseAPRs,
-        phaseCaps,
-        sumCaps,
+        bracketMinAPR,      // [bracket0_min, bracket1_min]
+        bracketMaxAPR,      // [bracket0_max, bracket1_max]
+        phaseDurations,     // [0,0,0,0,0,0] - informational
+        phaseCaps, 
       });
       // Preflight simulation using staticCall
       try {
@@ -259,9 +252,8 @@ const CreateProject = () => {
           BigInt(Math.round(parseFloat(minRaise) * 1e6)),
           BigInt(Math.round(parseFloat(maxRaise) * 1e6)),
           BigInt(deadline),
-          phaseAPRs,
-          phaseDurations,
-          phaseCaps,
+          bracketMinAPR,      // [bracket0_min, bracket1_min]
+          bracketMaxAPR,      // [bracket0_max, bracket1_max]
           metadataURI
         );
         // eslint-disable-next-line no-console
@@ -285,9 +277,8 @@ const CreateProject = () => {
           BigInt(Math.round(parseFloat(minRaise) * 1e6)),
           BigInt(Math.round(parseFloat(maxRaise) * 1e6)),
           BigInt(deadline),
-          phaseAPRs,
-          phaseDurations,
-          phaseCaps,
+          bracketMinAPR,      // [bracket0_min, bracket1_min]
+          bracketMaxAPR,      // [bracket0_max, bracket1_max]
           metadataURI
         );
         // eslint-disable-next-line no-console
@@ -306,9 +297,8 @@ const CreateProject = () => {
         BigInt(Math.round(parseFloat(minRaise) * 1e6)),
         BigInt(Math.round(parseFloat(maxRaise) * 1e6)),
         BigInt(deadline),
-        phaseAPRs,
-        phaseDurations,
-        phaseCaps,
+        bracketMinAPR,      // [bracket0_min, bracket1_min]
+        bracketMaxAPR,      // [bracket0_max, bracket1_max]
         metadataURI,
         { gasLimit }
       );
@@ -505,80 +495,89 @@ const CreateProject = () => {
             )}
 
             {/* Step 2: Phases */}
-            {currentStep === 2 && (
-              <div className="space-y-6">
-                <div className="p-3 rounded-md bg-muted text-sm text-muted-foreground">
-                  There are 6 fixed phases (1–6). Final phase payout is fixed; others are editable.
-                </div>
-                {milestones.map((milestone, index) => (
-                  <Card key={milestone.id} className="border-2">
-                    <CardHeader>
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-lg">Phase {index + 1}: {milestone.title}</CardTitle>
-                        {/* Fixed phases: remove add/remove controls */}
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <p className="text-sm text-muted-foreground">{milestone.summary}</p>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <Label htmlFor={`milestone-payout-${index}`}>Payout (% of Max Raise)</Label>
-                          <Input 
-                            id={`milestone-payout-${index}`}
-                            type="number"
-                            inputMode="decimal"
-                            min={0}
-                            max={100}
-                            step={0.1}
-                            placeholder="e.g., 15"
-                            value={milestone.payout}
-                            disabled={index === milestones.length - 1}
-                            onChange={(e)=>{
-                              const v = e.target.value;
-                              setMilestones(prev=> prev.map((m,i)=> (i === index ? { ...m, payout: v } : m)));
-                            }}
-                          />
-                          {index === milestones.length - 1 && (
-                            <p className="text-xs text-muted-foreground mt-1">Final phase payout is fixed.</p>
-                          )}
-                        </div>
-                        <div>
-                          <Label htmlFor={`milestone-apr-${index}`}>APR (%)</Label>
-                          <Input
-                            id={`milestone-apr-${index}`}
-                            type="number"
-                            inputMode="decimal"
-                            min={0}
-                            max={100}
-                            step={0.1}
-                            placeholder="e.g., 8"
-                            value={milestone.apr}
-                            disabled={false}
-                            onChange={(e)=>{
-                              const v = e.target.value;
-                              setMilestones(prev=> prev.map((m,i)=> (i === index ? { ...m, apr: v } : m)));
-                            }}
-                          />
-                          {/* APRs are editable for all phases */}
-                        </div>
-                        <div>
-                          <Label htmlFor={`milestone-date-${index}`}>Due Date</Label>
-                          <Input 
-                            id={`milestone-date-${index}`}
-                            type="date"
-                            value={milestone.dueDate}
-                            onChange={(e)=>{
-                              const v = e.target.value;
-                              setMilestones(prev=> prev.map((m,i)=> i===index? { ...m, dueDate: v }: m));
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
+{currentStep === 2 && (
+  <div className="space-y-6">
+    <div className="p-4 rounded-md bg-muted">
+      <h3 className="font-semibold mb-2">Interest Rate Configuration</h3>
+      <p className="text-sm text-muted-foreground">
+        The contract uses a bracket-based APR system that decreases as more funds are raised:
+      </p>
+      <ul className="text-sm text-muted-foreground mt-2 space-y-1">
+        <li>• <strong>Bracket 0 (Fundraising Phase):</strong> APR decreases from max to min as funds approach minRaise</li>
+        <li>• <strong>Bracket 1 (Development Phases 1-4):</strong> APR decreases from max to min as funds approach maxRaise</li>
+        <li>• <strong>Phase 5 (Sales):</strong> No interest earned</li>
+      </ul>
+    </div>
+
+    <Card>
+      <CardHeader>
+        <CardTitle>Bracket 0: Fundraising Phase (Phase 0)</CardTitle>
+      </CardHeader>
+      <CardContent className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="bracket0Max">Maximum APR (%)</Label>
+          <Input
+            id="bracket0Max"
+            type="number"
+            step="0.1"
+            value={bracket0MaxAPR}
+            onChange={(e) => setBracket0MaxAPR(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            APR when fundraising starts (0 raised)
+          </p>
+        </div>
+        <div>
+          <Label htmlFor="bracket0Min">Minimum APR (%)</Label>
+          <Input
+            id="bracket0Min"
+            type="number"
+            step="0.1"
+            value={bracket0MinAPR}
+            onChange={(e) => setBracket0MinAPR(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            APR when minRaise is reached
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader>
+        <CardTitle>Bracket 1: Development Phases (Phases 1-4)</CardTitle>
+      </CardHeader>
+      <CardContent className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="bracket1Max">Maximum APR (%)</Label>
+          <Input
+            id="bracket1Max"
+            type="number"
+            step="0.1"
+            value={bracket1MaxAPR}
+            onChange={(e) => setBracket1MaxAPR(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            APR at minRaise
+          </p>
+        </div>
+        <div>
+          <Label htmlFor="bracket1Min">Minimum APR (%)</Label>
+          <Input
+            id="bracket1Min"
+            type="number"
+            step="0.1"
+            value={bracket1MinAPR}
+            onChange={(e) => setBracket1MinAPR(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            APR when maxRaise is reached
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  </div>
+)}
 
             {/* Step 3: Links */}
             {currentStep === 3 && (

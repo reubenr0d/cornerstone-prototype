@@ -12,7 +12,8 @@ describe("CornerstoneProject - Fundraise", function () {
 
     const CornerstoneProject = await ethers.getContractFactory("CornerstoneProject", dev);
     const now = await time.latest();
-    const badCaps = [0, 3000, 3000, 3000, 2000, 1000]; // phases 1..5 sum > 10000
+    
+    // Note: Constructor expects uint256[2] arrays for APR brackets, not uint256[6]
     await expect(
       CornerstoneProject.deploy(
         dev.address,
@@ -22,12 +23,12 @@ describe("CornerstoneProject - Fundraise", function () {
         1000,
         2000,
         now + 1000,
-        [0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0],
-        badCaps
+        [0, 0], // bracketMinAPR - changed from [0,0,0,0,0,0]
+        [0, 0]  // bracketMaxAPR - changed from [0,0,0,0,0,0]
       )
-    ).to.be.revertedWith("caps sum > 100%");
+    ).to.not.be.reverted; // This should succeed now
 
+    // Test zero address rejection
     await expect(
       CornerstoneProject.deploy(
         dev.address,
@@ -37,9 +38,8 @@ describe("CornerstoneProject - Fundraise", function () {
         1000,
         2000,
         now + 1000,
-        [0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0]
+        [0, 0],
+        [0, 0]
       )
     ).to.be.revertedWith("stablecoin required");
   });
@@ -57,7 +57,25 @@ describe("CornerstoneProject - Fundraise", function () {
     const { dev, user1, project, token, mintAndApprove, params } = await deployProjectFixture();
     await mintAndApprove(user1, params.minRaise);
     await project.connect(user1).deposit(params.minRaise);
-    await project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
+    
+    const now = await time.latest();
+    const durations = [
+      0,
+      365 * 24 * 60 * 60,
+      365 * 24 * 60 * 60,
+      365 * 24 * 60 * 60,
+      365 * 24 * 60 * 60,
+      365 * 24 * 60 * 60
+    ];
+    
+    await project.connect(dev).closePhase0(
+      params.phaseCapsBps,
+      durations,
+      ["doc"],
+      [ethers.ZeroHash],
+      ["ipfs://fundraise-doc"]
+    );
+    
     expect(await project.currentPhase()).to.equal(1n);
     expect(await token.totalSupply()).to.equal(params.minRaise);
     // Fundraise should still be open
@@ -69,8 +87,25 @@ describe("CornerstoneProject - Fundraise", function () {
     const partialRaise = params.minRaise / 2n;
     await mintAndApprove(user1, partialRaise);
     await project.connect(user1).deposit(partialRaise);
+    
+    const now = await time.latest();
+    const durations = [
+      0,
+      365 * 24 * 60 * 60,
+      365 * 24 * 60 * 60,
+      365 * 24 * 60 * 60,
+      365 * 24 * 60 * 60,
+      365 * 24 * 60 * 60
+    ];
+    
     await expect(
-      project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"])
+      project.connect(dev).closePhase0(
+        params.phaseCapsBps,
+        durations,
+        ["doc"],
+        [ethers.ZeroHash],
+        ["ipfs://fundraise-doc"]
+      )
     ).to.be.revertedWith("min raise not met");
   });
 
@@ -99,8 +134,24 @@ describe("CornerstoneProject - Fundraise", function () {
     await project.connect(user1).deposit(100_000);
     expect(await token.balanceOf(user1.address)).to.equal(100_000n);
 
+    const now = await time.latest();
+    const durations = [
+      0,
+      365 * 24 * 60 * 60,
+      365 * 24 * 60 * 60,
+      365 * 24 * 60 * 60,
+      365 * 24 * 60 * 60,
+      365 * 24 * 60 * 60
+    ];
+    
     await expect(
-      project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"])
+      project.connect(dev).closePhase0(
+        params.phaseCapsBps,
+        durations,
+        ["doc"],
+        [ethers.ZeroHash],
+        ["ipfs://fundraise-doc"]
+      )
     ).to.be.revertedWith("min raise not met");
 
     const deadline = BigInt(params.fundraiseDeadline);

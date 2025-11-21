@@ -9,9 +9,8 @@ interface IProjectRegistry {
         uint256 minRaise,
         uint256 maxRaise,
         uint256 fundraiseDeadline,
-        uint256[6] calldata phaseAPRs, // includes phase 0 (fundraising)
-        uint256[6] calldata phaseDurations, // includes phase 0 (fundraising)
-        uint256[6] calldata phaseWithdrawCaps, // includes phase 0 (fundraising)
+        uint256[2] calldata bracketMinAPR,
+        uint256[2] calldata bracketMaxAPR,
         string calldata metadataURI
     ) external returns (address projectAddress, address tokenAddress);
 
@@ -22,9 +21,8 @@ interface IProjectRegistry {
         uint256 minRaise,
         uint256 maxRaise,
         uint256 fundraiseDeadline,
-        uint256[6] calldata phaseAPRs, // includes phase 0 (fundraising)
-        uint256[6] calldata phaseDurations, // includes phase 0 (fundraising)
-        uint256[6] calldata phaseWithdrawCaps, // includes phase 0 (fundraising)
+        uint256[2] calldata bracketMinAPR,
+        uint256[2] calldata bracketMaxAPR,
         string calldata metadataURI
     ) external returns (address projectAddress, address tokenAddress);
 }
@@ -41,9 +39,8 @@ contract ProjectRegistry is IProjectRegistry {
         uint256 minRaise,
         uint256 maxRaise,
         uint256 fundraiseDeadline,
-        uint256[6] calldata phaseAPRs,
-        uint256[6] calldata phaseDurations,
-        uint256[6] calldata phaseWithdrawCaps,
+        uint256[2] calldata bracketMinAPR,
+        uint256[2] calldata bracketMaxAPR,
         string calldata metadataURI
     ) external returns (address projectAddress, address tokenAddress) {
         require(stablecoin != address(0), "stablecoin addr required");
@@ -62,9 +59,8 @@ contract ProjectRegistry is IProjectRegistry {
             minRaise,
             maxRaise,
             fundraiseDeadline,
-            phaseAPRs,
-            phaseDurations,
-            phaseWithdrawCaps
+            bracketMinAPR,
+            bracketMaxAPR
         );
 
         projectAddress = address(project);
@@ -80,9 +76,8 @@ contract ProjectRegistry is IProjectRegistry {
         uint256 minRaise,
         uint256 maxRaise,
         uint256 fundraiseDeadline,
-        uint256[6] calldata phaseAPRs,
-        uint256[6] calldata phaseDurations,
-        uint256[6] calldata phaseWithdrawCaps,
+        uint256[2] calldata bracketMinAPR,
+        uint256[2] calldata bracketMaxAPR,
         string calldata metadataURI
     ) external returns (address projectAddress, address tokenAddress) {
         require(stablecoin != address(0), "stablecoin addr required");
@@ -99,12 +94,13 @@ contract ProjectRegistry is IProjectRegistry {
             minRaise,
             maxRaise,
             fundraiseDeadline,
-            phaseAPRs,
-            phaseDurations,
-            phaseWithdrawCaps
+            bracketMinAPR,
+            bracketMaxAPR
         );
+        
         projectAddress = address(project);
         tokenAddress = project.token();
+        
         emit ProjectCreated(projectAddress, tokenAddress, msg.sender, metadataURI);
     }
 

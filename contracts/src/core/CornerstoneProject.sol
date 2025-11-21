@@ -22,6 +22,14 @@ interface ICornerstoneProject {
     function refundIfMinNotMet(address user) external;
 
     // ---- Phase progression ----
+    function closePhase0(
+        uint256[6] calldata capsBps_,
+        uint256[6] calldata durations_,
+        string[] calldata docTypes,
+        bytes32[] calldata docHashes,
+        string[] calldata metadataURIs
+    ) external;
+
     function closePhase(
         uint8 phaseId,
         string[] calldata docTypes,
@@ -73,15 +81,18 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     uint256 public immutable fundraiseDeadline;
 
     // Phase config (0..5)
-    uint256[6] public phaseAPRsBps; // per phase (0..5) APR in bps (phase 0 typically 0)
+    uint256[2] public bracketMinAPR; // [bracket0_min, bracket1_min] in bps
+    uint256[2] public bracketMaxAPR; // [bracket0_max, bracket1_max] in bps
     uint256[6] public phaseDurations; // informational only
     uint256[6] public phaseCapsBps; // withdraw caps per phase in bps of maxRaise (phase 0 typically 0)
 
     // State
     uint8 public currentPhase; // 0 = fundraising open; 1..5 = active development phases
     uint8 public lastClosedPhase; // highest fully closed phase; 0 initially
+    bool public phaseConfigSet; // flag to ensure caps/deadlines set once
     bool public fundraiseClosed;
     bool public fundraiseSuccessful;
+    bool public appraisalReportSubmitted;
 
     uint256 public totalRaised;
 
@@ -122,11 +133,12 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     event FundraiseClosed(bool successful);
     event PhaseClosed(uint8 indexed phaseId, string[] docTypes, bytes32[] docHashes, string[] metadataURIs);
     event PhaseFundsWithdrawn(uint8 indexed phaseId, uint256 amount);
+    event InitialAppraisalSubmitted(bytes32 appraisalHash, string metadataURI);
     event AppraisalSubmitted(uint256 percentComplete, bytes32 appraisalHash);
     event SalesProceedsSubmitted(uint256 amount);
     event PrincipalClaimed(address indexed user, uint256 amount);
     event RevenueClaimed(address indexed user, uint256 amount);
-    event PhaseConfiguration(uint256[6] aprBps, uint256[6] durations, uint256[6] capBps, uint256[6] phaseCaps);
+    event PhaseConfiguration(uint256[4] aprBps, uint256[6] durations, uint256[6] capBps, uint256[6] phaseCaps);
 
     modifier onlyDev() {
         require(msg.sender == owner(), "dev only");
@@ -146,25 +158,19 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         uint256 minRaise_,
         uint256 maxRaise_,
         uint256 fundraiseDeadline_,
-        uint256[6] memory phaseAPRs_,
-        uint256[6] memory phaseDurations_,
-        uint256[6] memory phaseCapsBps_
+        uint256[2] memory bracketMinAPR_,
+        uint256[2] memory bracketMaxAPR_
     ) Ownable(developer) {
         require(stablecoin_ != address(0), "stablecoin required");
         stablecoin = IERC20(stablecoin_);
         minRaise = minRaise_;
         maxRaise = maxRaise_;
         fundraiseDeadline = fundraiseDeadline_;
-        phaseAPRsBps = phaseAPRs_;
-        phaseDurations = phaseDurations_;
-        phaseCapsBps = phaseCapsBps_;
+        bracketMinAPR = bracketMinAPR_;
+        bracketMaxAPR = bracketMaxAPR_;
 
-        // enforce sum of development phase caps (1..5) ≤ 100%
-        uint256 sumCaps;
-        for (uint8 i = 1; i <= NUM_PHASES; i++) {
-            sumCaps += phaseCapsBps_[i];
-        }
-        require(sumCaps <= BPS_DENOM, "caps sum > 100%");
+        require(bracketMaxAPR_[0] >= bracketMinAPR_[0], "bracket 0: max < min");
+        require(bracketMaxAPR_[1] >= bracketMinAPR_[1], "bracket 1: max < min");
 
         // Start in fundraising pseudo-phase 0
         currentPhase = 0;
@@ -173,13 +179,6 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
 
         // Deploy token with provided per-project name/symbol
         _token = new CornerstoneToken(name_, symbol_, address(this));
-
-        // Emit consolidated phase configuration for indexer
-        uint256[6] memory phaseCaps;
-        for (uint8 i = 0; i <= NUM_PHASES; i++) {
-            phaseCaps[i] = (maxRaise * phaseCapsBps_[i]) / BPS_DENOM;
-        }
-        emit PhaseConfiguration(phaseAPRs_, phaseDurations_, phaseCapsBps_, phaseCaps);
     }
 
     // ---- View helpers ----
@@ -194,6 +193,46 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
 
     function getPhaseWithdrawn(uint8 phaseId) external view returns (uint256) {
         return phaseWithdrawn[phaseId];
+    }
+
+    function closePhase0(
+        uint256[6] calldata capsBps_,
+        uint256[6] calldata durations_,
+        string[] calldata docTypes,
+        bytes32[] calldata docHashes,
+        string[] calldata metadataURIs
+    ) external onlyDev whenNotPaused updateAccrual {
+        require(!phaseConfigSet, "already configured");
+        require(currentPhase == 0, "not in phase 0");
+        require(totalRaised >= minRaise, "min raise not met");
+
+        // Validate caps sum (phases 1-5 only)
+        uint256 sumCaps;
+        for (uint8 i = 1; i <= NUM_PHASES; i++) {
+            sumCaps += capsBps_[i];
+        }
+        require(sumCaps <= BPS_DENOM, "caps sum > 100%");
+
+        phaseCapsBps = capsBps_;
+        phaseDurations = durations_;
+        phaseConfigSet = true;
+
+        // Emit configuration
+        uint256[6] memory phaseCaps;
+        for (uint8 i = 0; i <= NUM_PHASES; i++) {
+            phaseCaps[i] = (maxRaise * capsBps_[i]) / BPS_DENOM;
+        }
+
+        uint256[4] memory aprBpsForEvent;
+        aprBpsForEvent[0] = bracketMaxAPR[0]; // bracket 0 max
+        aprBpsForEvent[1] = bracketMinAPR[0]; // bracket 0 min
+        aprBpsForEvent[2] = bracketMaxAPR[1]; // bracket 1 max
+        aprBpsForEvent[3] = bracketMinAPR[1]; // bracket 1 min
+
+        emit PhaseConfiguration(aprBpsForEvent, phaseDurations, capsBps_, phaseCaps);
+
+        // Now close phase 0 using internal function
+        _closePhase(0, docTypes, docHashes, metadataURIs);
     }
 
     // ---- Deposits ----
@@ -223,6 +262,56 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         emit Deposit(msg.sender, amount, amount);
     }
 
+    // ---- Internal phase closing logic ----
+    function _closePhase(
+        uint8 phaseId,
+        string[] calldata docTypes,
+        bytes32[] calldata docHashes,
+        string[] calldata metadataURIs
+    ) internal {
+        // Docs are required for all phases, including phase 0
+        require(docTypes.length > 0, "docs required");
+        require(docTypes.length == docHashes.length && docTypes.length == metadataURIs.length, "docs length mismatch");
+        emit PhaseClosed(phaseId, docTypes, docHashes, metadataURIs);
+
+        if (phaseId == 0) {
+            // Mark success flag opportunistically if threshold already met.
+            if (!fundraiseSuccessful && totalRaised >= minRaise) {
+                fundraiseSuccessful = true;
+            }
+            currentPhase = 1; // Phase 1 begins
+            lastClosedPhase = 0;
+            return;
+        }
+
+        // For phases 1..5, mark closed and advance to next phase
+        lastClosedPhase = phaseId;
+        if (currentPhase < NUM_PHASES) {
+            currentPhase += 1;
+        }
+
+        // Close fundraising when final stage (5) starts, i.e., after closing phase 4
+        if (phaseId == 4 && !fundraiseClosed) {
+            fundraiseClosed = true;
+            emit FundraiseClosed(fundraiseSuccessful);
+        }
+    }
+    
+    function submitInitialAppraisal(
+        bytes32 appraisalHash,
+        string calldata metadataURI
+    ) external onlyDev whenNotPaused updateAccrual {
+        require(currentPhase == 0, "only in phase 0");
+        require(!appraisalReportSubmitted, "already submitted");
+        require(totalRaised >= minRaise, "min raise not met");
+        require(appraisalHash != bytes32(0), "invalid hash");
+        require(bytes(metadataURI).length > 0, "metadata required");
+
+        appraisalReportSubmitted = true;
+
+        emit InitialAppraisalSubmitted(appraisalHash, metadataURI);
+    }
+
     // ---- Phases & fundraise lifecycle ----
     function closePhase(
         uint8 phaseId,
@@ -234,40 +323,17 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         // Only allow closing the current active phase (0..5)
         require(phaseId == currentPhase, "not current phase");
 
-        // Docs are required for all phases, including phase 0
-        require(docTypes.length > 0, "docs required");
-        require(docTypes.length == docHashes.length && docTypes.length == metadataURIs.length, "docs length mismatch");
-        emit PhaseClosed(phaseId, docTypes, docHashes, metadataURIs);
-
         if (phaseId == 0) {
             require(totalRaised >= minRaise, "min raise not met");
-            // Start Phase 1 with required docs. Fundraising remains open beyond phase 0.
-            // Mark success flag opportunistically if threshold already met.
-            if (!fundraiseSuccessful && totalRaised >= minRaise) {
-                fundraiseSuccessful = true;
-            }
-            currentPhase = 1; // Phase 1 begins
-            lastClosedPhase = 0;
-            return;
         }
 
-        // For phases 1..5, mark closed and advance to next phase (phase 5 remains current once closed)
-        lastClosedPhase = phaseId;
-        if (currentPhase < NUM_PHASES) {
-            currentPhase += 1;
-        }
-
-        // Close fundraising when final stage (5) starts, i.e., after closing phase 4
-        if (phaseId == 4 && !fundraiseClosed) {
-            fundraiseClosed = true;
-            // success status reflects whether minRaise was ever reached
-            emit FundraiseClosed(fundraiseSuccessful);
-        }
+        _closePhase(phaseId, docTypes, docHashes, metadataURIs);
     }
 
     // ---- Developer withdrawals under caps ----
     function withdrawPhaseFunds(uint256 amount) external onlyDev nonReentrant whenNotPaused updateAccrual {
         require(fundraiseSuccessful, "fundraise failed");
+
         require(amount > 0, "amount=0");
 
         uint256 unlocked = _cumulativeUnlocked();
@@ -294,6 +360,11 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     }
 
     function _cumulativeUnlocked() internal view returns (uint256) {
+        // If initial appraisal submitted in phase 0, unlock all funds
+        if (appraisalReportSubmitted && currentPhase == 0) {
+            return totalRaised;
+        }
+
         uint256 unlocked;
         if (currentPhase >= 1) {
             unlocked += getPhaseCap(0);
@@ -491,7 +562,54 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     }
 
     function _currentAPR() internal view returns (uint256) {
-        return phaseAPRsBps[currentPhase];
+        // Phase 5: no interest
+        if (currentPhase == 5) return 0;
+
+        // Phase 0 (fundraising): Bracket 0
+        // Range: 0 → minRaise
+        // Starts at bracketMaxAPR[0], decreases to bracketMinAPR[0]
+        if (currentPhase == 0) {
+            uint256 maxAPR = bracketMaxAPR[0];
+            uint256 minAPR = bracketMinAPR[0];
+
+            // If minRaise already met, use minAPR
+            if (totalRaised >= minRaise) {
+                return minAPR;
+            }
+
+            if (minRaise == 0) return maxAPR;
+
+            // Linear interpolation: APY = maxAPR - (maxAPR - minAPR) * (totalRaised / minRaise)
+            uint256 range = maxAPR - minAPR;
+            uint256 reduction = (range * totalRaised) / minRaise;
+            return maxAPR - reduction;
+        }
+
+        // Phases 1-4 (development): Bracket 1
+        // Range: minRaise → maxRaise
+        // Starts at bracketMaxAPR[1], decreases to bracketMinAPR[1]
+        if (currentPhase >= 1 && currentPhase <= 4) {
+            uint256 maxAPR = bracketMaxAPR[1];
+            uint256 minAPR = bracketMinAPR[1];
+
+            // If maxRaise already met, use minAPR
+            if (totalRaised >= maxRaise) {
+                return minAPR;
+            }
+
+            // Calculate raise within bracket 1 range
+            uint256 raiseInBracket = totalRaised > minRaise ? totalRaised - minRaise : 0;
+            uint256 bracketRange = maxRaise - minRaise;
+
+            if (bracketRange == 0) return maxAPR;
+
+            // Linear interpolation: APY = maxAPR - (maxAPR - minAPR) * (raiseInBracket / bracketRange)
+            uint256 aprRange = maxAPR - minAPR;
+            uint256 reduction = (aprRange * raiseInBracket) / bracketRange;
+            return maxAPR - reduction;
+        }
+
+        return 0;
     }
 
     // ---- Internal: Revenue distribution ----
@@ -531,33 +649,5 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
 
     function claimableRevenue(address user) external view returns (uint256) {
         return _claimableRevenue(user);
-    }
-
-    // ---- Utils ----
-    function _toHexString(address a) internal pure returns (string memory) {
-        bytes20 data = bytes20(a);
-        bytes memory hexChars = "0123456789abcdef";
-        bytes memory str = new bytes(2 + 40);
-        str[0] = "0";
-        str[1] = "x";
-        for (uint256 i = 0; i < 20; i++) {
-            str[2 + i * 2] = hexChars[uint8(data[i] >> 4)];
-            str[3 + i * 2] = hexChars[uint8(data[i] & 0x0f)];
-        }
-        return string(str);
-    }
-
-    function _shortHex(address a) internal pure returns (string memory) {
-        bytes20 data = bytes20(a);
-        bytes memory hexChars = "0123456789abcdef";
-        bytes memory str = new bytes(4);
-        // last two bytes
-        uint8 b1 = uint8(data[18]);
-        uint8 b2 = uint8(data[19]);
-        str[0] = hexChars[b1 >> 4];
-        str[1] = hexChars[b1 & 0x0f];
-        str[2] = hexChars[b2 >> 4];
-        str[3] = hexChars[b2 & 0x0f];
-        return string(str);
     }
 }

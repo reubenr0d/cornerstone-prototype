@@ -13,7 +13,7 @@ import { toast } from '@/components/ui/sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DollarSign, Banknote, DoorClosed, Wallet, FileText, Target, Users, ShieldCheck, HardHat } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@/components/ui/drawer';
-import { Address, erc20At, fromStablecoin, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toStablecoin, fetchProjectRealtimeState, fetchProjectStaticConfig, getWindowEthereum, ProjectRealtimeState, ProjectStaticConfig } from '@/lib/eth';
+import { Address, erc20At, fromStablecoin, getAccount, getProvider, getRpcProvider, getSigner, projectAt, toStablecoin, fetchProjectRealtimeState, fetchProjectStaticConfig, getWindowEthereum, ProjectRealtimeState, ProjectStaticConfig, fetchProjectPhaseCaps } from '@/lib/eth';
 import { getCompleteProjectData, Project } from '@/lib/envio';
 import { TOKEN_CONFIG, getTokenConfigByAddress } from '@/config/contracts';
 import { ipfsUpload, resolveImageUri } from '@/lib/ipfs';
@@ -41,6 +41,14 @@ const ProjectDetails = () => {
   const [isWithdrawingFunds, setIsWithdrawingFunds] = useState(false);
   const [isSubmittingProceeds, setIsSubmittingProceeds] = useState(false);
 
+  // Phase configuration state
+  // Phase 0 closing state
+  const [showClosePhase0Modal, setShowClosePhase0Modal] = useState(false);
+  const [phaseCapsPct, setPhaseCapsPct] = useState<string[]>(['0', '0', '0', '0', '0']);
+  const [phaseDurations, setPhaseDurations] = useState<string[]>(['0', '0', '0', '0', '0', '0']); // Add durations for all 6 phases
+  const [isClosingPhase0, setIsClosingPhase0] = useState(false);
+  const [phase0Docs, setPhase0Docs] = useState<File[]>([]);
+
   const projectAddress = useMemo<Address | null>(() => {
     const p = id as string | undefined;
     return (p && p.startsWith('0x') ? (p as Address) : null);
@@ -52,9 +60,14 @@ const ProjectDetails = () => {
   const [envioData, setEnvioData] = useState<Project | null>(null);
   const [realtimeData, setRealtimeData] = useState<ProjectRealtimeState | null>(null);
   const [staticConfig, setStaticConfig] = useState<ProjectStaticConfig | null>(null);
+  const [phaseCapsData, setPhaseCapsData] = useState<{ capsBps: bigint[], phaseCaps: bigint[] } | null>(null);
   const [supporters, setSupporters] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [loadingRealtime, setLoadingRealtime] = useState(true);
+
+  // Initial appraisal state
+  const [appraisalFile, setAppraisalFile] = useState<File | null>(null);
+  const [isSubmittingAppraisal, setIsSubmittingAppraisal] = useState(false);
 
   // Dynamically determine which token this project uses
   const projectTokenConfig = useMemo(() => {
@@ -137,14 +150,15 @@ const ProjectDetails = () => {
       setSupporters(envioResult.supportersCount);
       setLoading(false); // Envio data loaded - show main UI
       
-      // Then fetch real-time data (slower)
-      const [realtimeResult, staticResult] = await Promise.all([
+      const [realtimeResult, staticResult, capsResult] = await Promise.all([
         fetchProjectRealtimeState(projectAddress, provider, account || undefined),
         fetchProjectStaticConfig(projectAddress, provider),
+        fetchProjectPhaseCaps(projectAddress, provider),
       ]);
       
       setRealtimeData(realtimeResult);
       setStaticConfig(staticResult);
+      setPhaseCapsData(capsResult);
       setLoadingRealtime(false); // Real-time data loaded - show user balances
     } catch (e) {
       console.error('Error refreshing project data:', e);
@@ -152,6 +166,79 @@ const ProjectDetails = () => {
     } finally {
       setLoading(false);
       setLoadingRealtime(false);
+    }
+  }
+
+  async function closePhase0() {
+    try {
+      if (!projectAddress) return;
+      
+      // Validate caps (now in percentages)
+      const capsPct = phaseCapsPct.map(c => Number(c));
+      if (capsPct.some(c => isNaN(c) || c < 0)) {
+        toast.error('All caps must be valid numbers');
+        return;
+      }
+      
+      // Sum phases 1-5 (array indices 0-4 now represent phases 1-5)
+      const sumCaps = capsPct.reduce((a, b) => a + b, 0);
+      if (sumCaps > 100) {
+        toast.error('Total caps for phases 1-5 cannot exceed 100%');
+        return;
+      }
+      
+      // Validate durations
+      const durationsNum = phaseDurations.map(d => Number(d));
+      if (durationsNum.some(d => isNaN(d) || d < 0)) {
+        toast.error('All durations must be valid numbers');
+        return;
+      }
+      
+      // Validate documents
+      if (!phase0Docs.length) {
+        toast.error('Please upload at least one document');
+        return;
+      }
+      
+      setIsClosingPhase0(true);
+      const signer = await getSigner();
+      const proj = projectAt(projectAddress, signer);
+      
+      // Convert percentages to basis points and prepend 0 for phase 0
+      const capsInBps = [0, ...capsPct.map(pct => Math.round(pct * 100))];
+      
+      // Convert durations to uint256 array (6 phases)
+      const durationsArray = durationsNum;
+      
+      // Upload documents to IPFS
+      const uploaded = await ipfsUpload(phase0Docs);
+      const nameByPath = Object.fromEntries(uploaded.map(u => [u.path, u]));
+      const docTypes: string[] = [];
+      const docHashes: string[] = [];
+      const metadataURIs: string[] = [];
+      
+      for (const f of phase0Docs) {
+        const buf = new Uint8Array(await f.arrayBuffer());
+        const hash = ethers.keccak256(buf);
+        docTypes.push(f.type || (f.name.split('.').pop() || 'file'));
+        docHashes.push(hash);
+        const up = nameByPath[f.name];
+        metadataURIs.push(up?.uri || '');
+      }
+      
+      const tx = await proj.closePhase0(capsInBps, durationsArray, docTypes, docHashes, metadataURIs);
+      await tx.wait();
+      
+      toast.success('Phase 0 closed successfully');
+      setShowClosePhase0Modal(false);
+      setPhaseCapsPct(['0', '0', '0', '0', '0']);
+      setPhaseDurations(['0', '0', '0', '0', '0', '0']);
+      setPhase0Docs([]);
+      refresh();
+    } catch (e: any) {
+      toast.error(e?.shortMessage || e?.message || 'Failed to close Phase 0');
+    } finally {
+      setIsClosingPhase0(false);
     }
   }
 
@@ -181,9 +268,11 @@ const ProjectDetails = () => {
         const handler = () => refresh();
         proj.on('FundraiseClosed', handler);
         proj.on('PhaseClosed', handler);
+        proj.on('InitialAppraisalSubmitted', handler);
         unsub = () => {
           try { proj.removeListener('FundraiseClosed', handler); } catch {}
           try { proj.removeListener('PhaseClosed', handler); } catch {}
+          try { proj.removeListener('InitialAppraisalSubmitted', handler); } catch {}
         };
       } catch {
         // ignore listener errors
@@ -193,7 +282,10 @@ const ProjectDetails = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectAddress]);
 
-  const withdrawableNow = Number(fromStablecoin(BigInt(envioData?.withdrawableDevFunds || '0')));
+  // Change this line in ProjectDetails.tsx
+const withdrawableNow = realtimeData?.withdrawableDevFunds 
+? Number(fromStablecoin(realtimeData.withdrawableDevFunds))
+: Number(fromStablecoin(BigInt(envioData?.withdrawableDevFunds || '0')));
 
   const fallbackTotalRaised =
     envioData?.deposits?.reduce<bigint>((acc, deposit) => {
@@ -373,76 +465,67 @@ const ProjectDetails = () => {
     'Revenue and Sales',
   ] as const;
 
-  // Get phase data sourced from Envio (PhaseMetrics + PhaseConfiguration snapshots)
   const envioPhases = envioData?.projectState?.phases || [];
-  const latestPhaseConfig = envioData?.phaseConfigurations?.[0];
-  const configPhaseCaps = Array.from({ length: 6 }, (_, i) => {
-    const raw = latestPhaseConfig?.phaseCaps?.[i];
-    if (!raw) return 0n;
-    try {
-      return BigInt(raw);
-    } catch {
-      return 0n;
-    }
-  });
-  const configCapBps = Array.from({ length: 6 }, (_, i) => {
-    if (!latestPhaseConfig?.capBps?.[i]) return 0;
-    const raw = Number(latestPhaseConfig.capBps[i]);
-    return Number.isFinite(raw) ? raw : 0;
-  });
-  const configAprBps = Array.from({ length: 6 }, (_, i) => {
-    if (!latestPhaseConfig?.aprBps?.[i]) return 0;
-    const raw = Number(latestPhaseConfig.aprBps[i]);
-    return Number.isFinite(raw) ? raw : 0;
-  });
 
-  const perPhaseCapAmounts = Array.from({ length: 6 }, (_, i) => {
-    const phaseMetric = envioPhases[i];
-    if (phaseMetric?.phaseCap && phaseMetric.phaseCap !== '0') {
-      try {
-        return Number(fromStablecoin(BigInt(phaseMetric.phaseCap)));
-      } catch {
-        // fall through to config
-      }
-    }
-    if (configPhaseCaps[i] > 0) {
-      return Number(fromStablecoin(configPhaseCaps[i]));
-    }
-    return 0;
-  });
+// Get APR values directly from contract
+const bracketAPRs = staticConfig 
+  ? [
+      staticConfig.bracketMaxAPR[0],
+      staticConfig.bracketMinAPR[0],
+      staticConfig.bracketMaxAPR[1],
+      staticConfig.bracketMinAPR[1],
+    ]
+  : [];
 
-  const cumulativeCapAmounts: number[] = [];
-  for (let i = 0; i < 6; i++) {
-    const prev = i > 0 ? cumulativeCapAmounts[i - 1] : 0;
-    cumulativeCapAmounts[i] = prev + (perPhaseCapAmounts[i] || 0);
+// Calculate APR for each phase
+const aprs = Array.from({ length: 6 }, (_, i) => {
+  if (i === 5) return 0;
+  
+  const phaseMetric = envioPhases[i];
+  if (phaseMetric?.aprBps) {
+    const aprBpsValue = Number(phaseMetric.aprBps);
+    if (aprBpsValue > 0) {
+      return aprBpsValue / 100;
+    }
   }
-
-  const perPhaseCapBps = Array.from({ length: 6 }, (_, i) => {
-    const metricBps = envioPhases[i]?.capBps;
-    if (metricBps && metricBps !== '0') {
-      const parsed = Number(metricBps);
-      if (Number.isFinite(parsed)) return parsed;
+  
+  if (bracketAPRs.length >= 4) {
+    if (i === 0) {
+      const maxApr = Number(bracketAPRs[0]) || 0;
+      const minApr = Number(bracketAPRs[1]) || 0;
+      return ((maxApr + minApr) / 2) / 100;
+    } else {
+      const maxApr = Number(bracketAPRs[2]) || 0;
+      const minApr = Number(bracketAPRs[3]) || 0;
+      return ((maxApr + minApr) / 2) / 100;
     }
-    return configCapBps[i] ?? 0;
-  });
-
-  const capBps: number[] = [];
-  for (let i = 0; i < 6; i++) {
-    const prev = i > 0 ? capBps[i - 1] : 0;
-    capBps[i] = prev + (perPhaseCapBps[i] || 0);
   }
+  return 0;
+});
 
-  const cumulativeCapAmountsFilled = Array.from({ length: 6 }, (_, i) => cumulativeCapAmounts[i] ?? 0);
-  // Convert APRs from bps to percent for display
-  const aprs = Array.from({ length: 6 }, (_, i) => {
-    const envioApr = envioPhases[i]?.aprBps;
-    if (envioApr && envioApr !== '0') {
-      const aprBps = Number(envioApr);
-      if (Number.isFinite(aprBps)) return aprBps / 100;
-    }
-    if (configAprBps[i]) return configAprBps[i] / 100;
-    return 0;
-  });
+// Get caps directly from contract state
+const capBps: number[] = Array.from({ length: 6 }, (_, i) => {
+  if (phaseCapsData?.capsBps[i]) {
+    return Number(phaseCapsData.capsBps[i]);
+  }
+  return 0;
+});
+
+const perPhaseCapAmounts = Array.from({ length: 6 }, (_, i) => {
+  if (phaseCapsData?.phaseCaps[i]) {
+    return Number(fromStablecoin(phaseCapsData.phaseCaps[i]));
+  }
+  return 0;
+});
+
+// Build cumulative caps
+const cumulativeCapAmounts: number[] = [];
+for (let i = 0; i < 6; i++) {
+  const prev = i > 0 ? cumulativeCapAmounts[i - 1] : 0;
+  cumulativeCapAmounts[i] = prev + (perPhaseCapAmounts[i] || 0);
+}
+
+const cumulativeCapAmountsFilled = Array.from({ length: 6 }, (_, i) => cumulativeCapAmounts[i] ?? 0);
   const currentPhaseIndex = Math.max(0, envioData?.projectState?.currentPhase ?? 0);
   const nextPhaseName = currentPhaseIndex + 1 < phaseNames.length
     ? phaseNames[currentPhaseIndex + 1]
@@ -530,49 +613,98 @@ const ProjectDetails = () => {
   const [phaseDocuments, setPhaseDocuments] = useState<Doc[][]>([[], [], [], [], [], []]);
 
   // Process phase documents from already-loaded Envio data
-  useEffect(() => {
-    if (!envioData?.phasesClosed) return;
+  // Process phase documents from already-loaded Envio data
+useEffect(() => {
+  if (!envioData) return;
+  
+  const phaseClosedEvents = envioData.phasesClosed || [];
+  const initialAppraisals = envioData.initialAppraisals || [];
+  
+  console.info('[docs] processing events from loaded data', { 
+    phasesClosed: phaseClosedEvents.length,
+    initialAppraisals: initialAppraisals.length,
+    initialAppraisalsData: initialAppraisals
+  });
+
+  const docsByPhase: Doc[][] = [[], [], [], [], [], []];
+
+  // Process initial appraisals for Phase 0 FIRST
+  for (const appraisal of initialAppraisals) {
+    const uri = appraisal.metadataURI || '';
+    const hash = appraisal.appraisalHash || '0x';
     
-    const phaseClosedEvents = envioData.phasesClosed || [];
-    console.info('[docs] processing PhaseClosed events from loaded data', { count: phaseClosedEvents.length });
+    console.info('[docs] processing initial appraisal', { uri, hash });
+    
+    // Determine if it's an image or PDF based on URI
+    const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].some(ext => 
+      uri.toLowerCase().includes(`.${ext}`)
+    );
+    
+    // Resolve IPFS URL
+    let resolvedUrl = uri;
+    if (uri.startsWith('ipfs://')) {
+      resolvedUrl = `https://ipfs.io/ipfs/${uri.replace('ipfs://', '')}`;
+    } else if (uri.startsWith('Qm') || uri.startsWith('bafy')) {
+      // Raw IPFS hash
+      resolvedUrl = `https://ipfs.io/ipfs/${uri}`;
+    }
+    
+    docsByPhase[0].push({
+      id: `phase0-initial-appraisal-${hash.slice(0, 10)}`,
+      name: 'Initial Appraisal',
+      type: isImage ? 'image' : 'pdf',
+      url: resolvedUrl || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+      hash: hash,
+    });
+    
+    console.info('[docs] added initial appraisal to phase 0', docsByPhase[0]);
+  }
+  // Process phase closed events
+  for (const event of phaseClosedEvents) {
+    const phaseId = Number(event.phaseId);
+    if (phaseId < 0 || phaseId > 5) continue;
 
-    const docsByPhase: Doc[][] = [[], [], [], [], [], []];
+    const docTypes = event.docTypes || [];
+    const docHashes = event.docHashes || [];
+    const metadataURIs = event.metadataURIs || [];
 
-    for (const event of phaseClosedEvents) {
-      const phaseId = Number(event.phaseId);
-      if (phaseId < 0 || phaseId > 5) continue;
-
-      const docTypes = event.docTypes || [];
-      const docHashes = event.docHashes || [];
-      const metadataURIs = event.metadataURIs || [];
-
-      const phaseDocs: Doc[] = [];
-      for (let i = 0; i < docTypes.length; i++) {
-        const docType = docTypes[i] || 'unknown';
-        const hash = docHashes[i] || '0x';
-        const uri = metadataURIs[i] || '';
-        
-        // Determine if it's an image or PDF based on type/URI
-        const isImage = docType.includes('image') || uri.includes('image') || 
-                       ['jpg', 'jpeg', 'png', 'gif', 'webp'].some(ext => uri.toLowerCase().includes(ext));
-        
-        phaseDocs.push({
-          id: `phase${phaseId}-doc${i}-${hash.slice(0, 10)}`,
-          name: uri.split('/').at(-1),
-          type: isImage ? 'image' : 'pdf',
-          url: uri.startsWith('ipfs://') 
-            ? `https://ipfs.io/ipfs/${uri.replace('ipfs://', '')}` 
-            : uri || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-          hash: hash,
-        });
+    const phaseDocs: Doc[] = [];
+    for (let i = 0; i < docTypes.length; i++) {
+      const docType = docTypes[i] || 'unknown';
+      const hash = docHashes[i] || '0x';
+      const uri = metadataURIs[i] || '';
+      
+      // Determine if it's an image or PDF based on type/URI
+      const isImage = docType.includes('image') || uri.includes('image') || 
+                     ['jpg', 'jpeg', 'png', 'gif', 'webp'].some(ext => uri.toLowerCase().includes(ext));
+      
+      // Resolve IPFS URL
+      let resolvedUrl = uri;
+      if (uri.startsWith('ipfs://')) {
+        resolvedUrl = `https://ipfs.io/ipfs/${uri.replace('ipfs://', '')}`;
+      } else if (uri.startsWith('Qm') || uri.startsWith('bafy')) {
+        resolvedUrl = `https://ipfs.io/ipfs/${uri}`;
       }
-
-      docsByPhase[phaseId] = phaseDocs;
+      
+      phaseDocs.push({
+        id: `phase${phaseId}-doc${i}-${hash.slice(0, 10)}`,
+        name: uri.split('/').pop() || `Document ${i + 1}`,
+        type: isImage ? 'image' : 'pdf',
+        url: resolvedUrl || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+        hash: hash,
+      });
     }
 
-    setPhaseDocuments(docsByPhase);
-    console.info('[docs] updated phaseDocuments state', { phaseDocuments: docsByPhase });
-  }, [envioData]);
+    // Append to existing docs for this phase (in case initial appraisal already added to phase 0)
+    docsByPhase[phaseId] = [...docsByPhase[phaseId], ...phaseDocs];
+  }
+  
+  console.log("IA: ",envioData?.initialAppraisals);
+  setPhaseDocuments(docsByPhase);
+  console.info('[docs] updated phaseDocuments state', { phaseDocuments: docsByPhase });
+  console.log(envioData.appraisalReportSubmitted);
+  
+}, [envioData]);
 
   const [activeDocPhase, setActiveDocPhase] = useState(0);
   const [docViewer, setDocViewer] = useState<Doc | null>(null);
@@ -1350,6 +1482,161 @@ const ProjectDetails = () => {
                       </div>
                     </div>
                   </div>
+                  {/* Close Phase 0 */}
+{envioData?.projectState?.currentPhase === 0 && !staticConfig?.phaseConfigSet && (
+  <div className="space-y-2">
+    <div className="flex items-center gap-2">
+      <Target className="h-4 w-4 text-[#3D2817]" />
+      <span className="text-sm font-bold text-[#2D1B00]">Close Phase 0</span>
+    </div>
+    <div className="space-y-2">
+      <div className={`${minecraftSubPanelClass} p-3`}>
+        <p className="text-xs text-[#5D4E37] mb-2">
+          Close fundraising phase and set withdrawal caps & durations for development phases.
+        </p>
+        <p className="text-xs font-bold text-[#fb542b]">
+          ⚠ Can only be done once
+        </p>
+      </div>
+      <Button
+        size="sm"
+        className={`${minecraftPrimaryButtonClass} w-full h-10`}
+        onClick={() => setShowClosePhase0Modal(true)}
+      >
+        <DoorClosed className="mr-2 h-4 w-4" />
+        Close Phase 0 & Configure
+      </Button>
+    </div>
+  </div>
+)}
+                  {/* Initial Appraisal (Phase 0 only) */}
+{currentPhaseIndex === 0 && !envioData?.appraisalReportSubmitted && (
+  <div className="space-y-2 border-b-2 border-[#654321] pb-4">
+    <div className="flex items-center gap-2">
+      <FileText className="h-4 w-4 text-[#3D2817]" />
+      <span className="text-sm font-bold text-[#2D1B00]">Submit Initial Appraisal</span>
+    </div>
+    <div className="space-y-3">
+      <div className={`${minecraftSubPanelClass} p-3`}>
+        <p className="text-xs text-[#5D4E37] mb-2">
+          ⚠️ Submitting the initial appraisal will <strong>immediately unlock all raised funds</strong> for withdrawal.
+        </p>
+        <p className="text-xs text-[#5D4E37]">
+          This document will be permanently stored on IPFS and displayed in Phase 0 documentation.
+        </p>
+      </div>
+      
+      <div className="space-y-2">
+        <Label htmlFor="appraisalFile" className="text-sm font-bold text-[#2D1B00]">
+          Upload Appraisal Document
+        </Label>
+        <Input
+          id="appraisalFile"
+          type="file"
+          accept="image/*,.pdf"
+          onChange={(e) => setAppraisalFile(e.target.files?.[0] || null)}
+          className="rounded-none border-4 border-dashed border-[#654321] bg-[#FFF3C4] text-[#2D1B00] min-h-[60px] pt-2 pb-3 px-4 file:mr-4 file:rounded-none file:border-0 file:bg-[#8B7355] file:px-4 file:py-2 file:font-bold file:uppercase file:text-white hover:file:bg-[#715b3f]"
+        />
+        {appraisalFile && (
+          <div className="flex items-center justify-between text-xs text-[#5D4E37] bg-[#FFF3C4] border-2 border-[#654321] p-2 rounded">
+            <span className="flex items-center gap-2">
+              <FileText className="h-3 w-3" />
+              {appraisalFile.name}
+            </span>
+            <span className="font-semibold">
+              {(appraisalFile.size / 1024 / 1024).toFixed(2)} MB
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className={`${minecraftSubPanelClass} p-3 text-xs`}>
+        <p className="font-semibold text-[#2D1B00] mb-2">Requirements:</p>
+        <ul className="space-y-1 text-[#5D4E37] list-disc list-inside">
+          <li>Image (JPG, PNG, etc.) or PDF format</li>
+          <li>File size under 10MB recommended</li>
+          <li>Must meet minimum fundraise target first</li>
+        </ul>
+      </div>
+
+      <Button
+        size="sm"
+        className={`${minecraftPrimaryButtonClass} w-full h-10`}
+        disabled={isSubmittingAppraisal || !appraisalFile}
+        onClick={async () => {
+          try {
+            if (!projectAddress || !appraisalFile) {
+              toast.error('Please select an appraisal file');
+              return;
+            }
+            
+            // Check if min raise met
+            const minRaiseRaw = BigInt(envioData?.minRaise || '0');
+            const totalRaisedRaw = BigInt(envioData?.projectState?.totalRaised || '0');
+            if (totalRaisedRaw < minRaiseRaw) {
+              toast.error('Minimum fundraise target not met yet');
+              return;
+            }
+
+            setIsSubmittingAppraisal(true);
+            const signer = await getSigner();
+            const proj = projectAt(projectAddress, signer);
+
+            // Upload to IPFS
+            toast.info('Uploading document to IPFS...');
+            const uploaded = await ipfsUpload([appraisalFile]);
+            const uri = uploaded[0]?.uri || '';
+            
+            if (!uri) {
+              throw new Error('IPFS upload failed');
+            }
+
+            // Compute hash of file
+            toast.info('Computing document hash...');
+            const buf = new Uint8Array(await appraisalFile.arrayBuffer());
+            const hash = ethers.keccak256(buf);
+
+            // Submit transaction
+            toast.info('Submitting to blockchain...');
+            const tx = await proj.submitInitialAppraisal(hash, uri);
+            toast.info('Transaction sent, waiting for confirmation...');
+            await tx.wait();
+            
+            toast.success('Initial appraisal submitted successfully! All funds are now unlocked.');
+
+            setAppraisalFile(null);
+            refresh();
+          } catch (e: any) {
+            console.error('Initial appraisal submission error:', e);
+            toast.error(e?.shortMessage || e?.message || 'Submission failed');
+          } finally {
+            setIsSubmittingAppraisal(false);
+          }
+        }}
+      >
+        <FileText className="mr-2 h-4 w-4" />
+        {isSubmittingAppraisal ? 'Submitting...' : 'Submit Initial Appraisal'}
+      </Button>
+      
+      <p className="text-[0.6rem] text-[#3D2817] text-center font-semibold">
+        ⚠️ This action cannot be undone and will unlock all raised capital
+      </p>
+    </div>
+  </div>
+)}
+
+{/* Show confirmation if already submitted */}
+{currentPhaseIndex === 0 && envioData?.appraisalReportSubmitted && (
+  <div className={`${minecraftSubPanelClass} p-4 border-2 border-[#55AA55]`}>
+    <div className="flex items-center gap-2 text-[#55AA55] mb-2">
+      <ShieldCheck className="h-5 w-5" />
+      <span className="text-sm font-bold">Initial Appraisal Submitted</span>
+    </div>
+    <p className="text-xs text-[#5D4E37]">
+      All raised funds are now unlocked for withdrawal. View the appraisal document in Phase 0 documentation.
+    </p>
+  </div>
+)}
 
                   {/* Close Phase */}
                   <div className="space-y-2">
@@ -1601,6 +1888,164 @@ const ProjectDetails = () => {
           </div>
         </div>
       </div>
+      {/* Close Phase 0 Modal */}
+<Drawer open={showClosePhase0Modal} onOpenChange={setShowClosePhase0Modal}>
+  <DrawerContent className="border-4 border-[#654321] bg-[#F8E3B5] shadow-[8px_8px_0_rgba(0,0,0,0.35)]">
+    <DrawerHeader className={`${minecraftHeaderClass} flex items-center justify-between`}>
+      <DrawerTitle className="text-lg font-bold uppercase tracking-[0.2em] text-[#2D1B00]">
+        Close Phase 0 & Configure Phases
+      </DrawerTitle>
+      <DrawerClose asChild>
+        <Button size="sm" className={`${minecraftNeutralButtonClass} h-10 px-4`}>
+          Close
+        </Button>
+      </DrawerClose>
+    </DrawerHeader>
+    
+    <div className="max-h-[70vh] overflow-y-auto bg-[#FFF3C4] px-6 pb-6 text-[#2D1B00]">
+      <div className="space-y-4 py-4">
+        <p className="text-sm text-[#5D4E37]">
+          Set withdrawal caps (as percentages) and durations (in days) for each development phase. Upload closing documents for Phase 0.
+        </p>
+        
+        <div className={`${minecraftSubPanelClass} p-4`}>
+          <p className="text-xs font-bold uppercase tracking-wider text-[#5D4E37] mb-2">
+            ⚠ This action is irreversible
+          </p>
+          <p className="text-xs text-[#5D4E37]">
+            Phase 0 (Fundraising) cap is automatically 0. Define caps and durations for phases 1-5 below.
+          </p>
+        </div>
+
+        {/* Phase 0 Duration */}
+        <div className={`${minecraftSubPanelClass} p-4 space-y-2`}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-[#5D4E37]">
+                Phase 0
+              </p>
+              <p className="text-sm font-bold text-[#2D1B00]">Fundraising and Acquisition</p>
+            </div>
+          </div>
+          
+          <div className="space-y-1">
+            <Label htmlFor="phase-0-duration" className="text-xs font-semibold text-[#5D4E37]">
+              Duration (days, informational)
+            </Label>
+            <Input
+              id="phase-0-duration"
+              type="number"
+              placeholder="0"
+              min="0"
+              step="1"
+              value={phaseDurations[0]}
+              onChange={(e) => {
+                const newDurations = [...phaseDurations];
+                newDurations[0] = e.target.value;
+                setPhaseDurations(newDurations);
+              }}
+              className="h-10 rounded-none border-4 border-[#654321] bg-[#FFF3C4] text-sm"
+            />
+          </div>
+        </div>
+
+        {/* Phases 1-5 */}
+        {phaseNames.slice(1).map((name, idx) => (
+          <div key={idx} className={`${minecraftSubPanelClass} p-4 space-y-2`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-[#5D4E37]">
+                  Phase {idx + 1}
+                </p>
+                <p className="text-sm font-bold text-[#2D1B00]">{name}</p>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor={`phase-${idx + 1}-cap`} className="text-xs font-semibold text-[#5D4E37]">
+                  Cap (%, 0-100)
+                </Label>
+                <Input
+                  id={`phase-${idx + 1}-cap`}
+                  type="number"
+                  placeholder="0"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={phaseCapsPct[idx]}
+                  onChange={(e) => {
+                    const newCaps = [...phaseCapsPct];
+                    newCaps[idx] = e.target.value;
+                    setPhaseCapsPct(newCaps);
+                  }}
+                  className="h-10 rounded-none border-4 border-[#654321] bg-[#FFF3C4] text-sm"
+                />
+              </div>
+              
+              <div className="space-y-1">
+                <Label htmlFor={`phase-${idx + 1}-duration`} className="text-xs font-semibold text-[#5D4E37]">
+                  Duration (days)
+                </Label>
+                <Input
+                  id={`phase-${idx + 1}-duration`}
+                  type="number"
+                  placeholder="0"
+                  min="0"
+                  step="1"
+                  value={phaseDurations[idx + 1]}
+                  onChange={(e) => {
+                    const newDurations = [...phaseDurations];
+                    newDurations[idx + 1] = e.target.value;
+                    setPhaseDurations(newDurations);
+                  }}
+                  className="h-10 rounded-none border-4 border-[#654321] bg-[#FFF3C4] text-sm"
+                />
+              </div>
+            </div>
+          </div>
+        ))}
+
+        <div className={`${minecraftSubPanelClass} p-4`}>
+          <p className="text-xs font-bold uppercase tracking-wider text-[#5D4E37] mb-1">
+            Total Caps (Phases 1-5)
+          </p>
+          <p className="text-lg font-bold text-[#2D1B00]">
+            {phaseCapsPct.reduce((sum, cap) => sum + (Number(cap) || 0), 0).toFixed(2)}%
+          </p>
+          <p className="text-xs text-[#5D4E37] mt-1">
+            Must not exceed 100%
+          </p>
+        </div>
+
+        {/* Document Upload */}
+        <div className={`${minecraftSubPanelClass} p-4 space-y-2`}>
+          <Label htmlFor="phase0-docs" className="text-sm font-bold text-[#2D1B00]">
+            Upload Phase 0 Closing Documents
+          </Label>
+          <Input
+            id="phase0-docs"
+            type="file"
+            multiple
+            onChange={(e) => setPhase0Docs(Array.from(e.target.files || []))}
+            className="rounded-none border-4 border-dashed border-[#654321] bg-[#FFF3C4] text-[#2D1B00] min-h-[60px] pt-2 pb-3 px-4 file:mr-4 file:rounded-none file:border-0 file:bg-[#8B7355] file:px-4 file:py-2 file:font-bold file:uppercase file:text-white hover:file:bg-[#715b3f]"
+          />
+          <p className="text-xs text-[#5D4E37]">
+            {phase0Docs.length > 0 ? `${phase0Docs.length} file(s) selected` : 'Required: At least one document'}
+          </p>
+        </div>
+
+        <Button
+          className={`${minecraftPrimaryButtonClass} w-full h-12`}
+          disabled={isClosingPhase0}
+          onClick={closePhase0}
+        >
+          {isClosingPhase0 ? 'Closing Phase 0...' : 'Close Phase 0 & Set Configuration'}
+        </Button>
+      </div>
+    </div>
+  </DrawerContent>
+</Drawer>
       {/* Documents Viewer */}
         <Drawer open={!!docViewer} onOpenChange={(o) => !o && setDocViewer(null)}>
           <DrawerContent className="h-[90vh] border-4 border-[#654321] bg-[#F8E3B5] shadow-[8px_8px_0_rgba(0,0,0,0.35)]">

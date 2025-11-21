@@ -224,7 +224,9 @@ export type ProjectStaticConfig = {
   minRaise: bigint;
   maxRaise: bigint;
   fundraiseDeadline: bigint;
-  perPhaseAprBps: number[];
+  phaseConfigSet: boolean;
+  bracketMinAPR: [number, number]; // [bracket0_min, bracket1_min]
+  bracketMaxAPR: [number, number]; // [bracket0_max, bracket1_max]
 };
 
 /**
@@ -283,26 +285,41 @@ export async function fetchProjectRealtimeState(
  * Fetch static configuration that rarely changes
  * This data can be cached or supplemented from Envio
  */
+/**
+ * Fetch static configuration that rarely changes
+ * This data can be cached or supplemented from Envio
+ */
 export async function fetchProjectStaticConfig(
   projectAddress: Address,
   provider: ethers.Provider
 ): Promise<ProjectStaticConfig> {
   const proj = projectAt(projectAddress, provider);
   
-  const [token, stablecoin, owner, minRaise, maxRaise, fundraiseDeadline] = await Promise.all([
+  const [
+    token,
+    stablecoin,
+    owner,
+    minRaise,
+    maxRaise,
+    fundraiseDeadline,
+    phaseConfigSet,
+    bracketMinAPR0,
+    bracketMinAPR1,
+    bracketMaxAPR0,
+    bracketMaxAPR1
+  ] = await Promise.all([
     proj.token(),
     proj.stablecoin(),
     proj.owner(),
     proj.minRaise(),
     proj.maxRaise(),
     proj.fundraiseDeadline(),
+    proj.phaseConfigSet(),
+    proj.bracketMinAPR(0),
+    proj.bracketMinAPR(1),
+    proj.bracketMaxAPR(0),
+    proj.bracketMaxAPR(1),
   ]);
-  
-  const aprBps: number[] = [];
-  for (let i = 0; i <= 5; i++) {
-    const bps = await proj.phaseAPRsBps(i);
-    aprBps.push(Number(bps));
-  }
   
   let projectName = '';
   try {
@@ -317,30 +334,38 @@ export async function fetchProjectStaticConfig(
     stablecoin: stablecoin as Address,
     owner: owner as Address,
     projectName,
+    phaseConfigSet,
     minRaise,
     maxRaise,
     fundraiseDeadline,
-    perPhaseAprBps: aprBps,
+    bracketMinAPR: [Number(bracketMinAPR0), Number(bracketMinAPR1)],
+    bracketMaxAPR: [Number(bracketMaxAPR0), Number(bracketMaxAPR1)],
   };
 }
 
 export async function fetchProjectPhaseCaps(
   projectAddress: Address,
   provider: ethers.Provider
-): Promise<bigint[]> {
+): Promise<{ capsBps: bigint[], phaseCaps: bigint[] }> {
   try {
     const project = projectAt(projectAddress, provider);
+    const capsBps: bigint[] = [];
     const phaseCaps: bigint[] = [];
     
-    // Get phase caps for each phase (0-5)
+    // Get phase caps BPS and absolute amounts for each phase (0-5)
     for (let i = 0; i <= 5; i++) {
+      const capBps = await project.phaseCapsBps(i);
       const cap = await project.getPhaseCap(i);
+      capsBps.push(capBps);
       phaseCaps.push(cap);
     }
     
-    return phaseCaps;
+    return { capsBps, phaseCaps };
   } catch (error) {
     console.error('Error fetching project phase caps:', error);
-    return Array(6).fill(0n);
+    return { 
+      capsBps: Array(6).fill(0n), 
+      phaseCaps: Array(6).fill(0n) 
+    };
   }
 }
