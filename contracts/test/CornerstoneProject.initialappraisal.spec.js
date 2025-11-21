@@ -43,7 +43,7 @@ describe("CornerstoneProject - Initial Appraisal in Phase 0", function () {
     await expect(
       project.connect(dev).submitInitialAppraisal(appraisalHash, metadataURI)
     )
-      .to.emit(project, "InitialAppraisalSubmitted")
+      .to.emit(project, "PlotAppraisalSubmitted")
       .withArgs(appraisalHash, metadataURI);
 
     // Verify appraisal was submitted

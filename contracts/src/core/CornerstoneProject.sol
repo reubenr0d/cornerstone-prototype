@@ -123,7 +123,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     event FundraiseClosed(bool successful);
     event PhaseClosed(uint8 indexed phaseId, string[] docTypes, bytes32[] docHashes, string[] metadataURIs);
     event PhaseFundsWithdrawn(uint8 indexed phaseId, uint256 amount);
-    event InitialAppraisalSubmitted(bytes32 appraisalHash, string metadataURI);
+    event PlotAppraisalSubmitted(bytes32 appraisalHash, string metadataURI);
     event AppraisalSubmitted(uint256 percentComplete, bytes32 appraisalHash);
     event SalesProceedsSubmitted(uint256 amount);
     event PrincipalClaimed(address indexed user, uint256 amount);
@@ -237,7 +237,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
 
         appraisalReportSubmitted = true;
 
-        emit InitialAppraisalSubmitted(appraisalHash, metadataURI);
+        emit PlotAppraisalSubmitted(appraisalHash, metadataURI);
     }
 
     // ---- Phases & fundraise lifecycle ----
@@ -312,6 +312,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
 
     function _cumulativeUnlocked() internal view returns (uint256) {
         // If initial appraisal submitted in phase 0, unlock all funds
+        // TODO!: later we will pull this amount unlocked from the appraiser report
         if (appraisalReportSubmitted && currentPhase == 0) {
             return totalRaised;
         }
