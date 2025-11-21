@@ -97,7 +97,7 @@ describe("CornerstoneProject - Full Lifecycle Flow", function () {
 
     ctx.docFor = (phase) => ({
       types: [`phase-${phase}-doc`],
-      hashes: [ethers.ZeroHash],
+      hashes: [ethers.keccak256(ethers.toUtf8Bytes(`phase-${phase}-doc`))],
       uris: [`ipfs://phase-${phase}`],
     });
 

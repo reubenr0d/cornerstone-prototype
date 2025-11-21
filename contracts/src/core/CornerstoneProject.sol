@@ -82,6 +82,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     uint8 public lastClosedPhase; // highest fully closed phase; 0 initially
     bool public fundraiseClosed;
     bool public fundraiseSuccessful;
+    bool public appraisalReportSubmitted;
 
     uint256 public totalRaised;
 
@@ -122,6 +123,7 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     event FundraiseClosed(bool successful);
     event PhaseClosed(uint8 indexed phaseId, string[] docTypes, bytes32[] docHashes, string[] metadataURIs);
     event PhaseFundsWithdrawn(uint8 indexed phaseId, uint256 amount);
+    event PlotAppraisalSubmitted(bytes32 appraisalHash, string metadataURI);
     event AppraisalSubmitted(uint256 percentComplete, bytes32 appraisalHash);
     event SalesProceedsSubmitted(uint256 amount);
     event PrincipalClaimed(address indexed user, uint256 amount);
@@ -223,6 +225,21 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
         emit Deposit(msg.sender, amount, amount);
     }
 
+    function submitInitialAppraisal(
+        bytes32 appraisalHash,
+        string calldata metadataURI
+    ) external onlyDev whenNotPaused updateAccrual {
+        require(currentPhase == 0, "only in phase 0");
+        require(!appraisalReportSubmitted, "already submitted");
+        require(totalRaised >= minRaise, "min raise not met");
+        require(appraisalHash != bytes32(0), "invalid hash");
+        require(bytes(metadataURI).length > 0, "metadata required");
+
+        appraisalReportSubmitted = true;
+
+        emit PlotAppraisalSubmitted(appraisalHash, metadataURI);
+    }
+
     // ---- Phases & fundraise lifecycle ----
     function closePhase(
         uint8 phaseId,
@@ -294,6 +311,12 @@ contract CornerstoneProject is ICornerstoneProject, Ownable, Pausable, Reentranc
     }
 
     function _cumulativeUnlocked() internal view returns (uint256) {
+        // If initial appraisal submitted in phase 0, unlock all funds
+        // TODO!: later we will pull this amount unlocked from the appraiser report
+        if (appraisalReportSubmitted && currentPhase == 0) {
+            return totalRaised;
+        }
+
         uint256 unlocked;
         if (currentPhase >= 1) {
             unlocked += getPhaseCap(0);

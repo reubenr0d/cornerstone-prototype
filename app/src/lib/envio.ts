@@ -141,6 +141,16 @@ export type AppraisalSubmittedEvent = {
   transactionHash: string;
 };
 
+export type InitialAppraisalSubmittedEvent = {
+  id: string;
+  projectAddress: string;
+  appraisalHash: string;
+  metadataURI: string;
+  blockNumber: string;
+  blockTimestamp: string;
+  transactionHash: string;
+};
+
 export type PrincipalClaimedEvent = {
   id: string;
   projectAddress: string;
@@ -201,6 +211,7 @@ export type Project = {
   minRaise: string;
   maxRaise: string;
   withdrawableDevFunds: string;
+  appraisalReportSubmitted: boolean;
   projectState?: ProjectState;
   deposits: DepositEvent[];
   interestClaims: InterestClaimedEvent[];
@@ -209,6 +220,7 @@ export type Project = {
   reserveFunded: ReserveFundedEvent[];
   salesProceeds: SalesProceedsSubmittedEvent[];
   appraisals: AppraisalSubmittedEvent[];
+  initialAppraisals: InitialAppraisalSubmittedEvent[];
   principalClaims: PrincipalClaimedEvent[];
   revenueClaims: RevenueClaimedEvent[];
   fundraiseClosed: FundraiseClosedEvent[];
@@ -242,14 +254,15 @@ export async function getCompleteProjectData(
         createdAtBlock
         createdAtTimestamp
         metadataURI
-        name              # ADD
-        description       # ADD
-        imageURI          # ADD
-        metadataFetched   # ADD
-        metadataFetchError # ADD
+        name
+        description
+        imageURI
+        metadataFetched
+        metadataFetchError
         minRaise
         maxRaise
         withdrawableDevFunds
+        appraisalReportSubmitted
         projectState {
           id
           currentPhase
@@ -338,6 +351,14 @@ export async function getCompleteProjectData(
           id
           percentComplete
           appraisalHash
+          blockNumber
+          blockTimestamp
+          transactionHash
+        }
+        initialAppraisals(order_by: { blockTimestamp: asc }, limit: 10) {
+          id
+          appraisalHash
+          metadataURI
           blockNumber
           blockTimestamp
           transactionHash

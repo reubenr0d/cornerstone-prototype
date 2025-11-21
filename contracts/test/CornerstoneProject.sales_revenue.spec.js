@@ -1,13 +1,20 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { time } = require("@nomicfoundation/hardhat-network-helpers");
 const { deployProjectFixture } = require("./fixtures");
 
 describe("CornerstoneProject - Sales & Revenue", function () {
   it("proceeds exceeding outstanding distribute excess as revenue", async function () {
     const { dev, user1, project, token, pyusd, mintAndApprove, params } = await deployProjectFixture();
+    
     await mintAndApprove(user1, params.minRaise);
     await project.connect(user1).deposit(params.minRaise);
-    await project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
+    await project.connect(dev).closePhase(
+      0, 
+      ["phase-0-doc"], 
+      [ethers.keccak256(ethers.toUtf8Bytes("phase-0-doc"))], 
+      ["ipfs://phase-0"]
+    );
 
     const outstanding = (await project.totalRaised()) - (await project.principalRedeemed());
     // Submit outstanding + 123,456 as proceeds in one go
@@ -25,9 +32,18 @@ describe("CornerstoneProject - Sales & Revenue", function () {
 
   it("claimRevenue reduces pool but not accrual base; withdrawPrincipal reduces both", async function () {
     const { dev, user1, project, token, pyusd, mintAndApprove, params } = await deployProjectFixture();
+    
     await mintAndApprove(user1, params.minRaise);
     await project.connect(user1).deposit(params.minRaise);
-    await project.connect(dev).closePhase(0, ["doc"], [ethers.ZeroHash], ["ipfs://fundraise-doc"]);
+    await project.connect(dev).closePhase(
+      0, 
+      ["phase-0-doc"], 
+      [ethers.keccak256(ethers.toUtf8Bytes("phase-0-doc"))], 
+      ["ipfs://phase-0"]
+    );
+
+    // Set phase configuration
+    const now = await time.latest();
 
     // Fill buffer to outstanding and add revenue of 50,000
     const outstanding = (await project.totalRaised()) - (await project.principalRedeemed());
@@ -45,6 +61,16 @@ describe("CornerstoneProject - Sales & Revenue", function () {
     expect(balAfter - balBefore).to.equal(50_000n);
     expect(await project.poolBalance()).to.equal(poolBefore - 50_000n);
     expect(await project.accrualBase()).to.equal(baseBefore); // unchanged
+
+    // Close remaining phases to enable principal withdrawal (phases 1-5)
+    for (let p = 1; p <= 5; p++) {
+      await project.connect(dev).closePhase(
+        p,
+        [`phase-${p}-doc`],
+        [ethers.keccak256(ethers.toUtf8Bytes(`phase-${p}-doc`))],
+        [`ipfs://phase-${p}`]
+      );
+    }
 
     // Withdraw principal for half the shares
     const shares = (await token.balanceOf(user1.address)) / 2n;
