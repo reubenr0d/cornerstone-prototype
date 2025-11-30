@@ -45,7 +45,8 @@ async function deployProjectFixture(opts = {}) {
     fundraiseDeadline,
     phaseAPRs,
     phaseDurations,
-    phaseCapsBps
+    phaseCapsBps,
+    opts.verifierRegistry ?? ethers.ZeroAddress
   );
   await project.waitForDeployment();
 

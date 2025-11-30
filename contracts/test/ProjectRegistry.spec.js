@@ -10,6 +10,17 @@ describe("ProjectRegistry", function () {
     expect(count).to.equal(0n);
   });
 
+  it("stores verifier and restricts updates to owner", async function () {
+    const { registry } = await deployRegistryFixture();
+    const [, other] = await ethers.getSigners();
+    await expect(registry.connect(other).setVerifier(other.address))
+      .to.be.revertedWithCustomError(registry, "OwnableUnauthorizedAccount")
+      .withArgs(other.address);
+    await expect(registry.setVerifier(ethers.ZeroAddress)).to.be.revertedWith("verifier zero");
+    await registry.setVerifier(other.address);
+    expect(await registry.verifier()).to.equal(other.address);
+  });
+
   it("createProject auto names and increments count", async function () {
     const { registry, pyusd } = await deployRegistryFixture();
     const { phaseAPRs, phaseDurations, phaseCapsBps } = defaultPhaseParams();

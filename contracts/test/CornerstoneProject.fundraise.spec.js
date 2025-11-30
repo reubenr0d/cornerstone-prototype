@@ -24,7 +24,8 @@ describe("CornerstoneProject - Fundraise", function () {
         now + 1000,
         [0, 0, 0, 0, 0, 0],
         [0, 0, 0, 0, 0, 0],
-        badCaps
+        badCaps,
+        ethers.ZeroAddress
       )
     ).to.be.revertedWith("caps sum > 100%");
 
@@ -39,7 +40,8 @@ describe("CornerstoneProject - Fundraise", function () {
         now + 1000,
         [0, 0, 0, 0, 0, 0],
         [0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0]
+        [0, 0, 0, 0, 0, 0],
+        ethers.ZeroAddress
       )
     ).to.be.revertedWith("stablecoin required");
   });
